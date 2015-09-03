@@ -13,8 +13,123 @@
 /* Define to the return type of 'accept' */
 #define ACCEPT_TYPE_RETURN @ACCEPT_TYPE_RETURN@
 
+/* The normal alignment of `double', in bytes. */
+#define ALIGNOF_DOUBLE @ALIGNOF_DOUBLE@
+
+/* The normal alignment of `int', in bytes. */
+#define ALIGNOF_INT @ALIGNOF_INT@
+
+/* The normal alignment of `long', in bytes. */
+#define ALIGNOF_LONG @ALIGNOF_LONG@
+
+/* The normal alignment of `long long int', in bytes. */
+#define ALIGNOF_LONG_LONG_INT @ALIGNOF_LONG_LONG_INT@
+
+/* The normal alignment of `short', in bytes. */
+#define ALIGNOF_SHORT @ALIGNOF_SHORT@
+
+/* Size of a disk block --- this also limits the size of a tuple. You can set
+   it bigger if you need bigger tuples (although TOAST should reduce the need
+   to have large tuples, since fields can be spread across multiple tuples).
+   BLCKSZ must be a power of 2. The maximum possible value of BLCKSZ is
+   currently 2^15 (32768). This is determined by the 15-bit widths of the
+   lp_off and lp_len fields in ItemIdData (see include/storage/itemid.h).
+   Changing BLCKSZ requires an initdb. */
+#define BLCKSZ @BLCKSZ@
+
+/* Define to the default TCP port number on which the server listens and to
+   which clients will try to connect. This can be overridden at run-time, but
+   it's convenient if your clients have the right default compiled in.
+   (-DPGPORT=PORTNUM) */
+#define DEF_PGPORT @PGPORT@
+
+/* Define to the default TCP port number as a string constant. */
+#define DEF_PGPORT_STR "@PGPORT@"
+
+/* Define to build with GSSAPI support. (--with-gssapi) */
+//#undef ENABLE_GSS
+
+#cmakedefine ENABLE_NLS
+
+#cmakedefine ENABLE_THREAD_SAFETY
+
+#cmakedefine FLEXIBLE_ARRAY_MEMBER
+
+#cmakedefine FLOAT4PASSBYVAL
+
+#cmakedefine FLOAT8PASSBYVAL
+
+#cmakedefine GETTIMEOFDAY_1ARG
+
+/* Define to 1 if `long int' works and is 64 bits. */
+#cmakedefine HAVE_LONG_INT_64
+
+/* Define to 1 if the system has the type `long long int'. */
+#cmakedefine HAVE_LONG_LONG_INT
+
+/* Define to 1 if `long long int' works and is 64 bits. */
+#cmakedefine HAVE_LONG_LONG_INT_64
+
+#define PG_INT64_TYPE @PG_INT64_TYPE@
+
+#define PG_PRINTF_ATTRIBUTE @PG_PRINTF_ATTRIBUTE@
+
+#define LONG_LONG_INT_MODIFIER @LONG_LONG_INT_MODIFIER@
+#define INT64_MODIFIER "@LONG_LONG_INT_MODIFIER@"
+
+#define POSTGRES_MAJOR_VERSION @POSTGRES_MAJOR_VERSION@
+#define POSTGRES_MINOR_VERSION @POSTGRES_MINOR_VERSION@
+#define POSTGRES_PATCH_VERSION @POSTGRES_PATCH_VERSION@
+#define PG_MAJORVERSION "@POSTGRES_MAJOR_VERSION@.@POSTGRES_MINOR_VERSION@"
+
+/* PostgreSQL version as a string */
+#define PG_VERSION "@PG_VERSION@"
+
+#define PG_VERSION_NUM @PG_VERSION_NUM@
+
+/*TODO*/
+#define PG_VERSION_STR "PostgreSQL @PG_VERSION@ on $host, compiled by $cc_string, cool-bit"
+
+/* Define bytes to use libc memset(). */
+#define MEMSET_LOOP_LIMIT @MEMSET_LOOP_LIMIT@
+
+#cmakedefine HAVE_STRUCT_ADDRINFO
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE
+#cmakedefine HAVE_GETADDRINFO
+
+#cmakedefine HAVE_STRUCT_SOCKADDR_SA_LEN
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE___SS_FAMILY
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN
+
+#cmakedefine HAVE_UNIX_SOCKETS
+
+#define MAXIMUM_ALIGNOF @MAXIMUM_ALIGNOF@
+
+#cmakedefine HAVE_HISTORY_H
+#cmakedefine HAVE_READLINE_H
+#cmakedefine HAVE_READLINE_HISTORY_H
+#cmakedefine HAVE_READLINE_READLINE_H
+#cmakedefine HAVE_EDITLINE_HISTORY_H
+#cmakedefine HAVE_EDITLINE_READLINE_H
+
+#ifdef GETTIMEOFDAY_1ARG
+#	define gettimeofday(a,b) gettimeofday(a)
+#endif
+
+#ifdef __APPLE__
+#	if __BIG_ENDIAN
+#		define WORDS_BIGENDIAN 1
+#	endif
+#else
+#cmakedefine WORDS_BIGENDIAN 1 
+#endif
+
 #cmakedefine HAVE_DECL_STRLCAT
 #cmakedefine HAVE_DECL_STRLCPY
+
+#cmakedefine HAVE_UNSETENV
 
 /* Define to 1 if you have the `getpeereid' function. */
 #cmakedefine HAVE_GETPEEREID
