@@ -68,11 +68,11 @@
 #undef FLEXIBLE_ARRAY_MEMBER
 
 /* float4 values are passed by value if 'true', by reference if 'false' */
-#undef FLOAT4PASSBYVAL
+#undef FLOAT4PASSBYVAL @FLOAT4PASSBYVAL@
 
 /* float8, int8, and related values are passed by value if 'true', by
    reference if 'false' */
-#undef FLOAT8PASSBYVAL
+#undef FLOAT8PASSBYVAL @FLOAT8PASSBYVAL@
 
 /* Define to 1 if gettimeofday() takes only 1 argument. */
 #undef GETTIMEOFDAY_1ARG

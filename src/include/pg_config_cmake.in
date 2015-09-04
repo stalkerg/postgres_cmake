@@ -55,11 +55,15 @@
 
 #cmakedefine FLEXIBLE_ARRAY_MEMBER
 
-#cmakedefine FLOAT4PASSBYVAL
+#define FLOAT4PASSBYVAL @FLOAT4PASSBYVAL@
 
-#cmakedefine FLOAT8PASSBYVAL
+#define FLOAT8PASSBYVAL @FLOAT8PASSBYVAL@
 
 #cmakedefine GETTIMEOFDAY_1ARG
+
+#cmakedefine HAVE_INT_TIMEZONE
+#cmakedefine HAVE_TM_ZONE
+#cmakedefine HAVE_TZNAME
 
 /* Define to 1 if `long int' works and is 64 bits. */
 #cmakedefine HAVE_LONG_INT_64

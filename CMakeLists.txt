@@ -70,6 +70,7 @@ check_type_alignment(short ALIGNOF_SHORT)
 check_type_size(int64 HAVE_INT64)
 check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
+check_type_size("void *" VOID_POINTER_SIZE)
 
 check_type_size("long int" HAVE_LONG_INT_64)
 if(HAVE_LONG_INT_64 EQUAL 8)
@@ -114,6 +115,16 @@ if(HAVE_LONG_LONG_INT_64)
 else(HAVE_LONG_LONG_INT_64)
 	set(LONG_LONG_INT_MODIFIER "l")
 endif(HAVE_LONG_LONG_INT_64)
+
+if(NOT FLOAT4PASSBYVAL)
+	set(FLOAT4PASSBYVAL 1)
+endif(NOT FLOAT4PASSBYVAL)
+
+if(FLOAT8PASSBYVAL AND NOT (VOID_POINTER_SIZE EQUAL 8))
+	message(FATAL_ERROR "FLOAT8PASSBYVAL is not supported on 32-bit platforms.")
+elseif(NOT FLOAT8PASSBYVAL AND VOID_POINTER_SIZE EQUAL 8)
+	set(FLOAT8PASSBYVAL 1)
+endif(FLOAT8PASSBYVAL AND NOT (VOID_POINTER_SIZE EQUAL 8))
 
 if (_GNU_SOURCE)
     add_definitions(-D_GNU_SOURCE)
@@ -167,14 +178,6 @@ endif(NOT PGPORT)
 
 include(CheckFlexibleArray)
 
-if(NOT FLOAT4PASSBYVAL)
-	set(FLOAT4PASSBYVAL 1)
-endif(NOT FLOAT4PASSBYVAL)
-
-if(NOT FLOAT8PASSBYVAL)
-	set(FLOAT8PASSBYVAL 1)
-endif(NOT FLOAT8PASSBYVAL)
-
 CHECK_C_SOURCE_COMPILES("
 	#include <sys/time.h>
 	int main(void){
@@ -188,6 +191,23 @@ CHECK_C_SOURCE_COMPILES("
 if(NOT GETTIMEOFDAY_2ARG)
 	set(GETTIMEOFDAY_1ARG 1)
 endif(NOT GETTIMEOFDAY_2ARG)
+
+CHECK_C_SOURCE_COMPILES("
+	#include <time.h>
+	int main(void){
+		int res;
+	#ifndef __CYGWIN__
+		res = timezone / 60;
+	#else
+		res = _timezone / 60;
+	#endif
+		return 0;
+	}
+" HAVE_INT_TIMEZONE)
+
+check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LANGUAGE C)
+set(CMAKE_EXTRA_INCLUDE_FILES "time.h")
+check_type_size("*tzname" HAVE_TZNAME)
 
 CHECK_C_SOURCE_COMPILES("
 	extern int pgac_write(int ignore, const char *fmt,...) __attribute__((format(gnu_printf, 2, 3)));
