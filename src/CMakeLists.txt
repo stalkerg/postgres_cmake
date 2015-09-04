@@ -6,3 +6,5 @@ add_subdirectory(interfaces/libpq)
 add_subdirectory(bin/psql)
 add_subdirectory(bin/pg_ctl)
 add_subdirectory(bin/initdb)
+
+add_subdirectory(backend)
