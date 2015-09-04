@@ -33,7 +33,6 @@ test_big_endian(WORDS_BIGENDIAN)
 
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
-find_package(Readline)
 find_package(Threads)
 
 check_function_exists(strlcpy HAVE_DECL_STRLCPY)
@@ -49,12 +48,25 @@ check_include_files(sys/ucred.h HAVE_SYS_UCRED_H)
 check_include_files(sys/types.h HAVE_SYS_TYPES_H)
 check_include_files(sys/socket.h HAVE_SYS_SOCKET_H)
 check_include_files(stdint.h HAVE_STDINT_H)
-check_include_files(history.h HAVE_HISTORY_H)
-check_include_files(readline.h HAVE_READLINE_H)
-check_include_files(readline/history.h HAVE_READLINE_HISTORY_H)
-check_include_files(readline/readline.h HAVE_READLINE_READLINE_H)
-check_include_files(editline/history.h HAVE_EDITLINE_HISTORY_H)
-check_include_files(editline/readline.h HAVE_EDITLINE_READLINE_H)
+
+#Check ReadLine includes
+option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
+if(WITH_READLINE)
+	find_package(Readline)
+	if(READLINE_FOUND)
+		check_include_files("stdio.h;readline.h" HAVE_READLINE_H)
+		check_include_files("stdio.h;history.h" HAVE_HISTORY_H)
+		check_include_files("stdio.h;readline/history.h" HAVE_READLINE_HISTORY_H)
+		check_include_files("stdio.h;readline/readline.h" HAVE_READLINE_READLINE_H)
+		check_include_files("stdio.h;editline/history.h" HAVE_EDITLINE_HISTORY_H)
+		check_include_files("stdio.h;editline/readline.h" HAVE_EDITLINE_READLINE_H)
+
+		set(CMAKE_REQUIRED_LIBRARIES ${READLINE_LIBRARY})
+		check_function_exists(rl_completion_matches HAVE_RL_COMPLETION_MATCHES)
+		check_function_exists(rl_filename_completion_function HAVE_RL_FILENAME_COMPLETION_FUNCTION)
+	endif(READLINE_FOUND)
+endif(WITH_READLINE)
+
 
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -71,8 +83,8 @@ check_type_size(int64 HAVE_INT64)
 check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
 check_type_size("void *" VOID_POINTER_SIZE)
-
 check_type_size("long int" HAVE_LONG_INT_64)
+
 if(HAVE_LONG_INT_64 EQUAL 8)
 	set(PG_INT64_TYPE "long int")
 else(HAVE_LONG_INT_64 EQUAL 8)
@@ -178,7 +190,7 @@ endif(NOT PGPORT)
 
 include(CheckFlexibleArray)
 
-CHECK_C_SOURCE_COMPILES("
+check_c_source_compiles("
 	#include <sys/time.h>
 	int main(void){
 		struct timeval *tp;
@@ -192,7 +204,7 @@ if(NOT GETTIMEOFDAY_2ARG)
 	set(GETTIMEOFDAY_1ARG 1)
 endif(NOT GETTIMEOFDAY_2ARG)
 
-CHECK_C_SOURCE_COMPILES("
+check_c_source_compiles("
 	#include <time.h>
 	int main(void){
 		int res;
@@ -209,7 +221,7 @@ check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LA
 set(CMAKE_EXTRA_INCLUDE_FILES "time.h")
 check_type_size("*tzname" HAVE_TZNAME)
 
-CHECK_C_SOURCE_COMPILES("
+check_c_source_compiles("
 	extern int pgac_write(int ignore, const char *fmt,...) __attribute__((format(gnu_printf, 2, 3)));
 	int main(void){return 0;}
 " PG_PRINTF_ATTRIBUTE)
@@ -251,6 +263,40 @@ else(HAVE_SYS_UN_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h")
 endif(HAVE_SYS_UN_H)
 check_type_size("struct sockaddr_un" HAVE_UNIX_SOCKETS)
+
+if(WIN32)
+	set(USE_WIN32_SEMAPHORES 1)
+	set(SEMA_IMPLEMENTATION "src/backend/port/win32_sema.c")
+else(WIN32)
+	if(USE_NAMED_POSIX_SEMAPHORES)
+		set(USE_NAMED_POSIX_SEMAPHORES 1)
+		set(SEMA_IMPLEMENTATION "src/backend/port/posix_sema.c")
+	elseif(USE_UNNAMED_POSIX_SEMAPHORES)
+		set(USE_UNNAMED_POSIX_SEMAPHORES 1)
+		set(SEMA_IMPLEMENTATION "src/backend/port/posix_sema.c")
+	else(USE_NAMED_POSIX_SEMAPHORES)
+		set(USE_SYSV_SEMAPHORES 1)
+		set(SEMA_IMPLEMENTATION "src/backend/port/sysv_sema.c")
+	endif(USE_NAMED_POSIX_SEMAPHORES)
+endif(WIN32)
+
+if(WIN32)
+	set(USE_WIN32_SHARED_MEMORY 1)
+	set(SHMEM_IMPLEMENTATION "src/backend/port/win32_shmem.c")
+else(WIN32)
+	set(USE_SYSV_SHARED_MEMORY 1)
+	set(SHMEM_IMPLEMENTATION "src/backend/port/sysv_shmem.c")
+endif(WIN32)
+
+if(WIN32)
+	set(LATCH_IMPLEMENTATION "src/backend/port/win32_latch.c")
+else(WIN32)
+	set(LATCH_IMPLEMENTATION "src/backend/port/unix_latch.c")
+endif(WIN32)
+
+if(NOT HAVE_ATOMICS)
+	set(HAVE_ATOMICS 1)
+endif(NOT HAVE_ATOMICS)
 
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config_cmake.in"

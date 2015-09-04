@@ -65,6 +65,13 @@
 #cmakedefine HAVE_TM_ZONE
 #cmakedefine HAVE_TZNAME
 
+#cmakedefine USE_NAMED_POSIX_SEMAPHORES
+#cmakedefine USE_UNNAMED_POSIX_SEMAPHORES
+#cmakedefine USE_SYSV_SEMAPHORES
+#cmakedefine USE_SYSV_SHARED_MEMORY
+#cmakedefine USE_WIN32_SHARED_MEMORY
+#cmakedefine HAVE_ATOMICS
+
 /* Define to 1 if `long int' works and is 64 bits. */
 #cmakedefine HAVE_LONG_INT_64
 
@@ -117,6 +124,8 @@
 #cmakedefine HAVE_READLINE_READLINE_H
 #cmakedefine HAVE_EDITLINE_HISTORY_H
 #cmakedefine HAVE_EDITLINE_READLINE_H
+#cmakedefine HAVE_RL_COMPLETION_MATCHES
+#cmakedefine HAVE_RL_FILENAME_COMPLETION_FUNCTION
 
 #ifdef GETTIMEOFDAY_1ARG
 #	define gettimeofday(a,b) gettimeofday(a)
