@@ -37,6 +37,12 @@
    Changing BLCKSZ requires an initdb. */
 #define BLCKSZ @BLCKSZ@
 
+#define XLOG_BLCKSZ @XLOG_BLCKSZ@
+
+#define XLOG_SEG_SIZE @XLOG_SEG_SIZE@
+
+#define RELSEG_SIZE @RELSEG_SIZE@
+
 /* Define to the default TCP port number on which the server listens and to
    which clients will try to connect. This can be overridden at run-time, but
    it's convenient if your clients have the right default compiled in.
