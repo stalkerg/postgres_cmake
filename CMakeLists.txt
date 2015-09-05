@@ -27,10 +27,9 @@ set(INSTALL_BIN_DIR bin CACHE PATH "Installation directory for executables")
 set(INSTALL_INCLUDE_DIR include CACHE PATH
   "Installation directory for header files")
 
-
-
 test_big_endian(WORDS_BIGENDIAN)
 
+find_package(Perl REQUIRED)
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)

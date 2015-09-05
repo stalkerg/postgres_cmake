@@ -143,12 +143,24 @@ set(access_SRCS
 	access/transam/xlogutils.c
 )
 
+bison_target(BOOTSTRAP_PARSER bootstrap/bootparse.y ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap/bootparse.c)
+flex_target(BOOTSTRAP_SCANNER bootstrap/bootscanner.l  ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap/bootscanner.c)
+add_flex_bison_dependency(BOOTSTRAP_SCANNER BOOTSTRAP_PARSER)
+
+set_source_files_properties(bootstrap/bootparse.c PROPERTIES OBJECT_DEPENDS ${FLEX_BOOTSTRAP_SCANNER_OUTPUTS})
+
+set(bootstrap_SRCS
+	bootstrap/bootstrap.c
+	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
+)
+
 set(postgres_SRCS
 	${access_SRCS}
 )
 
 add_executable(postgres
 	${postgres_SRCS}
+	${bootstrap_SRCS}
 )
 
 target_link_libraries(postgres
