@@ -98,6 +98,10 @@ static SimpleEcontextStackEntry *simple_econtext_stack = NULL;
  *
  * The evaluation state trees (cast_exprstate) are managed in the same way as
  * simple expressions (i.e., we assume cast expressions are always simple).
+ *
+ * As with simple expressions, DO blocks don't use the shared hash table but
+ * must have their own.  This isn't ideal, but we don't want to deal with
+ * multiple simple_eval_estates within a DO block.
  */
 typedef struct					/* lookup key for cast info */
 {
@@ -118,8 +122,8 @@ typedef struct					/* cast_hash table entry */
 	LocalTransactionId cast_lxid;
 } plpgsql_CastHashEntry;
 
-static MemoryContext cast_hash_context = NULL;
-static HTAB *cast_hash = NULL;
+static MemoryContext shared_cast_context = NULL;
+static HTAB *shared_cast_hash = NULL;
 
 /************************************************************
  * Local function forward declarations
@@ -287,7 +291,9 @@ static char *format_preparedparamsdata(PLpgSQL_execstate *estate,
  * difference that this code is aware of is that for a DO block, we want
  * to use a private simple_eval_estate, which is created and passed in by
  * the caller.  For regular functions, pass NULL, which implies using
- * shared_simple_eval_estate.
+ * shared_simple_eval_estate.  (When using a private simple_eval_estate,
+ * we must also use a private cast hashtable, but that's taken care of
+ * within plpgsql_estate_setup.)
  * ----------
  */
 Datum
@@ -431,19 +437,9 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	{
 		estate.err_stmt = NULL;
 		estate.err_text = NULL;
-
-		/*
-		 * Provide a more helpful message if a CONTINUE has been used outside
-		 * the context it can work in.
-		 */
-		if (rc == PLPGSQL_RC_CONTINUE)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("CONTINUE cannot be used outside a loop")));
-		else
-			ereport(ERROR,
-			   (errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
-				errmsg("control reached end of function without RETURN")));
+		ereport(ERROR,
+				(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
+				 errmsg("control reached end of function without RETURN")));
 	}
 
 	/*
@@ -785,19 +781,9 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 	{
 		estate.err_stmt = NULL;
 		estate.err_text = NULL;
-
-		/*
-		 * Provide a more helpful message if a CONTINUE has been used outside
-		 * the context it can work in.
-		 */
-		if (rc == PLPGSQL_RC_CONTINUE)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("CONTINUE cannot be used outside a loop")));
-		else
-			ereport(ERROR,
-			   (errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
-				errmsg("control reached end of trigger procedure without RETURN")));
+		ereport(ERROR,
+				(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
+		 errmsg("control reached end of trigger procedure without RETURN")));
 	}
 
 	estate.err_stmt = NULL;
@@ -913,19 +899,9 @@ plpgsql_exec_event_trigger(PLpgSQL_function *func, EventTriggerData *trigdata)
 	{
 		estate.err_stmt = NULL;
 		estate.err_text = NULL;
-
-		/*
-		 * Provide a more helpful message if a CONTINUE has been used outside
-		 * the context it can work in.
-		 */
-		if (rc == PLPGSQL_RC_CONTINUE)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("CONTINUE cannot be used outside a loop")));
-		else
-			ereport(ERROR,
-			   (errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
-				errmsg("control reached end of trigger procedure without RETURN")));
+		ereport(ERROR,
+				(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
+		 errmsg("control reached end of trigger procedure without RETURN")));
 	}
 
 	estate.err_stmt = NULL;
@@ -3271,6 +3247,8 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 					 ReturnSetInfo *rsi,
 					 EState *simple_eval_estate)
 {
+	HASHCTL		ctl;
+
 	/* this link will be restored at exit from plpgsql_call_handler */
 	func->cur_estate = estate;
 
@@ -3319,11 +3297,44 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	estate->paramLI->numParams = estate->ndatums;
 	estate->params_dirty = false;
 
-	/* set up for use of appropriate simple-expression EState */
+	/* set up for use of appropriate simple-expression EState and cast hash */
 	if (simple_eval_estate)
+	{
 		estate->simple_eval_estate = simple_eval_estate;
+		/* Private cast hash just lives in function's main context */
+		memset(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(plpgsql_CastHashKey);
+		ctl.entrysize = sizeof(plpgsql_CastHashEntry);
+		ctl.hcxt = CurrentMemoryContext;
+		estate->cast_hash = hash_create("PLpgSQL private cast cache",
+										16,		/* start small and extend */
+										&ctl,
+									  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+		estate->cast_hash_context = CurrentMemoryContext;
+	}
 	else
+	{
 		estate->simple_eval_estate = shared_simple_eval_estate;
+		/* Create the session-wide cast-info hash table if we didn't already */
+		if (shared_cast_hash == NULL)
+		{
+			shared_cast_context = AllocSetContextCreate(TopMemoryContext,
+														"PLpgSQL cast info",
+													ALLOCSET_DEFAULT_MINSIZE,
+												   ALLOCSET_DEFAULT_INITSIZE,
+												   ALLOCSET_DEFAULT_MAXSIZE);
+			memset(&ctl, 0, sizeof(ctl));
+			ctl.keysize = sizeof(plpgsql_CastHashKey);
+			ctl.entrysize = sizeof(plpgsql_CastHashEntry);
+			ctl.hcxt = shared_cast_context;
+			shared_cast_hash = hash_create("PLpgSQL cast cache",
+										   16,	/* start small and extend */
+										   &ctl,
+									  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+		}
+		estate->cast_hash = shared_cast_hash;
+		estate->cast_hash_context = shared_cast_context;
+	}
 
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;
@@ -5413,12 +5424,18 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 	}
 
 	/*
-	 * Set up ParamListInfo to pass to executor.  For safety, save and restore
-	 * estate->paramLI->parserSetupArg around our use of the param list.
+	 * Set up ParamListInfo to pass to executor.  We need an unshared list if
+	 * it's going to include any R/W expanded-object pointer.  For safety,
+	 * save and restore estate->paramLI->parserSetupArg around our use of the
+	 * param list.
 	 */
 	save_setup_arg = estate->paramLI->parserSetupArg;
 
-	paramLI = setup_param_list(estate, expr);
+	if (expr->rwparam >= 0)
+		paramLI = setup_unshared_param_list(estate, expr);
+	else
+		paramLI = setup_param_list(estate, expr);
+
 	econtext->ecxt_param_list_info = paramLI;
 
 	/*
@@ -5436,6 +5453,9 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 
 	/* Assorted cleanup */
 	expr->expr_simple_in_use = false;
+
+	if (paramLI && paramLI != estate->paramLI)
+		pfree(paramLI);
 
 	estate->paramLI->parserSetupArg = save_setup_arg;
 
@@ -5463,11 +5483,15 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
  *
  * We share a single ParamListInfo array across all SPI calls made from this
  * estate, except calls creating cursors, which use setup_unshared_param_list
- * (see its comments for reasons why).  A shared array is generally OK since
- * any given slot in the array would need to contain the same current datum
- * value no matter which query or expression we're evaluating.  However,
- * paramLI->parserSetupArg points to the specific PLpgSQL_expr being
- * evaluated.  This is not an issue for statement-level callers, but
+ * (see its comments for reasons why), and calls that pass a R/W expanded
+ * object pointer.  A shared array is generally OK since any given slot in
+ * the array would need to contain the same current datum value no matter
+ * which query or expression we're evaluating; but of course that doesn't
+ * hold when a specific variable is being passed as a R/W pointer, because
+ * other expressions in the same function probably don't want to do that.
+ *
+ * Note that paramLI->parserSetupArg points to the specific PLpgSQL_expr
+ * being evaluated.  This is not an issue for statement-level callers, but
  * lower-level callers must save and restore estate->paramLI->parserSetupArg
  * just in case there's an active evaluation at an outer call level.
  *
@@ -5497,6 +5521,11 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 * parsed/analyzed at least once); else we cannot rely on expr->paramnos.
 	 */
 	Assert(expr->plan != NULL);
+
+	/*
+	 * Expressions with R/W parameters can't use the shared param list.
+	 */
+	Assert(expr->rwparam == -1);
 
 	/*
 	 * We only need a ParamListInfo if the expression has parameters.  In
@@ -5563,6 +5592,10 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
  * be used to copy the parameters into cursor-lifespan storage, and we don't
  * want it to copy anything that's not used by the specific cursor; that
  * could result in uselessly copying some large values.
+ *
+ * We also use this for expressions that are passing a R/W object pointer
+ * to some trusted function.  We don't want the R/W pointer to get into the
+ * shared param list, where it could get passed to some less-trusted function.
  *
  * Caller should pfree the result after use, if it's not NULL.
  */
@@ -6111,32 +6144,12 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	LocalTransactionId curlxid;
 	MemoryContext oldcontext;
 
-	/* Create the session-wide cast-info hash table if we didn't already */
-	if (cast_hash == NULL)
-	{
-		HASHCTL		ctl;
-
-		cast_hash_context = AllocSetContextCreate(TopMemoryContext,
-												  "PLpgSQL cast info",
-												  ALLOCSET_DEFAULT_MINSIZE,
-												  ALLOCSET_DEFAULT_INITSIZE,
-												  ALLOCSET_DEFAULT_MAXSIZE);
-		memset(&ctl, 0, sizeof(ctl));
-		ctl.keysize = sizeof(plpgsql_CastHashKey);
-		ctl.entrysize = sizeof(plpgsql_CastHashEntry);
-		ctl.hcxt = cast_hash_context;
-		cast_hash = hash_create("PLpgSQL cast cache",
-								16,		/* start small and extend */
-								&ctl,
-								HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-	}
-
 	/* Look for existing entry */
 	cast_key.srctype = srctype;
 	cast_key.dsttype = dsttype;
 	cast_key.srctypmod = srctypmod;
 	cast_key.dsttypmod = dsttypmod;
-	cast_entry = (plpgsql_CastHashEntry *) hash_search(cast_hash,
+	cast_entry = (plpgsql_CastHashEntry *) hash_search(estate->cast_hash,
 													   (void *) &cast_key,
 													   HASH_FIND, NULL);
 
@@ -6221,7 +6234,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 			cast_expr = (Node *) expression_planner((Expr *) cast_expr);
 
 			/* Now copy the tree into cast_hash_context */
-			MemoryContextSwitchTo(cast_hash_context);
+			MemoryContextSwitchTo(estate->cast_hash_context);
 
 			cast_expr = copyObject(cast_expr);
 		}
@@ -6229,7 +6242,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 		MemoryContextSwitchTo(oldcontext);
 
 		/* Now we can fill in a hashtable entry. */
-		cast_entry = (plpgsql_CastHashEntry *) hash_search(cast_hash,
+		cast_entry = (plpgsql_CastHashEntry *) hash_search(estate->cast_hash,
 														   (void *) &cast_key,
 														 HASH_ENTER, &found);
 		Assert(!found);			/* wasn't there a moment ago */
@@ -6251,7 +6264,9 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	 * executions.  (We will leak some memory intra-transaction if that
 	 * happens a lot, but we don't expect it to.)  It's okay to update the
 	 * hash table with the new tree because all plpgsql functions within a
-	 * given transaction share the same simple_eval_estate.
+	 * given transaction share the same simple_eval_estate.  (Well, regular
+	 * functions do; DO blocks have private simple_eval_estates, and private
+	 * cast hash tables to go with them.)
 	 */
 	curlxid = MyProc->lxid;
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)

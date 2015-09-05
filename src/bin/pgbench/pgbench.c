@@ -55,6 +55,8 @@
 
 #include "pgbench.h"
 
+#define ERRCODE_UNDEFINED_TABLE  "42P01"
+
 /*
  * Multi-platform pthread implementations
  */
@@ -3252,7 +3254,14 @@ main(int argc, char **argv)
 		res = PQexec(con, "select count(*) from pgbench_branches");
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
+			char	   *sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+
 			fprintf(stderr, "%s", PQerrorMessage(con));
+			if (sqlState && strcmp(sqlState, ERRCODE_UNDEFINED_TABLE) == 0)
+			{
+				fprintf(stderr, "Perhaps you need to do initialization (\"pgbench -i\") in database \"%s\"\n", PQdb(con));
+			}
+
 			exit(1);
 		}
 		scale = atoi(PQgetvalue(res, 0, 0));
@@ -3447,8 +3456,8 @@ main(int argc, char **argv)
 
 		/* thread level stats */
 		throttle_lag += thread->throttle_lag;
-		throttle_latency_skipped = threads->throttle_latency_skipped;
-		latency_late = thread->latency_late;
+		throttle_latency_skipped += threads->throttle_latency_skipped;
+		latency_late += thread->latency_late;
 		if (throttle_lag_max > thread->throttle_lag_max)
 			throttle_lag_max = thread->throttle_lag_max;
 		INSTR_TIME_ADD(conn_total_time, thread->conn_time);
@@ -3759,7 +3768,10 @@ threadRun(void *arg)
 				}
 
 				for (i = 0; i < progress_nthreads; i++)
+				{
+					skipped += thread[i].throttle_latency_skipped;
 					lags += thread[i].throttle_lag;
+				}
 
 				total_run = (now - thread_start) / 1000000.0;
 				tps = 1000000.0 * (count - last_count) / run;
@@ -3767,7 +3779,6 @@ threadRun(void *arg)
 				sqlat = 1.0 * (sqlats - last_sqlats) / (count - last_count);
 				stdev = 0.001 * sqrt(sqlat - 1000000.0 * latency * latency);
 				lag = 0.001 * (lags - last_lags) / (count - last_count);
-				skipped = thread->throttle_latency_skipped - last_skipped;
 
 				fprintf(stderr,
 						"progress: %.1f s, %.1f tps, "
@@ -3777,7 +3788,8 @@ threadRun(void *arg)
 				{
 					fprintf(stderr, ", lag %.3f ms", lag);
 					if (latency_limit)
-						fprintf(stderr, ", " INT64_FORMAT " skipped", skipped);
+						fprintf(stderr, ", " INT64_FORMAT " skipped",
+								skipped - last_skipped);
 				}
 				fprintf(stderr, "\n");
 
@@ -3786,7 +3798,7 @@ threadRun(void *arg)
 				last_sqlats = sqlats;
 				last_lags = lags;
 				last_report = now;
-				last_skipped = thread->throttle_latency_skipped;
+				last_skipped = skipped;
 
 				/*
 				 * Ensure that the next report is in the future, in case
