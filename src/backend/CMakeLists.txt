@@ -154,13 +154,59 @@ set(bootstrap_SRCS
 	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
 )
 
+set(commands_SRCS
+	commands/aggregatecmds.c
+	commands/alter.c
+	commands/analyze.c
+	commands/async.c
+	commands/cluster.c
+	commands/comment.c
+	commands/collationcmds.c
+	commands/constraint.c
+	commands/conversioncmds.c
+	commands/copy.c
+	commands/createas.c
+	commands/dbcommands.c
+	commands/define.c
+	commands/discard.c
+	commands/dropcmds.c
+	commands/event_trigger.c
+	commands/explain.c
+	commands/extension.c
+	commands/foreigncmds.c
+	commands/functioncmds.c
+	commands/indexcmds.c
+	commands/lockcmds.c
+	commands/matview.c
+	commands/operatorcmds.c
+	commands/opclasscmds.c
+	commands/policy.c
+	commands/portalcmds.c
+	commands/prepare.c
+	commands/proclang.c
+	commands/schemacmds.c
+	commands/seclabel.c
+	commands/sequence.c
+	commands/tablecmds.c
+	commands/tablespace.c
+	commands/trigger.c
+	commands/tsearchcmds.c
+	commands/typecmds.c
+	commands/user.c
+	commands/vacuum.c
+	commands/vacuumlazy.c
+	commands/variable.c
+	commands/view.c
+)
+
 set(postgres_SRCS
 	${access_SRCS}
+	${bootstrap_SRCS}
+	${commands_SRCS}
 )
 
 add_executable(postgres
 	${postgres_SRCS}
-	${bootstrap_SRCS}
 )
 
 target_link_libraries(postgres

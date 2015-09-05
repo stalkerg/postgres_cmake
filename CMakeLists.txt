@@ -326,9 +326,13 @@ else(WIN32)
 	set(LATCH_IMPLEMENTATION "src/backend/port/unix_latch.c")
 endif(WIN32)
 
-if(NOT HAVE_ATOMICS)
-	set(HAVE_ATOMICS 1)
-endif(NOT HAVE_ATOMICS)
+option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
+
+if(WIN32)
+	option(HAVE_SYMLINK "Define to ON if you have the `symlink' function." ON)
+else(WIN32)
+	set(HAVE_SYMLINK 1)
+endif(WIN32)
 
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config_cmake.in"
