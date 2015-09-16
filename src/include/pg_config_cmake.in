@@ -170,4 +170,9 @@
 
 #cmakedefine HAVE_SYMLINK
 
+#cmakedefine HAVE_SSL_GET_CURRENT_COMPRESSION
+#cmakedefine USE_OPENSSL
+
+#define DLSUFFIX "@CMAKE_SHARED_LIBRARY_SUFFIX_C@"
+
 #endif  // AUTO_CONFIG_H
