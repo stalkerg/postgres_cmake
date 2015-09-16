@@ -30,6 +30,7 @@ set(INSTALL_INCLUDE_DIR include CACHE PATH
 test_big_endian(WORDS_BIGENDIAN)
 
 find_package(Perl REQUIRED)
+find_package(PerlLibs)
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
