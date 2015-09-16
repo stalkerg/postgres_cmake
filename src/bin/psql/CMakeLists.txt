@@ -13,7 +13,7 @@ flex_target(psqlscan
 )
 
 set_source_files_properties(mainloop.c
-      PROPERTIES OBJECT_DEPENDS ${FLEX_psqlscan_OUTPUTS})
+	PROPERTIES OBJECT_DEPENDS ${FLEX_psqlscan_OUTPUTS})
 
 set(psql_SRCS
 	command.c

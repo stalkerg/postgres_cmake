@@ -154,6 +154,111 @@ set(bootstrap_SRCS
 	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
 )
 
+set(postgres_include_catalog "${PROJECT_SOURCE_DIR}/src/include/catalog")
+set(POSTGRES_BKI_SRCS
+	${postgres_include_catalog}/pg_proc.h
+	${postgres_include_catalog}/pg_type.h
+	${postgres_include_catalog}/pg_attribute.h
+	${postgres_include_catalog}/pg_class.h
+	${postgres_include_catalog}/pg_attrdef.h
+	${postgres_include_catalog}/pg_constraint.h
+	${postgres_include_catalog}/pg_inherits.h
+	${postgres_include_catalog}/pg_index.h
+	${postgres_include_catalog}/pg_operator.h
+	${postgres_include_catalog}/pg_opfamily.h
+	${postgres_include_catalog}/pg_opclass.h
+	${postgres_include_catalog}/pg_am.h
+	${postgres_include_catalog}/pg_amop.h
+	${postgres_include_catalog}/pg_amproc.h
+	${postgres_include_catalog}/pg_language.h
+	${postgres_include_catalog}/pg_largeobject_metadata.h
+	${postgres_include_catalog}/pg_largeobject.h
+	${postgres_include_catalog}/pg_aggregate.h
+	${postgres_include_catalog}/pg_statistic.h
+	${postgres_include_catalog}/pg_rewrite.h
+	${postgres_include_catalog}/pg_trigger.h
+	${postgres_include_catalog}/pg_event_trigger.h
+	${postgres_include_catalog}/pg_description.h
+	${postgres_include_catalog}/pg_cast.h
+	${postgres_include_catalog}/pg_enum.h
+	${postgres_include_catalog}/pg_namespace.h
+	${postgres_include_catalog}/pg_conversion.h
+	${postgres_include_catalog}/pg_depend.h
+	${postgres_include_catalog}/pg_database.h
+	${postgres_include_catalog}/pg_db_role_setting.h
+	${postgres_include_catalog}/pg_tablespace.h
+	${postgres_include_catalog}/pg_pltemplate.h
+	${postgres_include_catalog}/pg_authid.h
+	${postgres_include_catalog}/pg_auth_members.h
+	${postgres_include_catalog}/pg_shdepend.h
+	${postgres_include_catalog}/pg_shdescription.h
+	${postgres_include_catalog}/pg_ts_config.h
+	${postgres_include_catalog}/pg_ts_config_map.h
+	${postgres_include_catalog}/pg_ts_dict.h
+	${postgres_include_catalog}/pg_ts_parser.h
+	${postgres_include_catalog}/pg_ts_template.h
+	${postgres_include_catalog}/pg_extension.h
+	${postgres_include_catalog}/pg_foreign_data_wrapper.h
+	${postgres_include_catalog}/pg_foreign_server.h
+	${postgres_include_catalog}/pg_user_mapping.h
+	${postgres_include_catalog}/pg_foreign_table.h
+	${postgres_include_catalog}/pg_policy.h
+	${postgres_include_catalog}/pg_replication_origin.h
+	${postgres_include_catalog}/pg_default_acl.h
+	${postgres_include_catalog}/pg_seclabel.h
+	${postgres_include_catalog}/pg_shseclabel.h
+	${postgres_include_catalog}/pg_collation.h
+	${postgres_include_catalog}/pg_range.h
+	${postgres_include_catalog}/pg_transform.h
+	${postgres_include_catalog}/toasting.h
+	${postgres_include_catalog}/indexing.h
+)
+
+set(catalog_SRCS
+	catalog/catalog.c
+	catalog/dependency.c
+	catalog/heap.c
+	catalog/index.c
+	catalog/indexing.c
+	catalog/namespace.c
+	catalog/aclchk.c
+	catalog/objectaccess.c
+	catalog/objectaddress.c
+	catalog/pg_aggregate.c
+	catalog/pg_collation.c
+	catalog/pg_constraint.c
+	catalog/pg_conversion.c
+	catalog/pg_depend.c
+	catalog/pg_enum.c
+	catalog/pg_inherits.c
+	catalog/pg_largeobject.c
+	catalog/pg_namespace.c
+	catalog/pg_operator.c
+	catalog/pg_proc.c
+	catalog/pg_range.c
+	catalog/pg_db_role_setting.c
+	catalog/pg_shdepend.c
+	catalog/pg_type.c
+	catalog/storage.c
+	catalog/toasting.c
+)
+
+set(catalog_include
+	"-I${PROJECT_SOURCE_DIR}/src/backend/catalog"
+	"-I${PROJECT_SOURCE_DIR}/src/include/catalog"
+)
+
+add_custom_command(
+	DEPENDS ${POSTGRES_BKI_SRCS}
+	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
+	COMMAND ${PERL_EXECUTABLE} genbki.pl ${catalog_include} --set-version=${POSTGRES_MAJOR_VERSION}.${POSTGRES_MINOR_VERSION} ${POSTGRES_BKI_SRCS}
+	COMMAND ${CMAKE_COMMAND} -E copy schemapg.h ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/catalog
+)
+
+set_source_files_properties(utils/cache/relcache.c
+	PROPERTIES OBJECT_DEPENDS ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h)
+
 set(commands_SRCS
 	commands/aggregatecmds.c
 	commands/alter.c
@@ -199,10 +304,28 @@ set(commands_SRCS
 	commands/view.c
 )
 
+set(utils_SRCS
+	utils/cache/attoptcache.c
+	utils/cache/catcache.c
+	utils/cache/evtcache.c
+	utils/cache/inval.c
+	utils/cache/plancache.c
+	utils/cache/relcache.c
+	utils/cache/relmapper.c
+	utils/cache/relfilenodemap.c
+	utils/cache/spccache.c
+	utils/cache/syscache.c
+	utils/cache/lsyscache.c
+	utils/cache/typcache.c
+	utils/cache/ts_cache.c
+)
+
 set(postgres_SRCS
 	${access_SRCS}
 	${bootstrap_SRCS}
 	${commands_SRCS}
+	${catalog_SRCS}
+	${utils_SRCS}
 )
 
 add_executable(postgres
@@ -216,4 +339,10 @@ target_link_libraries(postgres
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
 	m
+)
+
+#Realy need?
+add_custom_target(duplicate_oids
+	COMMAND ${PERL_EXECUTABLE} ./duplicate_oids
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/include/catalog
 )
