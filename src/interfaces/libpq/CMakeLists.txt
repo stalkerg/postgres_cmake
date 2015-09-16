@@ -2,6 +2,10 @@ include_directories(
 	"${PROJECT_SOURCE_DIR}/src/port"
 )
 
+if(USE_OPENSSL)
+	set(pq_ssl_SRCS fe-secure-openssl.c)
+endif(USE_OPENSSL)
+
 set(pq_SRCS
 	fe-auth.c
 	fe-connect.c
@@ -28,10 +32,14 @@ set(pq_SRCS
 	${MB_UTILS_BACKEND_DIR}/wchar.c
 
 	${fallback_SRCS}
+	${pq_ssl_SRCS}
 )
 
 
 add_library(pq SHARED ${pq_SRCS})
+target_link_libraries(pq
+	${OPENSSL_LIBRARIES}
+)
 
 target_compile_definitions(pq PRIVATE -DFRONTEND -DUNSAFE_STAT_OK)
 set_target_properties(pq PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})

@@ -50,4 +50,5 @@ target_link_libraries(psql
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
 	m
+	${OPENSSL_LIBRARIES}
 )

@@ -304,7 +304,91 @@ set(commands_SRCS
 	commands/view.c
 )
 
+set(executor_SRCS
+	executor/execAmi.c
+	executor/execCurrent.c
+	executor/execGrouping.c
+	executor/execIndexing.c
+	executor/execJunk.c
+	executor/execMain.c
+	executor/execProcnode.c
+	executor/execQual.c
+	executor/execScan.c
+	executor/execTuples.c
+	executor/execUtils.c
+	executor/functions.c
+	executor/instrument.c
+	executor/nodeAppend.c
+	executor/nodeAgg.c
+	executor/nodeBitmapAnd.c
+	executor/nodeBitmapOr.c
+	executor/nodeBitmapHeapscan.c
+	executor/nodeBitmapIndexscan.c
+	executor/nodeCustom.c
+	executor/nodeHash.c
+	executor/nodeHashjoin.c
+	executor/nodeIndexscan.c
+	executor/nodeIndexonlyscan.c
+	executor/nodeLimit.c
+	executor/nodeLockRows.c
+	executor/nodeMaterial.c
+	executor/nodeMergeAppend.c
+	executor/nodeMergejoin.c
+	executor/nodeModifyTable.c
+	executor/nodeNestloop.c
+	executor/nodeFunctionscan.c
+	executor/nodeRecursiveunion.c
+	executor/nodeResult.c
+	executor/nodeSamplescan.c
+	executor/nodeSeqscan.c
+	executor/nodeSetOp.c
+	executor/nodeSort.c
+	executor/nodeUnique.c
+	executor/nodeValuesscan.c
+	executor/nodeCtescan.c
+	executor/nodeWorktablescan.c
+	executor/nodeGroup.c
+	executor/nodeSubplan.c
+	executor/nodeSubqueryscan.c
+	executor/nodeTidscan.c
+	executor/nodeForeignscan.c
+	executor/nodeWindowAgg.c
+	executor/tstoreReceiver.c
+	executor/spi.c
+)
+
+set(lib_SRCS
+	lib/binaryheap.c
+	lib/bipartite_match.c
+	lib/hyperloglog.c
+	lib/ilist.c
+	lib/pairingheap.c
+	lib/rbtree.c
+	lib/stringinfo.c
+)
+
+if(OPENSSL_FOUND)
+	set(libpq_ssl_SRCS libpq/be-secure-openssl.c)
+endif(OPENSSL_FOUND)
+
+set(libpq_SRCS
+	libpq/be-fsstubs.c
+	libpq/be-secure.c
+	libpq/auth.c
+	libpq/crypt.c
+	libpq/hba.c
+	libpq/ip.c
+	libpq/md5.c
+	libpq/pqcomm.c
+	libpq/pqformat.c
+	libpq/pqmq.c
+	libpq/pqsignal.c
+	${libpq_ssl_SRCS}
+)
+
 set(utils_SRCS
+	utils/error/assert.c
+	utils/error/elog.c
 	utils/cache/attoptcache.c
 	utils/cache/catcache.c
 	utils/cache/evtcache.c
@@ -318,14 +402,144 @@ set(utils_SRCS
 	utils/cache/lsyscache.c
 	utils/cache/typcache.c
 	utils/cache/ts_cache.c
+	utils/mmgr/aset.c
+	utils/mmgr/mcxt.c
+	utils/mmgr/portalmem.c
+	utils/adt/acl.c
+	utils/adt/arrayfuncs.c
+	utils/adt/array_expanded.c
+	utils/adt/array_selfuncs.c
+	utils/adt/array_typanalyze.c
+	utils/adt/array_userfuncs.c
+	utils/adt/arrayutils.c
+	utils/adt/ascii.c
+	utils/adt/bool.c
+	utils/adt/cash.c
+	utils/adt/char.c
+	utils/adt/date.c
+	utils/adt/datetime.c
+	utils/adt/datum.c
+	utils/adt/dbsize.c
+	utils/adt/domains.c
+	utils/adt/encode.c
+	utils/adt/enum.c
+	utils/adt/expandeddatum.c
+	utils/adt/float.c
+	utils/adt/format_type.c
+	utils/adt/formatting.c
+	utils/adt/genfile.c
+	utils/adt/geo_ops.c
+	utils/adt/geo_selfuncs.c
+	utils/adt/inet_cidr_ntop.c
+	utils/adt/inet_net_pton.c
+	utils/adt/int.c
+	utils/adt/int8.c
+	utils/adt/json.c
+	utils/adt/jsonb.c
+	utils/adt/jsonb_gin.c
+	utils/adt/jsonb_op.c
+	utils/adt/jsonb_util.c
+	utils/adt/jsonfuncs.c
+	utils/adt/like.c
+	#utils/adt/like_match.c
+	utils/adt/lockfuncs.c
+	utils/adt/mac.c
+	utils/adt/misc.c
+	utils/adt/nabstime.c
+	utils/adt/name.c
+	utils/adt/network.c
+	utils/adt/network_gist.c
+	utils/adt/network_selfuncs.c
+	utils/adt/numeric.c
+	utils/adt/numutils.c
+	utils/adt/oid.c
+	utils/adt/oracle_compat.c
+	utils/adt/orderedsetaggs.c
+	utils/adt/pg_locale.c
+	utils/adt/pg_lsn.c
+	utils/adt/pg_upgrade_support.c
+	utils/adt/pgstatfuncs.c
+	utils/adt/pseudotypes.c
+	utils/adt/quote.c
+	utils/adt/rangetypes.c
+	utils/adt/rangetypes_gist.c
+	utils/adt/rangetypes_selfuncs.c
+	utils/adt/rangetypes_spgist.c
+	utils/adt/rangetypes_typanalyze.c
+	utils/adt/regexp.c
+	utils/adt/regproc.c
+	utils/adt/ri_triggers.c
+	utils/adt/rowtypes.c
+	utils/adt/ruleutils.c
+	utils/adt/selfuncs.c
+	utils/adt/tid.c
+	utils/adt/timestamp.c
+	utils/adt/trigfuncs.c
+	utils/adt/tsginidx.c
+	utils/adt/tsgistidx.c
+	utils/adt/tsquery.c
+	utils/adt/tsquery_cleanup.c
+	utils/adt/tsquery_gist.c
+	utils/adt/tsquery_op.c
+	utils/adt/tsquery_rewrite.c
+	utils/adt/tsquery_util.c
+	utils/adt/tsrank.c
+	utils/adt/tsvector.c
+	utils/adt/tsvector_op.c
+	utils/adt/tsvector_parser.c
+	utils/adt/txid.c
+	utils/adt/uuid.c
+	utils/adt/varbit.c
+	utils/adt/varchar.c
+	utils/adt/varlena.c
+	#utils/adt/levenshtein.c
+	utils/adt/version.c
+	utils/adt/windowfuncs.c
+	utils/adt/xid.c
+	utils/adt/xml.c
+	utils/fmgr/dfmgr.c
+	utils/fmgr/fmgr.c
+	utils/fmgr/funcapi.c
+	utils/hash/dynahash.c
+	utils/hash/hashfn.c
+	utils/hash/pg_crc.c
+	utils/init/globals.c
+	utils/init/miscinit.c
+	utils/init/postinit.c
+	utils/resowner/resowner.c
+	utils/sort/logtape.c
+	utils/sort/sortsupport.c
+	utils/sort/tuplesort.c
+	utils/sort/tuplestore.c
+	utils/time/combocid.c
+	utils/time/tqual.c
+	utils/time/snapmgr.c
 )
+
+add_custom_command(
+	OUTPUT "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c"
+	#MAIN_DEPENDENCY gen_qsort_tuple.pl
+	COMMAND ${PERL_EXECUTABLE} "gen_qsort_tuple.pl" > "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c"
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils/sort
+)
+
+set_source_files_properties(utils/sort/tuplesort.c
+	PROPERTIES OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c")
 
 set(postgres_SRCS
 	${access_SRCS}
 	${bootstrap_SRCS}
 	${commands_SRCS}
 	${catalog_SRCS}
+	${executor_SRCS}
+	foreign/foreign.c
 	${utils_SRCS}
+	${lib_SRCS}
+	${libpq_SRCS}
+)
+
+include_directories(BEFORE
+	${OPENSSL_INCLUDE_DIR}
 )
 
 add_executable(postgres
@@ -339,6 +553,7 @@ target_link_libraries(postgres
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
 	m
+	${OPENSSL_LIBRARIES}
 )
 
 #Realy need?
