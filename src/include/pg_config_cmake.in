@@ -28,6 +28,8 @@
 /* The normal alignment of `short', in bytes. */
 #define ALIGNOF_SHORT @ALIGNOF_SHORT@
 
+#define SIZEOF_VOID_P @CMAKE_SIZEOF_VOID_P@
+
 /* Size of a disk block --- this also limits the size of a tuple. You can set
    it bigger if you need bigger tuples (although TOAST should reduce the need
    to have large tuples, since fields can be spread across multiple tuples).
@@ -174,5 +176,9 @@
 #cmakedefine USE_OPENSSL
 
 #define DLSUFFIX "@CMAKE_SHARED_LIBRARY_SUFFIX_C@"
+
+#cmakedefine HAVE_SYS_IPC_H
+#cmakedefine HAVE_SYS_SEM_H
+#cmakedefine HAVE_SYS_SHM_H
 
 #endif  // AUTO_CONFIG_H

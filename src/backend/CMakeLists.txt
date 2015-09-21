@@ -514,6 +514,306 @@ set(utils_SRCS
 	utils/time/combocid.c
 	utils/time/tqual.c
 	utils/time/snapmgr.c
+	utils/misc/guc.c
+	utils/misc/help_config.c
+	utils/misc/pg_rusage.c
+	utils/misc/ps_status.c
+	utils/misc/rls.c
+	utils/misc/sampling.c
+	utils/misc/superuser.c
+	utils/misc/timeout.c
+	utils/misc/tzparser.c
+	utils/mb/encnames.c
+	utils/mb/conv.c
+	utils/mb/mbutils.c
+	utils/mb/wchar.c
+	utils/mb/wstrcmp.c
+	utils/mb/wstrncmp.c
+)
+
+set(nodes_SRCS
+	nodes/nodeFuncs.c
+	nodes/nodes.c
+	nodes/list.c
+	nodes/bitmapset.c
+	nodes/tidbitmap.c
+	nodes/copyfuncs.c
+	nodes/equalfuncs.c
+	nodes/makefuncs.c
+	nodes/outfuncs.c
+	nodes/readfuncs.c
+	nodes/print.c
+	nodes/read.c
+	nodes/params.c
+	nodes/value.c
+)
+
+set(optimizer_SRCS
+	optimizer/geqo/geqo_copy.c
+	optimizer/geqo/geqo_eval.c
+	optimizer/geqo/geqo_main.c
+	optimizer/geqo/geqo_misc.c
+	optimizer/geqo/geqo_mutation.c
+	optimizer/geqo/geqo_pool.c
+	optimizer/geqo/geqo_random.c
+	optimizer/geqo/geqo_recombination.c
+	optimizer/geqo/geqo_selection.c
+	optimizer/geqo/geqo_erx.c
+	optimizer/geqo/geqo_pmx.c
+	optimizer/geqo/geqo_cx.c
+	optimizer/geqo/geqo_px.c
+	optimizer/geqo/geqo_ox1.c
+	optimizer/geqo/geqo_ox2.c
+	optimizer/path/allpaths.c
+	optimizer/path/clausesel.c
+	optimizer/path/costsize.c
+	optimizer/path/equivclass.c
+	optimizer/path/indxpath.c
+	optimizer/path/joinpath.c
+	optimizer/path/joinrels.c
+	optimizer/path/pathkeys.c
+	optimizer/path/tidpath.c
+	optimizer/plan/analyzejoins.c
+	optimizer/plan/createplan.c
+	optimizer/plan/initsplan.c
+	optimizer/plan/planagg.c
+	optimizer/plan/planmain.c
+	optimizer/plan/planner.c
+	optimizer/plan/setrefs.c
+	optimizer/plan/subselect.c
+	optimizer/prep/prepjointree.c
+	optimizer/prep/prepqual.c
+	optimizer/prep/prepsecurity.c
+	optimizer/prep/preptlist.c
+	optimizer/prep/prepunion.c
+	optimizer/util/clauses.c
+	optimizer/util/joininfo.c
+	optimizer/util/orclauses.c
+	optimizer/util/pathnode.c
+	optimizer/util/placeholder.c
+	optimizer/util/plancat.c
+	optimizer/util/predtest.c
+	optimizer/util/relnode.c
+	optimizer/util/restrictinfo.c
+	optimizer/util/tlist.c
+	optimizer/util/var.c
+)
+
+set(rewrite_SRCS
+	rewrite/rewriteRemove.c
+	rewrite/rewriteDefine.c
+	rewrite/rewriteHandler.c
+	rewrite/rewriteManip.c
+	rewrite/rewriteSupport.c
+	rewrite/rowsecurity.c
+)
+
+set(PARSER_SCAN_FLEX_FLAGS, "-Cfe -p -p")
+bison_target(PARSER_GRAM
+	parser/gram.y
+	${CMAKE_CURRENT_SOURCE_DIR}/parser/gram.c
+)
+flex_target(PARSER_SCAN
+	parser/scan.l
+	"${CMAKE_CURRENT_SOURCE_DIR}/parser/scan.c"
+	${PARSER_SCAN_FLEX_FLAGS}
+)
+add_flex_bison_dependency(PARSER_SCAN PARSER_GRAM)
+
+set(parser_SRCS
+	parser/analyze.c
+	parser/gram.c
+	parser/keywords.c
+	parser/kwlookup.c
+	parser/parser.c
+	parser/parse_agg.c
+	parser/parse_clause.c
+	parser/parse_coerce.c
+	parser/parse_collate.c
+	parser/parse_cte.c
+	parser/parse_expr.c
+	parser/parse_func.c
+	parser/parse_node.c
+	parser/parse_oper.c
+	parser/parse_param.c
+	parser/parse_relation.c
+	parser/parse_target.c
+	parser/parse_type.c
+	parser/parse_utilcmd.c
+	parser/scansup.c
+)
+
+set(tcop_SRCS
+	tcop/dest.c
+	tcop/fastpath.c
+	tcop/postgres.c
+	tcop/pquery.c
+	tcop/utility.c
+)
+
+#TODO: Need also install dict
+set(tsearch_SRCS
+	tsearch/ts_locale.c
+	tsearch/ts_parse.c
+	tsearch/wparser.c
+	tsearch/wparser_def.c
+	tsearch/dict.c
+	tsearch/dict_simple.c
+	tsearch/dict_synonym.c
+	tsearch/dict_thesaurus.c
+	tsearch/dict_ispell.c
+	tsearch/regis.c
+	tsearch/spell.c
+	tsearch/to_tsany.c
+	tsearch/ts_selfuncs.c
+	tsearch/ts_typanalyze.c
+	tsearch/ts_utils.c
+)
+
+set(regex_SRCS
+	regex/regcomp.c
+	regex/regerror.c
+	regex/regexec.c
+	regex/regfree.c
+	regex/regprefix.c
+	regex/regexport.c
+)
+
+set(postmaster_SRCS
+	postmaster/autovacuum.c
+	postmaster/bgworker.c
+	postmaster/bgwriter.c
+	postmaster/checkpointer.c
+	postmaster/fork_process.c
+	postmaster/pgarch.c
+	postmaster/pgstat.c
+	postmaster/postmaster.c
+	postmaster/startup.c
+	postmaster/syslogger.c
+	postmaster/walwriter.c
+)
+
+if(WIN32)
+	set(backend_port_win32_SRC
+		port/win32/timer.c
+		port/win32/socket.c
+		port/win32/signal.c
+		port/win32/security.c
+		port/win32/mingwcompat.c
+	)
+	if(NAVE_MINIDUMP_TYPE)
+		set(backend_port_win32_SRC
+			${backend_port_win32_SRC}
+			port/win32/crashdump.c
+		)
+	endif(NAVE_MINIDUMP_TYPE)
+endif(WIN32)
+
+if(APPLE)
+	set(backend_port_darwin_SRC
+		port/darwin/system.c
+	)
+endif(APPLE)
+
+if(WIN32)
+	#TODO: maybe need test CYGWIN also
+	set(dynloader_SRCS port/dynloader/win32.c)
+elseif(APPLE)
+	set(dynloader_SRCS port/dynloader/darwin.c)
+elseif(CMAKE_SYSTEM_NAME EQUAL "Linux")
+	set(dynloader_SRCS port/dynloader/linux.c)
+elseif(CMAKE_SYSTEM_NAME EQUAL "HP-UX")
+	set(dynloader_SRCS port/dynloader/hpux.c)
+#TODO: FreeBSD, OpenBSD, NetBSD is equal loader
+elseif(CMAKE_SYSTEM_NAME EQUAL "FreeBSD")
+	set(dynloader_SRCS port/dynloader/freebsd.c)
+elseif(CMAKE_SYSTEM_NAME EQUAL "OpenBSD")
+	set(dynloader_SRCS port/dynloader/openbsd.c)
+elseif(CMAKE_SYSTEM_NAME EQUAL "NetBSD")
+	set(dynloader_SRCS port/dynloader/netbsd.c)
+endif(WIN32)
+
+set(backend_port_SRCS
+	port/atomics.c
+	port/pg_sema.c
+	port/pg_shmem.c
+	port/pg_latch.c
+	port/tas/${TAS}
+	${backend_port_win32_SRC}
+	${backend_port_darwin_SRC}
+	${dynloader_SRCS}
+)
+
+
+set(storage_SRCS
+	storage/buffer/buf_table.c
+	storage/buffer/buf_init.c
+	storage/buffer/bufmgr.c
+	storage/buffer/freelist.c
+	storage/buffer/localbuf.c
+	storage/file/fd.c
+	storage/file/buffile.c
+	storage/file/copydir.c
+	storage/file/reinit.c
+	storage/freespace/freespace.c
+	storage/freespace/fsmpage.c
+	storage/freespace/indexfsm.c
+	storage/ipc/dsm_impl.c
+	storage/ipc/dsm.c
+	storage/ipc/ipc.c
+	storage/ipc/ipci.c
+	storage/ipc/pmsignal.c
+	storage/ipc/procarray.c
+	storage/ipc/procsignal.c
+	storage/ipc/shmem.c
+	storage/ipc/shmqueue.c
+	storage/ipc/shm_mq.c
+	storage/ipc/shm_toc.c
+	storage/ipc/sinval.c
+	storage/ipc/sinvaladt.c
+	storage/ipc/standby.c
+	storage/large_object/inv_api.c
+	storage/lmgr/lmgr.c # Need some for check s_lock
+	storage/lmgr/lock.c
+	storage/lmgr/proc.c
+	storage/lmgr/deadlock.c
+	storage/lmgr/lwlock.c
+	storage/lmgr/spin.c
+	storage/lmgr/s_lock.c
+	storage/lmgr/predicate.c
+	storage/page/bufpage.c
+	storage/page/checksum.c
+	storage/page/itemptr.c
+	storage/smgr/md.c
+	storage/smgr/smgr.c
+	storage/smgr/smgrtype.c
+)
+
+bison_target(REPL_GRAM
+	replication/repl_gram.y
+	${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_gram.c
+)
+flex_target(REPL_SCAN
+	replication/repl_scanner.l
+	"${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_scanner.c"
+)
+add_flex_bison_dependency(REPL_SCAN REPL_GRAM)
+
+set(replication_SRCS
+	replication/walsender.c
+	replication/walreceiverfuncs.c
+	replication/walreceiver.c
+	replication/basebackup.c
+	replication/repl_gram.c
+	replication/slot.c
+	replication/slotfuncs.c
+	replication/syncrep.c
+	replication/logical/decode.c
+	replication/logical/logical.c
+	replication/logical/logicalfuncs.c
+	replication/logical/reorderbuffer.c
+	replication/logical/origin.c
+	replication/logical/snapbuild.c
 )
 
 add_custom_command(
@@ -536,6 +836,17 @@ set(postgres_SRCS
 	${utils_SRCS}
 	${lib_SRCS}
 	${libpq_SRCS}
+	${nodes_SRCS}
+	${optimizer_SRCS}
+	${rewrite_SRCS}
+	${parser_SRCS}
+	${tcop_SRCS}
+	${tsearch_SRCS}
+	${regex_SRCS}
+	${postmaster_SRCS}
+	${backend_port_SRCS}
+	${storage_SRCS}
+	${replication_SRCS}
 )
 
 include_directories(BEFORE
@@ -561,3 +872,6 @@ add_custom_target(duplicate_oids
 	COMMAND ${PERL_EXECUTABLE} ./duplicate_oids
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/include/catalog
 )
+
+add_library(pqwalreceiver SHARED replication/libpqwalreceiver/libpqwalreceiver.c)
+target_link_libraries(pqwalreceiver pq)
