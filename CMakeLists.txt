@@ -74,6 +74,9 @@ if(WITH_READLINE)
 	endif(READLINE_FOUND)
 endif(WITH_READLINE)
 
+check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
+check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
+check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
 
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -340,6 +343,29 @@ if(WIN32)
 	option(HAVE_SYMLINK "Define to ON if you have the `symlink' function." ON)
 else(WIN32)
 	set(HAVE_SYMLINK 1)
+endif(WIN32)
+
+#TODO: Need test this
+if(CMAKE_C_COMPILER_ID EQUAL "SunPro")
+	if(CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
+		set(TAS sunstudio_sparc.s)
+	else(CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
+		set(TAS sunstudio_x86.s)
+	endif(CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
+elseif(CMAKE_C_COMPILER_ID EQUAL "HP-UX")
+	set(TAS hpux_hppa.s)
+else(CMAKE_C_COMPILER_ID EQUAL "SunPro")
+	set(TAS dummy.s)
+endif(CMAKE_C_COMPILER_ID EQUAL "SunPro")
+
+if(WIN32)
+	set(CMAKE_REQUIRED_INCLUDES
+		windows.h
+		string.h
+		dbghelp.h
+	)
+	set(CMAKE_REQUIRED_DEFINITIONS "WIN32_LEAN_AND_MEAN")
+	check_type_size(MINIDUMP_TYPE NAVE_MINIDUMP_TYPE)
 endif(WIN32)
 
 configure_file(
