@@ -31,6 +31,13 @@ set(port_SRCS
 	${PG_CRC32C_OBJS}
 )
 
+if(NOT HAVE_FLS)
+	set(port_SRCS
+		${port_SRCS}
+		fls.c
+	)
+endif(NOT HAVE_FLS)
+
 
 add_library(port_srv STATIC ${port_SRCS})
 add_library(port STATIC ${port_SRCS})

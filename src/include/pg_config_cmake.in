@@ -181,4 +181,6 @@
 #cmakedefine HAVE_SYS_SEM_H
 #cmakedefine HAVE_SYS_SHM_H
 
+#cmakedefine HAVE_FLS
+
 #endif  // AUTO_CONFIG_H

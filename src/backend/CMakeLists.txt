@@ -4,17 +4,6 @@ include_directories(
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 )
 
-#set(psqlscan_flags, "-Cfe -p -p")
-
-#flex_target(psqlscan
-#	psqlscan.l 
-#	"${CMAKE_CURRENT_SOURCE_DIR}/psqlscan.c"
-#	${psqlscan_flags}
-#)
-
-#set_source_files_properties(mainloop.c
-#      PROPERTIES OBJECT_DEPENDS ${FLEX_psqlscan_OUTPUTS})
-
 set(access_SRCS
 	access/brin/brin.c
 	access/brin/brin_pageops.c
@@ -529,6 +518,25 @@ set(utils_SRCS
 	utils/mb/wchar.c
 	utils/mb/wstrcmp.c
 	utils/mb/wstrncmp.c
+
+	utils/fmgrtab.c
+)
+
+set(gen_fmgrtab_depend
+	utils/Gen_fmgrtab.pl
+	${CMAKE_CURRENT_SOURCE_DIR}/catalog/Catalog.pm
+	${postgres_include_catalog}/pg_proc.h
+)
+set(gen_fmgrtab_output
+	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h
+	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrtab.c
+)
+
+add_custom_command(
+	DEPENDS ${gen_fmgrtab_depend}
+	OUTPUT ${gen_fmgrtab_output}
+	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
 set(nodes_SRCS
@@ -618,11 +626,13 @@ flex_target(PARSER_SCAN
 	"${CMAKE_CURRENT_SOURCE_DIR}/parser/scan.c"
 	${PARSER_SCAN_FLEX_FLAGS}
 )
-add_flex_bison_dependency(PARSER_SCAN PARSER_GRAM)
+
+set_source_files_properties(${BISON_PARSER_GRAM_OUTPUTS}
+	PROPERTIES OBJECT_DEPENDS ${FLEX_PARSER_SCAN_OUTPUTS})
 
 set(parser_SRCS
 	parser/analyze.c
-	parser/gram.c
+	#parser/gram.c
 	parser/keywords.c
 	parser/kwlookup.c
 	parser/parser.c
@@ -641,6 +651,7 @@ set(parser_SRCS
 	parser/parse_type.c
 	parser/parse_utilcmd.c
 	parser/scansup.c
+	${BISON_PARSER_GRAM_OUTPUTS}
 )
 
 set(tcop_SRCS
@@ -720,17 +731,19 @@ if(WIN32)
 	set(dynloader_SRCS port/dynloader/win32.c)
 elseif(APPLE)
 	set(dynloader_SRCS port/dynloader/darwin.c)
-elseif(CMAKE_SYSTEM_NAME EQUAL "Linux")
-	set(dynloader_SRCS port/dynloader/linux.c)
-elseif(CMAKE_SYSTEM_NAME EQUAL "HP-UX")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(dynloader_SRCS "port/dynloader/linux.c")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "HP-UX")
 	set(dynloader_SRCS port/dynloader/hpux.c)
 #TODO: FreeBSD, OpenBSD, NetBSD is equal loader
-elseif(CMAKE_SYSTEM_NAME EQUAL "FreeBSD")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
 	set(dynloader_SRCS port/dynloader/freebsd.c)
-elseif(CMAKE_SYSTEM_NAME EQUAL "OpenBSD")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
 	set(dynloader_SRCS port/dynloader/openbsd.c)
-elseif(CMAKE_SYSTEM_NAME EQUAL "NetBSD")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
 	set(dynloader_SRCS port/dynloader/netbsd.c)
+else(WIN32)
+	message(WARNING "${CMAKE_SYSTEM_NAME}")
 endif(WIN32)
 
 set(backend_port_SRCS
@@ -795,16 +808,16 @@ bison_target(REPL_GRAM
 )
 flex_target(REPL_SCAN
 	replication/repl_scanner.l
-	"${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_scanner.c"
+	${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_scanner.c
 )
-add_flex_bison_dependency(REPL_SCAN REPL_GRAM)
+set_source_files_properties(${BISON_REPL_GRAM_OUTPUTS}
+	PROPERTIES OBJECT_DEPENDS ${FLEX_REPL_SCAN_OUTPUTS})
 
 set(replication_SRCS
 	replication/walsender.c
 	replication/walreceiverfuncs.c
 	replication/walreceiver.c
 	replication/basebackup.c
-	replication/repl_gram.c
 	replication/slot.c
 	replication/slotfuncs.c
 	replication/syncrep.c
@@ -814,6 +827,13 @@ set(replication_SRCS
 	replication/logical/reorderbuffer.c
 	replication/logical/origin.c
 	replication/logical/snapbuild.c
+	${BISON_REPL_GRAM_OUTPUTS}
+)
+
+set(timezone_SRCS
+	${PROJECT_SOURCE_DIR}/src/timezone/localtime.c
+	${PROJECT_SOURCE_DIR}/src/timezone/strftime.c
+	${PROJECT_SOURCE_DIR}/src/timezone/pgtz.c
 )
 
 add_custom_command(
@@ -847,6 +867,8 @@ set(postgres_SRCS
 	${backend_port_SRCS}
 	${storage_SRCS}
 	${replication_SRCS}
+	${timezone_SRCS}
+	main/main.c
 )
 
 include_directories(BEFORE
