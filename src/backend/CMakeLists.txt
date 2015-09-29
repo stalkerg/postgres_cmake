@@ -539,6 +539,8 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
+
+
 set(nodes_SRCS
 	nodes/nodeFuncs.c
 	nodes/nodes.c
@@ -846,7 +848,15 @@ add_custom_command(
 set_source_files_properties(utils/sort/tuplesort.c
 	PROPERTIES OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c")
 
+add_custom_command(
+	MAIN_DEPENDENCY ${gen_errorcodes_depend}
+	OUTPUT ${gen_errorcodes_output}
+	COMMAND ${PERL_EXECUTABLE} generate-errcodes.pl errcodes.txt > ${gen_errorcodes_output}
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/utils
+)
+
 set(postgres_SRCS
+	${gen_errorcodes_output}
 	${access_SRCS}
 	${bootstrap_SRCS}
 	${commands_SRCS}
