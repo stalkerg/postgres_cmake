@@ -27,6 +27,54 @@ set(INSTALL_BIN_DIR bin CACHE PATH "Installation directory for executables")
 set(INSTALL_INCLUDE_DIR include CACHE PATH
   "Installation directory for header files")
 
+if(NOT PGBINDIR)
+	set(PGBINDIR "${CMAKE_INSTALL_PREFIX}/bin")
+endif(NOT PGBINDIR)
+
+if(NOT PGSHAREDIR)
+	set(PGSHAREDIR "${CMAKE_INSTALL_PREFIX}/share")
+endif(NOT PGSHAREDIR)
+
+if(NOT SYSCONFDIR)
+	set(SYSCONFDIR "${CMAKE_INSTALL_PREFIX}/etc")
+endif(NOT SYSCONFDIR)
+
+if(NOT INCLUDEDIR)
+	set(INCLUDEDIR "${CMAKE_INSTALL_PREFIX}/include")
+endif(NOT INCLUDEDIR)
+
+if(NOT PKGINCLUDEDIR)
+	set(PKGINCLUDEDIR "${CMAKE_INSTALL_PREFIX}/include")
+endif(NOT PKGINCLUDEDIR)
+
+if(NOT INCLUDEDIRSERVER)
+	set(INCLUDEDIRSERVER "${CMAKE_INSTALL_PREFIX}/include/server")
+endif(NOT INCLUDEDIRSERVER)
+
+if(NOT LIBDIR)
+	set(LIBDIR "${CMAKE_INSTALL_PREFIX}/lib")
+endif(NOT LIBDIR)
+
+if(NOT PKGLIBDIR)
+	set(PKGLIBDIR "${CMAKE_INSTALL_PREFIX}/lib")
+endif(NOT PKGLIBDIR)
+
+if(NOT LOCALEDIR)
+	set(LOCALEDIR "${CMAKE_INSTALL_PREFIX}/share/locale")
+endif(NOT LOCALEDIR)
+
+if(NOT DOCDIR)
+	set(DOCDIR "${CMAKE_INSTALL_PREFIX}/share/doc/")
+endif(NOT DOCDIR)
+
+if(NOT HTMLDIR)
+	set(HTMLDIR "${CMAKE_INSTALL_PREFIX}/share/doc/")
+endif(NOT HTMLDIR)
+
+if(NOT MANDIR)
+	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
+endif(NOT MANDIR)
+
 test_big_endian(WORDS_BIGENDIAN)
 
 find_package(Perl REQUIRED)
@@ -312,32 +360,32 @@ check_type_size("struct sockaddr_un" HAVE_UNIX_SOCKETS)
 
 if(WIN32)
 	set(USE_WIN32_SEMAPHORES 1)
-	set(SEMA_IMPLEMENTATION "src/backend/port/win32_sema.c")
+	set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_sema.c")
 else(WIN32)
 	if(USE_NAMED_POSIX_SEMAPHORES)
 		set(USE_NAMED_POSIX_SEMAPHORES 1)
-		set(SEMA_IMPLEMENTATION "src/backend/port/posix_sema.c")
+		set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/posix_sema.c")
 	elseif(USE_UNNAMED_POSIX_SEMAPHORES)
 		set(USE_UNNAMED_POSIX_SEMAPHORES 1)
-		set(SEMA_IMPLEMENTATION "src/backend/port/posix_sema.c")
+		set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/posix_sema.c")
 	else(USE_NAMED_POSIX_SEMAPHORES)
 		set(USE_SYSV_SEMAPHORES 1)
-		set(SEMA_IMPLEMENTATION "src/backend/port/sysv_sema.c")
+		set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_sema.c")
 	endif(USE_NAMED_POSIX_SEMAPHORES)
 endif(WIN32)
 
 if(WIN32)
 	set(USE_WIN32_SHARED_MEMORY 1)
-	set(SHMEM_IMPLEMENTATION "src/backend/port/win32_shmem.c")
+	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_shmem.c")
 else(WIN32)
 	set(USE_SYSV_SHARED_MEMORY 1)
-	set(SHMEM_IMPLEMENTATION "src/backend/port/sysv_shmem.c")
+	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_shmem.c")
 endif(WIN32)
 
 if(WIN32)
-	set(LATCH_IMPLEMENTATION "src/backend/port/win32_latch.c")
+	set(LATCH_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_latch.c")
 else(WIN32)
-	set(LATCH_IMPLEMENTATION "src/backend/port/unix_latch.c")
+	set(LATCH_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/unix_latch.c")
 endif(WIN32)
 
 option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
@@ -371,9 +419,33 @@ if(WIN32)
 	check_type_size(MINIDUMP_TYPE NAVE_MINIDUMP_TYPE)
 endif(WIN32)
 
+# Need add sco and unixware?
+if(WIN32)
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/win32.h)
+elseif(APPLE)
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/darwin.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/linux.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "HP-UX")
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/hpux.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/freebsd.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/openbsd.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/newtbsd.h)
+else(WIN32)
+	message(WARNING "${CMAKE_SYSTEM_NAME}")
+endif(WIN32)
+
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config_cmake.in"
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config.h"
+)
+
+configure_file(
+	"${PROJECT_SOURCE_DIR}/src/include/pg_config_paths_cmake.in"
+	"${PROJECT_SOURCE_DIR}/src/port/pg_config_paths.h"
 )
 
 # Add sub-directories

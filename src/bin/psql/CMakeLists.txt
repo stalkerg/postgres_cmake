@@ -33,9 +33,9 @@ set(psql_SRCS
 	describe.c
 	tab-complete.c
 	mbprint.c
-	dumputils.c
-	keywords.c
-	kwlookup.c
+	../pg_dump/dumputils.c
+	../pg_dump/keywords.c
+	${PROJECT_SOURCE_DIR}/src/backend/parser/kwlookup.c
 	sql_help.c
 )
 
