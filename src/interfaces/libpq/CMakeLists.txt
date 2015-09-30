@@ -43,4 +43,5 @@ target_link_libraries(pq
 
 target_compile_definitions(pq PRIVATE -DFRONTEND -DUNSAFE_STAT_OK)
 set_target_properties(pq PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})
-set_target_properties(pq PROPERTIES LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.list")
+#TODO 
+#set_target_properties(pq PROPERTIES LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.list")

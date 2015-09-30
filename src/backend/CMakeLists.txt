@@ -4,7 +4,82 @@ include_directories(
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 )
 
+set(postgres_include_catalog "${PROJECT_SOURCE_DIR}/src/include/catalog")
+
+set(gen_fmgrtab_depend
+	utils/Gen_fmgrtab.pl
+	${CMAKE_CURRENT_SOURCE_DIR}/catalog/Catalog.pm
+	${postgres_include_catalog}/pg_proc.h
+)
+set(gen_fmgrtab_output
+	${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
+	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrtab.c
+)
+
+add_custom_command(
+	MAIN_DEPENDENCY ${gen_fmgrtab_depend}
+	OUTPUT ${gen_fmgrtab_output}
+	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
+)
+
+set(gen_probe_depend
+	${CMAKE_CURRENT_SOURCE_DIR}/utils/Gen_dummy_probes.sed
+	${CMAKE_CURRENT_SOURCE_DIR}/utils/probes.d
+)
+
+set(gen_probe_output
+	${PROJECT_SOURCE_DIR}/src/include/utils/probes.h
+)
+
+add_custom_command(
+	MAIN_DEPENDENCY ${gen_probe_depend}
+	OUTPUT ${gen_probe_output}
+	COMMAND sed -f Gen_dummy_probes.sed probes.d >  ${gen_probe_output}
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
+)
+
+if(WIN32)
+	#TODO: maybe need test CYGWIN also
+	set(dynloader_SRCS port/dynloader/win32.c)
+	set(dynloader_H port/dynloader/win32.h)
+elseif(APPLE)
+	set(dynloader_SRCS port/dynloader/darwin.c)
+	set(dynloader_H port/dynloader/darwin.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(dynloader_SRCS port/dynloader/linux.c)
+	set(dynloader_H port/dynloader/linux.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "HP-UX")
+	set(dynloader_SRCS port/dynloader/hpux.c)
+	set(dynloader_H port/dynloader/hpux.h)
+#TODO: FreeBSD, OpenBSD, NetBSD is equal loader
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+	set(dynloader_SRCS port/dynloader/freebsd.c)
+	set(dynloader_H port/dynloader/freebsd.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+	set(dynloader_SRCS port/dynloader/openbsd.c)
+	set(dynloader_H port/dynloader/openbsd.h)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+	set(dynloader_SRCS port/dynloader/netbsd.c)
+	set(dynloader_H port/dynloader/netbsd.h)
+else(WIN32)
+	message(WARNING "${CMAKE_SYSTEM_NAME}")
+endif(WIN32)
+
+add_custom_command(
+	MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${dynloader_H}"
+	OUTPUT "${PROJECT_SOURCE_DIR}/src/include/dynloader.h"
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${dynloader_H} ${PROJECT_SOURCE_DIR}/src/include/dynloader.h
+)
+
+
+
 set(access_SRCS
+	${gen_fmgrtab_output}
+	${gen_probe_output}
+	${PROJECT_SOURCE_DIR}/src/include/dynloader.h
+
 	access/brin/brin.c
 	access/brin/brin_pageops.c
 	access/brin/brin_revmap.c
@@ -143,7 +218,7 @@ set(bootstrap_SRCS
 	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
 )
 
-set(postgres_include_catalog "${PROJECT_SOURCE_DIR}/src/include/catalog")
+
 set(POSTGRES_BKI_SRCS
 	${postgres_include_catalog}/pg_proc.h
 	${postgres_include_catalog}/pg_type.h
@@ -518,28 +593,7 @@ set(utils_SRCS
 	utils/mb/wchar.c
 	utils/mb/wstrcmp.c
 	utils/mb/wstrncmp.c
-
-	utils/fmgrtab.c
 )
-
-set(gen_fmgrtab_depend
-	utils/Gen_fmgrtab.pl
-	${CMAKE_CURRENT_SOURCE_DIR}/catalog/Catalog.pm
-	${postgres_include_catalog}/pg_proc.h
-)
-set(gen_fmgrtab_output
-	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h
-	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrtab.c
-)
-
-add_custom_command(
-	DEPENDS ${gen_fmgrtab_depend}
-	OUTPUT ${gen_fmgrtab_output}
-	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
-)
-
-
 
 set(nodes_SRCS
 	nodes/nodeFuncs.c
@@ -631,6 +685,12 @@ flex_target(PARSER_SCAN
 
 set_source_files_properties(${BISON_PARSER_GRAM_OUTPUTS}
 	PROPERTIES OBJECT_DEPENDS ${FLEX_PARSER_SCAN_OUTPUTS})
+
+add_custom_command(
+	MAIN_DEPENDENCY ${BISON_PARSER_GRAM_OUTPUTS}
+	OUTPUT ${PROJECT_SOURCE_DIR}/src/inlude/parser/gram.h
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/parser/gram.h ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
+)
 
 set(parser_SRCS
 	parser/analyze.c
@@ -728,25 +788,7 @@ if(APPLE)
 	)
 endif(APPLE)
 
-if(WIN32)
-	#TODO: maybe need test CYGWIN also
-	set(dynloader_SRCS port/dynloader/win32.c)
-elseif(APPLE)
-	set(dynloader_SRCS port/dynloader/darwin.c)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-	set(dynloader_SRCS "port/dynloader/linux.c")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "HP-UX")
-	set(dynloader_SRCS port/dynloader/hpux.c)
-#TODO: FreeBSD, OpenBSD, NetBSD is equal loader
-elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-	set(dynloader_SRCS port/dynloader/freebsd.c)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-	set(dynloader_SRCS port/dynloader/openbsd.c)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
-	set(dynloader_SRCS port/dynloader/netbsd.c)
-else(WIN32)
-	message(WARNING "${CMAKE_SYSTEM_NAME}")
-endif(WIN32)
+
 
 set(backend_port_SRCS
 	port/atomics.c
