@@ -62,9 +62,9 @@
 #define WIN32
 #endif
 
-#if !defined(WIN32) && !defined(__CYGWIN__)		/* win32 includes further down */
-#include "pg_config_os.h"		/* must be before any system header files */
-#endif
+//#if !defined(WIN32) && !defined(__CYGWIN__)		/* win32 includes further down */
+//#include "pg_config_os.h"		/* must be before any system header files */
+//#endif
 
 #if _MSC_VER >= 1400 || defined(HAVE_CRTDEFS_H)
 #define errcode __msvc_errcode
@@ -96,10 +96,10 @@
 #include <fcntl.h>				/* ensure O_BINARY is available */
 #endif
 
-#if defined(WIN32) || defined(__CYGWIN__)
+//#if defined(WIN32) || defined(__CYGWIN__)
 /* We have to redefine some system functions after they are included above. */
-#include "pg_config_os.h"
-#endif
+//#include "pg_config_os.h"
+//#endif
 
 /*
  * Force disable inlining if PG_FORCE_DISABLE_INLINE is defined. This is used

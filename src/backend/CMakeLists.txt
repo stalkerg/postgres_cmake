@@ -750,13 +750,13 @@ endif(WIN32)
 
 set(backend_port_SRCS
 	port/atomics.c
-	port/pg_sema.c
-	port/pg_shmem.c
-	port/pg_latch.c
 	port/tas/${TAS}
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
 	${dynloader_SRCS}
+	${SEMA_IMPLEMENTATION}
+	${SHMEM_IMPLEMENTATION}
+	${LATCH_IMPLEMENTATION}
 )
 
 

@@ -183,4 +183,6 @@
 
 #cmakedefine HAVE_FLS
 
+#include "@pgos_include_SRCS@"
+
 #endif  // AUTO_CONFIG_H
