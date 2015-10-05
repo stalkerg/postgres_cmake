@@ -941,6 +941,10 @@ target_link_libraries(postgres
 	${OPENSSL_LIBRARIES}
 )
 
+if(UNIX AND NOT APPLE)
+	target_link_libraries(postgres rt)
+endif()
+
 #Realy need?
 add_custom_target(duplicate_oids
 	COMMAND ${PERL_EXECUTABLE} ./duplicate_oids
@@ -949,3 +953,7 @@ add_custom_target(duplicate_oids
 
 add_library(pqwalreceiver SHARED replication/libpqwalreceiver/libpqwalreceiver.c)
 target_link_libraries(pqwalreceiver pq)
+
+install(TARGETS postgres pqwalreceiver
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})

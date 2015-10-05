@@ -67,6 +67,10 @@
 
 #define FLOAT8PASSBYVAL @FLOAT8PASSBYVAL@
 
+#cmakedefine USE_FLOAT4_BYVAL
+
+#cmakedefine USE_FLOAT8_BYVAL
+
 #cmakedefine GETTIMEOFDAY_1ARG
 
 #cmakedefine HAVE_INT_TIMEZONE
@@ -123,6 +127,7 @@
 #cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN
 
 #cmakedefine HAVE_UNIX_SOCKETS
+#cmakedefine HAVE_IPV6
 
 #define MAXIMUM_ALIGNOF @MAXIMUM_ALIGNOF@
 
@@ -182,6 +187,10 @@
 #cmakedefine HAVE_SYS_SHM_H
 
 #cmakedefine HAVE_FLS
+
+#cmakedefine HAVE_SHM_OPEN
+
+#cmakedefine USE_INTEGER_DATETIMES
 
 #include "@pgos_include_SRCS@"
 

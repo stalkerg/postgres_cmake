@@ -13,3 +13,7 @@ target_link_libraries(pg_ctl
 	pq
 	pgcommon
 )
+
+install(TARGETS pg_ctl
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})

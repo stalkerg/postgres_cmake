@@ -16,4 +16,13 @@ target_link_libraries(initdb
 	pgcommon
 )
 
+if(UNIX AND NOT APPLE)
+	target_link_libraries(initdb rt)
+endif()
+
 target_compile_definitions(initdb PRIVATE -DFRONTEND)
+
+install(TARGETS initdb
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})
+

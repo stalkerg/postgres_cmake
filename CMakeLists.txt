@@ -91,6 +91,12 @@ check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};string.h")
 check_function_exists(fls HAVE_FLS)
+set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/mman.h")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} -lrt")
+endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+check_function_exists(shm_open HAVE_SHM_OPEN)
+
 
 if(OPENSSL_FOUND)
 	set(USE_OPENSSL 1)
@@ -189,14 +195,18 @@ else(HAVE_LONG_LONG_INT_64)
 	set(LONG_LONG_INT_MODIFIER "l")
 endif(HAVE_LONG_LONG_INT_64)
 
-if(NOT FLOAT4PASSBYVAL)
+option(FLOAT4PASSBYVAL "float4 values are passed by value" ON)
+if(FLOAT4PASSBYVAL)
 	set(FLOAT4PASSBYVAL 1)
-endif(NOT FLOAT4PASSBYVAL)
+endif(FLOAT4PASSBYVAL)
+option(USE_FLOAT4_BYVAL "float4 values are passed by value" ON)
+
 
 if(FLOAT8PASSBYVAL AND NOT (VOID_POINTER_SIZE EQUAL 8))
 	message(FATAL_ERROR "FLOAT8PASSBYVAL is not supported on 32-bit platforms.")
 elseif(NOT FLOAT8PASSBYVAL AND VOID_POINTER_SIZE EQUAL 8)
 	set(FLOAT8PASSBYVAL 1)
+	set(USE_FLOAT8_BYVAL 1)
 endif(FLOAT8PASSBYVAL AND NOT (VOID_POINTER_SIZE EQUAL 8))
 
 if (_GNU_SOURCE)
@@ -358,6 +368,9 @@ else(HAVE_SYS_UN_H)
 endif(HAVE_SYS_UN_H)
 check_type_size("struct sockaddr_un" HAVE_UNIX_SOCKETS)
 
+set(CMAKE_EXTRA_INCLUDE_FILES "netinet/in.h")
+check_type_size("struct sockaddr_in6" HAVE_IPV6)
+
 if(WIN32)
 	set(USE_WIN32_SEMAPHORES 1)
 	set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_sema.c")
@@ -389,6 +402,8 @@ else(WIN32)
 endif(WIN32)
 
 option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
+
+option(USE_INTEGER_DATETIMES "Define to ON if you want 64-bit integer timestamp and interval support." ON)
 
 if(WIN32)
 	option(HAVE_SYMLINK "Define to ON if you have the `symlink' function." ON)

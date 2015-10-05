@@ -52,3 +52,7 @@ target_link_libraries(psql
 	m
 	${OPENSSL_LIBRARIES}
 )
+
+install(TARGETS psql
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})
