@@ -957,3 +957,18 @@ target_link_libraries(pqwalreceiver pq)
 install(TARGETS postgres pqwalreceiver
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+install(FILES 
+			catalog/postgres.bki
+			catalog/postgres.description
+			catalog/postgres.shdescription
+			catalog/information_schema.sql
+			catalog/sql_features.txt
+			catalog/system_views.sql
+			libpq/pg_hba.conf.sample
+			libpq/pg_ident.conf.sample
+			utils/misc/postgresql.conf.sample
+			snowball/snowball_create.sql
+		DESTINATION ${PGSHAREDIR})
+
+add_subdirectory(utils/mb/conversion_procs)

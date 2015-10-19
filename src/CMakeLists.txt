@@ -16,3 +16,4 @@ add_subdirectory(bin/pg_ctl)
 add_subdirectory(bin/initdb)
 
 add_subdirectory(backend)
+add_subdirectory(timezone)
