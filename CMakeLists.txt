@@ -373,6 +373,8 @@ check_type_size("struct sockaddr_in6" HAVE_IPV6)
 
 check_include_file("sys/stat.h" HAVE_SYS_STAT_H)
 
+CHECK_SYMBOL_EXISTS(fdatasync "unistd.h" HAVE_FDATASYNC)
+
 if(WIN32)
 	set(USE_WIN32_SEMAPHORES 1)
 	set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_sema.c")
