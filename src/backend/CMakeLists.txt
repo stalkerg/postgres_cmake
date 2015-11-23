@@ -968,7 +968,7 @@ install(FILES
 			libpq/pg_hba.conf.sample
 			libpq/pg_ident.conf.sample
 			utils/misc/postgresql.conf.sample
-			snowball/snowball_create.sql
 		DESTINATION ${PGSHAREDIR})
 
 add_subdirectory(utils/mb/conversion_procs)
+add_subdirectory(snowball)
