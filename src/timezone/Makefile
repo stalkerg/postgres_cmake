@@ -54,6 +54,7 @@ zic: $(ZICOBJS) | submake-libpgport
 
 install: all installdirs
 ifeq (,$(with_system_tzdata))
+	echo "-d '$(DESTDIR)$(datadir)/timezone' -p '$(POSIXRULES)' $(TZDATAFILES)"
 	$(ZIC) -d '$(DESTDIR)$(datadir)/timezone' -p '$(POSIXRULES)' $(TZDATAFILES)
 endif
 	$(MAKE) -C tznames $@
