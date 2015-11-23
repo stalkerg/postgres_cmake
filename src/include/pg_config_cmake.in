@@ -187,6 +187,7 @@
 #cmakedefine HAVE_SYS_SHM_H
 
 #cmakedefine HAVE_SYS_STAT_H
+#cmakedefine HAVE_FDATASYNC
 
 #cmakedefine HAVE_FLS
 
