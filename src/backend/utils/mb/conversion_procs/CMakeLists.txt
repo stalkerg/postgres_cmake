@@ -178,7 +178,6 @@ COMMENT ON CONVERSION pg_catalog.${con_name} IS 'conversion for ${se} to ${de}';
 endforeach()
 
 foreach(loop_var IN ITEMS ${procs_list})
-	message(STATUS "procs ${loop_var}")
 	add_library(${loop_var} SHARED ${loop_var}/${loop_var}.c)
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
