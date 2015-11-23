@@ -113,7 +113,6 @@ install(FILES
 		stopwords/italian.stop
 		stopwords/norwegian.stop
 		stopwords/portuguese.stop
-		stopwords/romanian.stop
 		stopwords/russian.stop
 		stopwords/spanish.stop
 		stopwords/swedish.stop
