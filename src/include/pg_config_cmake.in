@@ -186,6 +186,8 @@
 #cmakedefine HAVE_SYS_SEM_H
 #cmakedefine HAVE_SYS_SHM_H
 
+#cmakedefine HAVE_SYS_STAT_H
+
 #cmakedefine HAVE_FLS
 
 #cmakedefine HAVE_SHM_OPEN
