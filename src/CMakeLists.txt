@@ -17,3 +17,4 @@ add_subdirectory(bin/initdb)
 
 add_subdirectory(backend)
 add_subdirectory(timezone)
+add_subdirectory(pl/plpgsql/src)

@@ -75,8 +75,6 @@ if(NOT MANDIR)
 	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 endif(NOT MANDIR)
 
-#set(DLSUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
-
 test_big_endian(WORDS_BIGENDIAN)
 
 find_package(Perl REQUIRED)

@@ -190,7 +190,7 @@ foreach(loop_var IN ITEMS ${procs_list})
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
-			LIBRARY DESTINATION ${LIBDIR})#
+			LIBRARY DESTINATION ${LIBDIR})
 endforeach(loop_var)
 
 install(FILES conversion_create.sql
