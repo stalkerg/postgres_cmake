@@ -23,7 +23,7 @@ set(snow_languages
 
 #Create snowball_create.sql
 file(STRINGS snowball.sql.in snowball_sql_tmpl NEWLINE_CONSUME)
-file(READ snowball_func.sql.in snowball_func_sql_tmpl)
+file(STRINGS snowball_func.sql.in snowball_func_sql_tmpl NEWLINE_CONSUME)
 
 file(WRITE "snowball_create.sql" ${snowball_func_sql_tmpl})
 
@@ -94,8 +94,9 @@ set(snowball_SRCS
 	libstemmer/stem_UTF_8_turkish.c
 )
 
-add_library(snowball SHARED ${snowball_SRCS})
-install(TARGETS snowball
+add_library(dict_snowball SHARED ${snowball_SRCS})
+set_target_properties(dict_snowball PROPERTIES PREFIX "")
+install(TARGETS dict_snowball
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
