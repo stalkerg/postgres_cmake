@@ -139,6 +139,12 @@
 #cmakedefine HAVE_EDITLINE_READLINE_H
 #cmakedefine HAVE_RL_COMPLETION_MATCHES
 #cmakedefine HAVE_RL_FILENAME_COMPLETION_FUNCTION
+#cmakedefine HAVE_SYS_RESOURCE_H
+#cmakedefine HAVE_SYS_SELECT_H
+#cmakedefine HAVE_SYS_POLL_H
+#cmakedefine HAVE_SYS_PSTAT_H
+#cmakedefine HAVE_DLD_H
+#cmakedefine HAVE_DLOPEN
 
 #ifdef GETTIMEOFDAY_1ARG
 #	define gettimeofday(a,b) gettimeofday(a)
@@ -180,7 +186,7 @@
 #cmakedefine HAVE_SSL_GET_CURRENT_COMPRESSION
 #cmakedefine USE_OPENSSL
 
-#define DLSUFFIX "@CMAKE_SHARED_LIBRARY_SUFFIX_C@"
+#define DLSUFFIX "@CMAKE_SHARED_LIBRARY_SUFFIX@"
 
 #cmakedefine HAVE_SYS_IPC_H
 #cmakedefine HAVE_SYS_SEM_H
@@ -193,7 +199,11 @@
 
 #cmakedefine HAVE_SHM_OPEN
 
+#cmakedefine HAVE_GETRUSAGE
+
 #cmakedefine USE_INTEGER_DATETIMES
+
+#cmakedefine HAVE_LOCALE_T
 
 #include "@pgos_include_SRCS@"
 
