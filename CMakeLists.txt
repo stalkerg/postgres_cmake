@@ -75,6 +75,8 @@ if(NOT MANDIR)
 	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 endif(NOT MANDIR)
 
+#set(DLSUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+
 test_big_endian(WORDS_BIGENDIAN)
 
 find_package(Perl REQUIRED)
@@ -83,12 +85,19 @@ find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
 find_package(OpenSSL)
+find_library(DL_LIBRARIES NAMES dl)
 
 check_function_exists(strlcpy HAVE_DECL_STRLCPY)
 check_function_exists(strlcat HAVE_DECL_STRLCAT)
 check_function_exists(unsetenv HAVE_UNSETENV)
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
+
+set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};dlfcn.h")
+set(CMAKE_REQUIRED_LIBRARIES ${DL_LIBRARIES})
+check_function_exists(dlopen HAVE_DLOPEN)
+set(CMAKE_REQUIRED_LIBRARIES "")
+
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};string.h")
 check_function_exists(fls HAVE_FLS)
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/mman.h")
@@ -96,6 +105,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} -lrt")
 endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 check_function_exists(shm_open HAVE_SHM_OPEN)
+set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/time.h;sys/resource.h")
+check_function_exists(getrusage HAVE_GETRUSAGE)
 
 
 if(OPENSSL_FOUND)
@@ -112,6 +123,11 @@ check_include_files(sys/ucred.h HAVE_SYS_UCRED_H)
 check_include_files(sys/types.h HAVE_SYS_TYPES_H)
 check_include_files(sys/socket.h HAVE_SYS_SOCKET_H)
 check_include_files(stdint.h HAVE_STDINT_H)
+check_include_files(sys/resource.h HAVE_SYS_RESOURCE_H)
+check_include_files(sys/select.h HAVE_SYS_SELECT_H)
+check_include_files(sys/poll.h HAVE_SYS_POLL_H)
+check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
+check_include_files(dld.h HAVE_DLD_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
@@ -151,6 +167,8 @@ check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
 check_type_size("void *" VOID_POINTER_SIZE)
 check_type_size("long int" HAVE_LONG_INT_64)
+set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};locale.h")
+check_type_size("locale_t" HAVE_LOCALE_T)
 
 if(HAVE_LONG_INT_64 EQUAL 8)
 	set(PG_INT64_TYPE "long int")

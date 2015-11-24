@@ -1,4 +1,8 @@
-set(procs_list 
+set(procs_list
+	ascii_and_mic
+	cyrillic_and_mic
+	euc_cn_and_mic
+	euc_jp_and_sjis
 	euc_kr_and_mic
 	euc_tw_and_big5
 	latin2_and_win1250
@@ -178,7 +182,12 @@ COMMENT ON CONVERSION pg_catalog.${con_name} IS 'conversion for ${se} to ${de}';
 endforeach()
 
 foreach(loop_var IN ITEMS ${procs_list})
-	add_library(${loop_var} SHARED ${loop_var}/${loop_var}.c)
+	if(loop_var STREQUAL "euc_tw_and_big5")
+		add_library(${loop_var} SHARED ${loop_var}/${loop_var}.c ${loop_var}/big5.c)
+	else()
+		add_library(${loop_var} SHARED ${loop_var}/${loop_var}.c)
+	endif()
+	set_target_properties(${loop_var} PROPERTIES PREFIX "")
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
 			LIBRARY DESTINATION ${LIBDIR})#

@@ -939,6 +939,7 @@ target_link_libraries(postgres
 	${CMAKE_THREAD_LIBS_INIT}
 	m
 	${OPENSSL_LIBRARIES}
+	${DL_LIBRARIES}
 )
 
 if(UNIX AND NOT APPLE)
