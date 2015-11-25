@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1)
 
 include(CheckTypeSize)
 include(CheckSymbolExists)
@@ -126,6 +126,7 @@ check_include_files(sys/select.h HAVE_SYS_SELECT_H)
 check_include_files(sys/poll.h HAVE_SYS_POLL_H)
 check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
 check_include_files(dld.h HAVE_DLD_H)
+check_include_files(langinfo.h HAVE_LANGINFO_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)

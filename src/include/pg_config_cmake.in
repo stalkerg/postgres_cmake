@@ -143,6 +143,7 @@
 #cmakedefine HAVE_SYS_SELECT_H
 #cmakedefine HAVE_SYS_POLL_H
 #cmakedefine HAVE_SYS_PSTAT_H
+#cmakedefine HAVE_LANGINFO_H
 #cmakedefine HAVE_DLD_H
 #cmakedefine HAVE_DLOPEN
 
