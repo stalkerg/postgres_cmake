@@ -688,7 +688,7 @@ set_source_files_properties(${BISON_PARSER_GRAM_OUTPUTS}
 
 add_custom_command(
 	MAIN_DEPENDENCY ${BISON_PARSER_GRAM_OUTPUTS}
-	OUTPUT ${PROJECT_SOURCE_DIR}/src/inlude/parser/gram.h
+	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/parser/gram.h ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
 )
 

@@ -20,6 +20,7 @@ set(plpgsql_SRCS
 
 add_library(plpgsql SHARED ${plpgsql_SRCS})
 set_target_properties(plpgsql PROPERTIES PREFIX "")
+add_dependencies(plpgsql postgres)
 
 install(TARGETS plpgsql
 		RUNTIME DESTINATION ${PGBINDIR}
