@@ -31,10 +31,16 @@ if(TEMP_CONFIG)
 	set(TEMP_CONF "${TEMP_CONF} --temp-config=${TEMP_CONFIG}")
 endif()
 
-message(STATUS "${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}")
+add_custom_target(tablespace-setup
+	COMMAND ${CMAKE_COMMAND} -E remove_directory ./testtablespace
+	COMMAND ${CMAKE_COMMAND} -E make_directory ./testtablespace
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 
 add_custom_target(check
 	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
+	DEPENDS tablespace-setup
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
