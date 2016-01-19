@@ -376,12 +376,14 @@ set(executor_SRCS
 	executor/execJunk.c
 	executor/execMain.c
 	executor/execProcnode.c
+	executor/execParallel.c
 	executor/execQual.c
 	executor/execScan.c
 	executor/execTuples.c
 	executor/execUtils.c
 	executor/functions.c
 	executor/instrument.c
+	executor/tqueue.c
 	executor/nodeAppend.c
 	executor/nodeAgg.c
 	executor/nodeBitmapAnd.c
@@ -412,6 +414,7 @@ set(executor_SRCS
 	executor/nodeCtescan.c
 	executor/nodeWorktablescan.c
 	executor/nodeGroup.c
+	executor/nodeGather.c
 	executor/nodeSubplan.c
 	executor/nodeSubqueryscan.c
 	executor/nodeTidscan.c
