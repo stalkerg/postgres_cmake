@@ -724,7 +724,6 @@ set(tcop_SRCS
 	tcop/utility.c
 )
 
-#TODO: Need also install dict
 set(tsearch_SRCS
 	tsearch/ts_locale.c
 	tsearch/ts_parse.c
@@ -742,6 +741,14 @@ set(tsearch_SRCS
 	tsearch/ts_typanalyze.c
 	tsearch/ts_utils.c
 )
+
+install(FILES 
+			tsearch/ispell_sample.dict
+			tsearch/ispell_sample.affix
+			tsearch/hunspell_sample.affix
+			tsearch/synonym_sample.syn
+			tsearch/thesaurus_sample.ths
+		DESTINATION ${PGSHAREDIR}/tsearch_data)
 
 set(regex_SRCS
 	regex/regcomp.c
