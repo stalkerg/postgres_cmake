@@ -480,6 +480,11 @@ configure_file(
 )
 
 configure_file(
+	"${PROJECT_SOURCE_DIR}/src/include/pg_config_ext_cmake.in"
+	"${PROJECT_SOURCE_DIR}/src/include/pg_config_ext.h"
+)
+
+configure_file(
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config_paths_cmake.in"
 	"${PROJECT_SOURCE_DIR}/src/port/pg_config_paths.h"
 )
