@@ -58,6 +58,9 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/storage/lmgr
 )
 
+flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils/misc/guc-file.c)
+set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
+
 if(WIN32)
 	#TODO: maybe need test CYGWIN also
 	set(dynloader_SRCS port/dynloader/win32.c)
