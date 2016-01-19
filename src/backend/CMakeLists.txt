@@ -40,6 +40,24 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
+set(gen_lwlocknames_depend
+	storage/lmgr/generate-lwlocknames.pl
+	storage/lmgr/lwlocknames.txt
+)
+
+set(gen_lwlocknames_output
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.c
+	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
+)
+
+add_custom_command(
+	MAIN_DEPENDENCY ${gen_lwlocknames_depend}
+	OUTPUT ${gen_lwlocknames_output}
+	COMMAND ${PERL_EXECUTABLE} generate-lwlocknames.pl lwlocknames.txt
+	COMMAND ${CMAKE_COMMAND} -E copy lwlocknames.h ${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/storage/lmgr
+)
+
 if(WIN32)
 	#TODO: maybe need test CYGWIN also
 	set(dynloader_SRCS port/dynloader/win32.c)
@@ -854,6 +872,7 @@ set(storage_SRCS
 	storage/smgr/md.c
 	storage/smgr/smgr.c
 	storage/smgr/smgrtype.c
+	${gen_lwlocknames_output}
 )
 
 bison_target(REPL_GRAM
