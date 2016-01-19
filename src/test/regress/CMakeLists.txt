@@ -46,7 +46,7 @@ add_custom_target(tablespace-setup
 )
 
 
-add_custom_target(check
+add_custom_target(installcheck
 	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
 	DEPENDS tablespace-setup 
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
