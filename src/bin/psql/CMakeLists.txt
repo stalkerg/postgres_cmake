@@ -15,6 +15,12 @@ flex_target(psqlscan
 set_source_files_properties(mainloop.c
 	PROPERTIES OBJECT_DEPENDS ${FLEX_psqlscan_OUTPUTS})
 
+add_custom_command(
+	OUTPUT ${PROJECT_SOURCE_DIR}/src/bin/psql/sql_help.c ${PROJECT_SOURCE_DIR}/src/bin/psql/sql_help.h
+	COMMAND ${PERL_EXECUTABLE} create_help.pl ../../../doc/src/sgml/ref sql_help
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/bin/psql
+)
+
 set(psql_SRCS
 	command.c
 	common.c
