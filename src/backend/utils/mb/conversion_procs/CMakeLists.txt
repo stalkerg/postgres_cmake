@@ -171,14 +171,12 @@ foreach(pair_conversion ${conversions_list})
 	LIST(GET pair_conversion 3 func)
 	LIST(GET pair_conversion 4 obj)
 	
-	file(APPEND "conversion_create.sql" 
-		"-- ${se} --> ${de}\n\
-CREATE OR REPLACE FUNCTION ${func} (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/${obj}', '${func}' LANGUAGE C STRICT;\n\
-COMMENT ON FUNCTION ${func}(INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) IS 'internal conversion function for ${se} to ${de}';\n\
-DROP CONVERSION pg_catalog.${con_name};\n\
-CREATE DEFAULT CONVERSION pg_catalog.${con_name} FOR '${se}' TO '${de}' FROM ${func};\n\
-COMMENT ON CONVERSION pg_catalog.${con_name} IS 'conversion for ${se} to ${de}';\n"
-	)
+	file(APPEND "conversion_create.sql" "-- ${se} --> ${de}\n")
+	file(APPEND "conversion_create.sql" "CREATE OR REPLACE FUNCTION ${func} (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/${obj}', '${func}' LANGUAGE C STRICT;\n")
+	file(APPEND "conversion_create.sql" "COMMENT ON FUNCTION ${func}(INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) IS 'internal conversion function for ${se} to ${de}';\n")
+	file(APPEND "conversion_create.sql" "DROP CONVERSION pg_catalog.${con_name};\n")
+	file(APPEND "conversion_create.sql" "CREATE DEFAULT CONVERSION pg_catalog.${con_name} FOR '${se}' TO '${de}' FROM ${func};\n")
+	file(APPEND "conversion_create.sql" "COMMENT ON CONVERSION pg_catalog.${con_name} IS 'conversion for ${se} to ${de}';\n")
 endforeach()
 
 foreach(loop_var IN ITEMS ${procs_list})
