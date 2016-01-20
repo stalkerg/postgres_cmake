@@ -1,3 +1,15 @@
+CMake build and test howto
+=================
+git clone https://github.com/stalkerg/postgres_cmake.git
+cd ./postgres_cmake
+mkdir build
+cd build
+cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
+make -j2
+make install
+make installcheck
+
+
 PostgreSQL Database Management System
 =====================================
 
