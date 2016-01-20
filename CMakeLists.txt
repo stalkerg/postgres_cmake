@@ -88,6 +88,7 @@ find_package(FLEX REQUIRED)
 find_package(Threads)
 find_package(OpenSSL)
 find_library(DL_LIBRARIES NAMES dl)
+find_library(M_LIB m)
 
 check_function_exists(strlcpy HAVE_DECL_STRLCPY)
 check_function_exists(strlcat HAVE_DECL_STRLCAT)
