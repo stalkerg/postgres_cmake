@@ -75,7 +75,7 @@ if(NOT MANDIR)
 	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 endif(NOT MANDIR)
 
-if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+if (${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-ignored-attributes")
 endif()
 
