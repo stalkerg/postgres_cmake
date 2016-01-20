@@ -40,13 +40,17 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
+flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils/misc/guc-file.c)
+set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
+
 set(gen_lwlocknames_depend
-	storage/lmgr/generate-lwlocknames.pl
-	storage/lmgr/lwlocknames.txt
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/generate-lwlocknames.pl
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.txt
 )
 
 set(gen_lwlocknames_output
 	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.c
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.h
 	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
 )
 
@@ -55,11 +59,9 @@ add_custom_command(
 	OUTPUT ${gen_lwlocknames_output}
 	COMMAND ${PERL_EXECUTABLE} generate-lwlocknames.pl lwlocknames.txt
 	COMMAND ${CMAKE_COMMAND} -E copy lwlocknames.h ${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/storage/lmgr
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr
 )
 
-flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils/misc/guc-file.c)
-set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
 
 if(WIN32)
 	#TODO: maybe need test CYGWIN also

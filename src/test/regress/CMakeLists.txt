@@ -26,6 +26,7 @@ target_link_libraries(regress
 	pq
 )
 set_target_properties(regress PROPERTIES PREFIX "")
+add_dependencies(regress postgres)
 
 set(pg_regress_check pg_regress --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --temp-instance="./tmp_check" --bindir= --encoding=UTF8 --no-locale)
 
@@ -59,7 +60,3 @@ install(TARGETS pg_regress
 install(TARGETS regress
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
-
-
-#set(INSTALL_LIB_DIR lib CACHE PATH "Installation directory for libraries")
-#set(INSTALL_BIN_DIR bin CACHE PATH "Installation directory for executables")
