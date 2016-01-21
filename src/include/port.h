@@ -468,4 +468,38 @@ extern char *escape_single_quotes_ascii(const char *src);
 /* port/wait_error.c */
 extern char *wait_result_to_str(int exit_status);
 
+#if _MSC_VER >= 1800
+	//From VS2012.
+	typedef struct localerefcount
+	{
+		char *locale;
+		wchar_t *wlocale;
+		int *refcount;
+		int *wrefcount;
+	} locrefcount;
+
+	//From VS2012.
+	typedef struct __crt_locale_data
+	{
+		int refcount;
+		unsigned int lc_codepage;
+		unsigned int lc_collate_cp;
+		unsigned int lc_time_cp;
+		locrefcount lc_category[6];
+		int lc_clike;
+		int mb_cur_max;
+		int * lconv_intl_refcount;
+		int * lconv_num_refcount;
+		int * lconv_mon_refcount;
+		struct lconv * lconv;
+		int * ctype1_refcount;
+		unsigned short * ctype1;
+		const unsigned short * pctype;
+		const unsigned char * pclmap;
+		const unsigned char * pcumap;
+		struct __lc_time_data * lc_time_curr;
+		wchar_t * locale_name[6];
+	} threadlocinfo;
+#endif
+
 #endif   /* PG_PORT_H */
