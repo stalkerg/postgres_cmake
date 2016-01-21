@@ -804,7 +804,6 @@ if(WIN32)
 		port/win32/timer.c
 		port/win32/socket.c
 		port/win32/signal.c
-		port/win32/security.c
 		port/win32/mingwcompat.c
 	)
 	if(NAVE_MINIDUMP_TYPE)
