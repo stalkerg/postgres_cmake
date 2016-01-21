@@ -79,6 +79,10 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-ignored-attributes")
 endif()
 
+if(MSVC)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D _CRT_SECURE_NO_WARNINGS")
+endif()
+
 test_big_endian(WORDS_BIGENDIAN)
 
 find_package(Perl REQUIRED)
