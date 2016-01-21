@@ -28,6 +28,8 @@ endforeach(FLAG ${C99_C_FLAG_CANDIDATES})
 
 if(FLEXIBLE_ARRAY_MEMBER)
 	message(STATUS "Check flexible array support - yes with ${C99_C_FLAGS_INTERNAL}")
+	set(FLEXIBLE_ARRAY_MEMBER "")
 else(FLEXIBLE_ARRAY_MEMBER)
 	message(STATUS "Check flexible array support - no")
+	set(FLEXIBLE_ARRAY_MEMBER 1)
 endif(FLEXIBLE_ARRAY_MEMBER)

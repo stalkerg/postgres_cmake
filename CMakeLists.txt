@@ -92,18 +92,26 @@ if(NOT MSVC)
 	find_library(M_LIB m)
 endif()
 
-check_function_exists(strlcpy HAVE_DECL_STRLCPY)
-check_function_exists(strlcat HAVE_DECL_STRLCAT)
-check_function_exists(unsetenv HAVE_UNSETENV)
+check_symbol_exists(strlcpy "stdio.h;string.h" HAVE_DECL_STRLCPY)
+check_symbol_exists(strlcat "stdio.h;string.h" HAVE_DECL_STRLCAT)
+check_symbol_exists(unsetenv "stdlib.h" HAVE_UNSETENV)
+check_symbol_exists(isinf "math.h" HAVE_ISINF)
+check_symbol_exists(rint "math.h" HAVE_RINT)
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
+if(MSVC)
+	check_function_exists(_fseeki64 HAVE_FSEEKO)
+else()
+	check_function_exists(fseeko HAVE_FSEEKO)
+endif()
+
 if(NOT MSVC)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};dlfcn.h")
 	set(CMAKE_REQUIRED_LIBRARIES ${DL_LIBRARIES})
 	check_function_exists(dlopen HAVE_DLOPEN)
 endif()
-set(CMAKE_REQUIRED_LIBRARIES "")
 
+set(CMAKE_REQUIRED_LIBRARIES "")
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};string.h")
 check_function_exists(fls HAVE_FLS)
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/mman.h")
@@ -113,7 +121,6 @@ endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 check_function_exists(shm_open HAVE_SHM_OPEN)
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/time.h;sys/resource.h")
 check_function_exists(getrusage HAVE_GETRUSAGE)
-
 
 if(OPENSSL_FOUND)
 	set(USE_OPENSSL 1)
@@ -481,6 +488,14 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
 else(WIN32)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
 endif(WIN32)
+
+if(WIN32)
+	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32")
+endif()
+
+if(MSVC)
+	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32_msvc")
+endif()
 
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/include/pg_config_cmake.in"
