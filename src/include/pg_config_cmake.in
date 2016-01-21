@@ -206,6 +206,12 @@
 
 #cmakedefine HAVE_LOCALE_T
 
+#cmakedefine HAVE_ISINF
+
+#cmakedefine HAVE_FSEEKO
+
+#cmakedefine HAVE_RINT
+
 #include "@pgos_include_SRCS@"
 
 #endif  // AUTO_CONFIG_H
