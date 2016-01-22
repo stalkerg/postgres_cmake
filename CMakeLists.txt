@@ -376,10 +376,14 @@ if(NOT MEMSET_LOOP_LIMIT)
 	set(MEMSET_LOOP_LIMIT 1024)
 endif(NOT MEMSET_LOOP_LIMIT)
 
-set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;sys/socket.h;netdb.h")
+if(WIN32)
+	set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;winsock2.h")
+else()
+	set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;sys/socket.h;netdb.h")
+endif()
 check_type_size("struct addrinfo" HAVE_STRUCT_ADDRINFO)
 if(HAVE_STRUCT_ADDRINFO)
-	CHECK_STRUCT_HAS_MEMBER("struct addrinfo" sa_len "sys/types.h;sys/socket.h;netdb.h" HAVE_STRUCT_SOCKADDR_SA_LEN LANGUAGE C)
+	CHECK_STRUCT_HAS_MEMBER("struct addrinfo" sa_len "${CMAKE_EXTRA_INCLUDE_FILES}" HAVE_STRUCT_SOCKADDR_SA_LEN LANGUAGE C)
 	if(WIN32)
 		#TODO
 	else(WIN32)
@@ -387,13 +391,12 @@ if(HAVE_STRUCT_ADDRINFO)
 	endif(WIN32)
 endif(HAVE_STRUCT_ADDRINFO)
 
-set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;sys/socket.h")
 check_type_size("struct sockaddr_storage" HAVE_STRUCT_SOCKADDR_STORAGE)
 if(HAVE_STRUCT_SOCKADDR_STORAGE)
-	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" ss_family "sys/types.h;sys/socket.h" HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY LANGUAGE C)
-	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" __ss_family "sys/types.h;sys/socket.h" HAVE_STRUCT_SOCKADDR_STORAGE___SS_FAMILY LANGUAGE C)
-	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" ss_len "sys/types.h;sys/socket.h" HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN LANGUAGE C)
-	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" __ss_len "sys/types.h;sys/socket.h" HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN LANGUAGE C)
+	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" ss_family "${CMAKE_EXTRA_INCLUDE_FILES}" HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY LANGUAGE C)
+	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" __ss_family "${CMAKE_EXTRA_INCLUDE_FILES}" HAVE_STRUCT_SOCKADDR_STORAGE___SS_FAMILY LANGUAGE C)
+	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" ss_len "${CMAKE_EXTRA_INCLUDE_FILES}" HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN LANGUAGE C)
+	CHECK_STRUCT_HAS_MEMBER("struct sockaddr_storage" __ss_len "${CMAKE_EXTRA_INCLUDE_FILES}" HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN LANGUAGE C)
 endif(HAVE_STRUCT_SOCKADDR_STORAGE)
 
 # If `struct sockaddr_un' exists, define HAVE_UNIX_SOCKETS.
@@ -450,6 +453,8 @@ if(WIN32)
 else(WIN32)
 	set(HAVE_SYMLINK 1)
 endif(WIN32)
+
+option(PG_KRB_SRVNAM "Define to the name of the default PostgreSQL service principal in Kerberos (GSSAPI)." "postgres")
 
 #TODO: Need test this
 if(CMAKE_C_COMPILER_ID STREQUAL "SunPro")
