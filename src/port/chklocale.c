@@ -203,7 +203,7 @@ win32_langinfo(const char *ctype)
 {
 	char	   *r = NULL;
 
-#if (_MSC_VER >= 1700)
+#if (_MSC_VER >= 1700 && _MSC_VER < 1800)
 	_locale_t	loct = NULL;
 
 	loct = _create_locale(LC_CTYPE, ctype);
@@ -214,7 +214,20 @@ win32_langinfo(const char *ctype)
 			sprintf(r, "CP%u", loct->locinfo->lc_codepage);
 		_free_locale(loct);
 	}
+#elif (_MSC_VER >= 1800)
+	_locale_t	loct = NULL;
+
+	loct = _create_locale(LC_CTYPE, ctype);
+	if (loct != NULL)
+	{
+		__crt_locale_data_public* public_loct = __acrt_get_locale_data_prefix(loct);
+		r = malloc(16);			/* excess */
+		if (r != NULL)
+			sprintf(r, "CP%u", public_loct->_locale_lc_codepage);
+		_free_locale(loct);
+	}
 #else
+
 	char	   *codepage;
 
 	/*
