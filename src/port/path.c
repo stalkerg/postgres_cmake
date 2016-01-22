@@ -287,7 +287,7 @@ canonicalize_path(char *path)
 	pending_strips = 0;
 	for (;;)
 	{
-		int			len = strlen(spath);
+		size_t	len = strlen(spath);
 
 		if (len >= 2 && strcmp(spath + len - 2, "/.") == 0)
 			trim_directory(path);
@@ -341,7 +341,7 @@ canonicalize_path(char *path)
 bool
 path_contains_parent_reference(const char *path)
 {
-	int			path_len;
+	size_t			path_len;
 
 	path = skip_drive(path);	/* C: shouldn't affect our conclusion */
 
@@ -403,7 +403,7 @@ path_is_relative_and_below_cwd(const char *path)
 bool
 path_is_prefix_of_path(const char *path1, const char *path2)
 {
-	int			path1_len = strlen(path1);
+	size_t			path1_len = strlen(path1);
 
 	if (strncmp(path1, path2, path1_len) == 0 &&
 		(IS_DIR_SEP(path2[path1_len]) || path2[path1_len] == '\0'))
@@ -506,8 +506,8 @@ make_relative_path(char *ret_path, const char *target_path,
 				   const char *bin_path, const char *my_exec_path)
 {
 	int			prefix_len;
-	int			tail_start;
-	int			tail_len;
+	size_t			tail_start;
+	size_t			tail_len;
 	int			i;
 
 	/*
@@ -537,7 +537,7 @@ make_relative_path(char *ret_path, const char *target_path,
 	/*
 	 * Tail match?
 	 */
-	tail_start = (int) strlen(ret_path) - tail_len;
+	tail_start = strlen(ret_path) - tail_len;
 	if (tail_start > 0 &&
 		IS_DIR_SEP(ret_path[tail_start - 1]) &&
 		dir_strcmp(ret_path + tail_start, bin_path + prefix_len) == 0)
