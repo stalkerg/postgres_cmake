@@ -212,6 +212,8 @@
 
 #cmakedefine HAVE_RINT
 
+#cmakedefine HAVE_MEMMOVE
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"

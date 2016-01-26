@@ -1,4 +1,5 @@
-include_directories(
+include_directories(BEFORE
+	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"${PROJECT_SOURCE_DIR}/src/port"
 )
 
@@ -35,11 +36,30 @@ set(pq_SRCS
 	${pq_ssl_SRCS}
 )
 
+if(WIN32)
+	set(pq_SRCS ${pq_SRCS} 
+		win32.c
+		${PORT_DIR}/win32error.c
+		${PORT_DIR}/win32setlocale.c
+		${PORT_DIR}/win32env.c
+		${PORT_DIR}/pgsleep.c
+		${PORT_DIR}/open.c
+		${PORT_DIR}/system.c
+		${PORT_DIR}/inet_aton.c
+		${PORT_DIR}/thread.c
+	)
+endif()
 
 add_library(pq SHARED ${pq_SRCS})
 target_link_libraries(pq
 	${OPENSSL_LIBRARIES}
 )
+if(WIN32)
+	target_link_libraries(pq
+		Secur32
+		ws2_32
+	)
+endif()
 if(USE_OPENSSL)
 	target_include_directories(pq PUBLIC ${OPENSSL_INCLUDE_DIR})
 endif()
