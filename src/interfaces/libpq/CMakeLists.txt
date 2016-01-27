@@ -36,6 +36,7 @@ set(pq_SRCS
 	${pq_ssl_SRCS}
 )
 
+set(RES_FILES "")
 if(WIN32)
 	set(pq_SRCS ${pq_SRCS} 
 		win32.c
@@ -47,10 +48,15 @@ if(WIN32)
 		${PORT_DIR}/system.c
 		${PORT_DIR}/inet_aton.c
 		${PORT_DIR}/thread.c
+		${PORT_DIR}/getaddrinfo.c
 	)
+	set(RES_FILES "libpq.rc")
+	set(CMAKE_RC_COMPILER_INIT windres)
+	ENABLE_LANGUAGE(RC)
+	SET(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> <FLAGS> -O coff <DEFINES> -i <SOURCE> -o <OBJECT>")
 endif()
 
-add_library(pq SHARED ${pq_SRCS})
+add_library(pq SHARED ${pq_SRCS} ${RES_FILES})
 target_link_libraries(pq
 	${OPENSSL_LIBRARIES}
 )
@@ -60,6 +66,17 @@ if(WIN32)
 		ws2_32
 	)
 endif()
+
+if(MSVC)
+	SET_TARGET_PROPERTIES(pq PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_BINARY_DIR}/pq.def\" ")
+	add_custom_command(
+		TARGET pq
+		PRE_LINK
+		COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/src/tools/msvc/gendef.pl ${CMAKE_CURRENT_BINARY_DIR}/$<$<BOOL:${CMAKE_BUILD_TYPE}>:${CMAKE_FILES_DIRECTORY}>pq.dir/${CMAKE_CFG_INTDIR} ${CMAKE_CURRENT_BINARY_DIR}/pq.def ${CMAKE_VS_PLATFORM_NAME}
+		COMMENT " Gen defs "
+    )
+endif()
+
 if(USE_OPENSSL)
 	target_include_directories(pq PUBLIC ${OPENSSL_INCLUDE_DIR})
 endif()

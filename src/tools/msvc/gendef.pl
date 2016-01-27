@@ -151,23 +151,21 @@ sub usage
 }
 
 usage()
-  unless scalar(@ARGV) == 2
-	  && (   ($ARGV[0] =~ /\\([^\\]+$)/)
-		  && ($ARGV[1] eq 'Win32' || $ARGV[1] eq 'x64'));
-my $defname  = uc $1;
-my $deffile  = "$ARGV[0]/$defname.def";
-my $platform = $ARGV[1];
+  unless scalar(@ARGV) == 3
+	  && ($ARGV[2] eq 'Win32' || $ARGV[2] eq 'x64');
+my $deffile  = $ARGV[1];
+my $platform = $ARGV[2];
 
 # if the def file exists and is newer than all input object files, skip
 # its creation
 if (-f $deffile
 	&& (-M $deffile > max(map { -M } <$ARGV[0]/*.obj>)))
 {
-	print "Not re-generating $defname.DEF, file already exists.\n";
+	print "Not re-generating .DEF, file already exists.\n";
 	exit(0);
 }
 
-print "Generating $defname.DEF from directory $ARGV[0], platform $platform\n";
+print "Generating .DEF from directory $ARGV[0], platform $platform\n";
 
 my %def = ();
 

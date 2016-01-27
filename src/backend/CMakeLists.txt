@@ -985,7 +985,11 @@ add_custom_target(duplicate_oids
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/include/catalog
 )
 
-add_library(pqwalreceiver SHARED replication/libpqwalreceiver/libpqwalreceiver.c)
+add_library(pqwalreceiver SHARED 
+	replication/libpqwalreceiver/libpqwalreceiver.c
+	${backend_port_win32_SRC}
+	${backend_port_darwin_SRC}
+)
 target_link_libraries(pqwalreceiver pq)
 
 install(TARGETS postgres pqwalreceiver
