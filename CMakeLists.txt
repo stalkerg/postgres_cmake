@@ -486,6 +486,8 @@ if(WIN32)
 	check_type_size(MINIDUMP_TYPE NAVE_MINIDUMP_TYPE)
 endif(WIN32)
 
+set(WIN32_STACK_RLIMIT 4194304)
+
 # Need add sco and unixware?
 if(WIN32)
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/win32.h)

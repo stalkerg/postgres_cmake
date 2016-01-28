@@ -979,6 +979,10 @@ if(UNIX AND NOT APPLE)
 	target_link_libraries(postgres rt)
 endif()
 
+if(WIN32)
+	target_compile_definitions(postgres PRIVATE -DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT})
+endif()
+
 #Realy need?
 add_custom_target(duplicate_oids
 	COMMAND ${PERL_EXECUTABLE} ./duplicate_oids
