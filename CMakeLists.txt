@@ -233,6 +233,13 @@ else(HAVE_LONG_LONG_INT_64)
 	set(LONG_LONG_INT_MODIFIER "l")
 endif(HAVE_LONG_LONG_INT_64)
 
+if(HAVE_LONG_LONG_INT_64)
+	message(STATUS "HAVE_LONG_LONG_INT_64 ${HAVE_LONG_LONG_INT_64}")
+endif()
+if(HAVE_LONG_LONG_INT_64)
+	include(CheckLLConstants)
+endif()
+
 option(FLOAT4PASSBYVAL "float4 values are passed by value" ON)
 if(FLOAT4PASSBYVAL)
 	set(FLOAT4PASSBYVAL 1)
