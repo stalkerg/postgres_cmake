@@ -186,13 +186,15 @@ check_type_size(int64 HAVE_INT64)
 check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
 check_type_size("void *" VOID_POINTER_SIZE)
-check_type_size("long int" HAVE_LONG_INT_64)
+check_type_size("long int" LONG_INT_SIZE)
+
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};locale.h")
 check_type_size("locale_t" HAVE_LOCALE_T)
 
-if(HAVE_LONG_INT_64 EQUAL 8)
+if(LONG_INT_SIZE EQUAL 8)
 	set(PG_INT64_TYPE "long int")
-else(HAVE_LONG_INT_64 EQUAL 8)
+	set(HAVE_LONG_INT_64 ${LONG_INT_SIZE})
+else(LONG_INT_SIZE EQUAL 8)
 	check_type_size("long long int" HAVE_LONG_LONG_INT_64)
 	if(HAVE_LONG_LONG_INT_64)
 		set(HAVE_LONG_LONG_INT 1)
@@ -202,7 +204,7 @@ else(HAVE_LONG_INT_64 EQUAL 8)
 	else(HAVE_LONG_LONG_INT_64 EQUAL 8)
 		message(FATAL_ERROR "Cannot find a working 64-bit integer type.")
 	endif(HAVE_LONG_LONG_INT_64 EQUAL 8)
-endif(HAVE_LONG_INT_64 EQUAL 8)
+endif(LONG_INT_SIZE EQUAL 8)
 
 # Compute maximum alignment of any basic type.
 # We assume long's alignment is at least as strong as char, short, or int;
