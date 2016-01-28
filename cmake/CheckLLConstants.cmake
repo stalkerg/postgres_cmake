@@ -1,0 +1,9 @@
+CHECK_C_SOURCE_COMPILES("
+	main() {
+		#define INT64CONST(x)  x##LL
+		long long int foo = INT64CONST(0x1234567890123456);
+		return 0;
+	}
+" HAVE_LL_CONSTANTS)
+
+message(STATUS "HAVE_LL_CONSTANTS ${HAVE_LL_CONSTANTS}")
