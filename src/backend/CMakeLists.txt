@@ -980,7 +980,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(WIN32)
-	target_compile_definitions(postgres PRIVATE -DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT})
+	target_compile_definitions(postgres PRIVATE -DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT} -DBUILDING_DLL)
 endif()
 
 #Realy need?
