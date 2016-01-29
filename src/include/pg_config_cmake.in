@@ -217,6 +217,12 @@
 
 #cmakedefine HAVE_MEMMOVE
 
+#cmakedefine HAVE__GET_CPUID
+
+#cmakedefine HAVE__CPUID
+
+#cmakedefine USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"
