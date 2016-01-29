@@ -151,7 +151,7 @@ check_include_files(langinfo.h HAVE_LANGINFO_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
-if(WITH_READLINE)
+if(WITH_READLINE AND NOT MSVC)
 	find_package(Readline)
 	if(READLINE_FOUND)
 		check_include_files("stdio.h;readline.h" HAVE_READLINE_H)
@@ -165,7 +165,7 @@ if(WITH_READLINE)
 		check_function_exists(rl_completion_matches HAVE_RL_COMPLETION_MATCHES)
 		check_function_exists(rl_filename_completion_function HAVE_RL_FILENAME_COMPLETION_FUNCTION)
 	endif(READLINE_FOUND)
-endif(WITH_READLINE)
+endif()
 
 check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
 check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
