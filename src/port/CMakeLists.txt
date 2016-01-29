@@ -46,6 +46,23 @@ if(NOT HAVE_FLS)
 	)
 endif(NOT HAVE_FLS)
 
+if(MSVC)
+	set(port_SRCS
+		${port_SRCS}
+		gettimeofday.c
+		random.c
+		srandom.c
+		dirmod.c
+		getopt.c
+		getopt_long.c
+		kill.c
+		open.c
+		dirent.c
+		getrusage.c
+		win32security.c
+	)
+endif()
+
 add_library(port_srv STATIC ${port_SRCS})
 add_library(port STATIC ${port_SRCS})
 
