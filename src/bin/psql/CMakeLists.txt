@@ -60,7 +60,7 @@ target_link_libraries(psql
 )
 
 if(NOT MSVC)
-	target_link_libraries(postgres m)
+	target_link_libraries(psql m)
 endif()
 
 install(TARGETS psql
