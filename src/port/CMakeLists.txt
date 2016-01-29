@@ -4,11 +4,13 @@
 #	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 #)
 
-IF(ENABLE_SSE42)
-	SET(PG_CRC32C_OBJS pg_crc32c_sse42.c)
-ELSE(ENABLE_SSE42)
-	SET(PG_CRC32C_OBJS pg_crc32c_sb8.c)
-ENDIF(ENABLE_SSE42)
+if(NOT MSVC)
+	IF(ENABLE_SSE42)
+		SET(PG_CRC32C_OBJS pg_crc32c_sse42.c)
+	ELSE(ENABLE_SSE42)
+		SET(PG_CRC32C_OBJS pg_crc32c_sb8.c)
+	ENDIF(ENABLE_SSE42)
+endif()
 
 add_custom_command(
 	MAIN_DEPENDENCY ${gen_errorcodes_depend}
@@ -60,6 +62,11 @@ if(MSVC)
 		dirent.c
 		getrusage.c
 		win32security.c
+		win32setlocale.c
+		win32env.c
+		pg_crc32c_sse42.c
+		pg_crc32c_sb8.c
+		pg_crc32c_choose.c
 	)
 endif()
 

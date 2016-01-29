@@ -56,9 +56,12 @@ target_link_libraries(psql
 	pq
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
-	m
 	${OPENSSL_LIBRARIES}
 )
+
+if(NOT MSVC)
+	target_link_libraries(postgres m)
+endif()
 
 install(TARGETS psql
 		RUNTIME DESTINATION ${PGBINDIR}

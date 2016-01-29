@@ -11,7 +11,7 @@ CHECK_C_SOURCE_COMPILES("
 	#include <intrin.h>
 	int main() {
 		unsigned int exx[4] = {0, 0, 0, 0};
-		__get_cpuid(exx[0], 1);
+		__cpuid(exx[0], 1);
 		return 0;
 	}
 " HAVE__CPUID)
