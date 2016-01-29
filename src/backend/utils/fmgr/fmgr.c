@@ -13,8 +13,6 @@
  *-------------------------------------------------------------------------
  */
 
-#define FROM_FMGR
-
 #include "postgres.h"
 
 #include "access/tuptoaster.h"
@@ -36,8 +34,8 @@
 /*
  * Hooks for function calls
  */
-PGDLLEXPORT needs_fmgr_hook_type needs_fmgr_hook = NULL;
-PGDLLEXPORT fmgr_hook_type fmgr_hook = NULL;
+PGDLLIMPORT needs_fmgr_hook_type needs_fmgr_hook = NULL;
+PGDLLIMPORT fmgr_hook_type fmgr_hook = NULL;
 
 /*
  * Declaration for old-style function pointer type.  This is now used only
