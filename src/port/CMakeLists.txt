@@ -61,9 +61,11 @@ if(MSVC)
 		open.c
 		dirent.c
 		getrusage.c
+		system.c
 		win32security.c
 		win32setlocale.c
 		win32env.c
+		win32error.c
 		pg_crc32c_sse42.c
 		pg_crc32c_sb8.c
 		pg_crc32c_choose.c

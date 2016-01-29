@@ -42,7 +42,6 @@ if(WIN32)
 		win32.c
 		${PORT_DIR}/win32error.c
 		${PORT_DIR}/win32setlocale.c
-		${PORT_DIR}/win32env.c
 		${PORT_DIR}/pgsleep.c
 		${PORT_DIR}/open.c
 		${PORT_DIR}/system.c
@@ -62,6 +61,7 @@ target_link_libraries(pq
 )
 if(WIN32)
 	target_link_libraries(pq
+		port
 		Secur32
 		ws2_32
 	)
