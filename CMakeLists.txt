@@ -174,6 +174,7 @@ check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 
+include(CheckCpuID)
 include(FuncAcceptArgtypes)
 include(CheckTypeAlignment)
 check_type_alignment(double ALIGNOF_DOUBLE)
