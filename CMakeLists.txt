@@ -98,12 +98,16 @@ endif()
 
 check_symbol_exists(strlcpy "stdio.h;string.h" HAVE_DECL_STRLCPY)
 check_symbol_exists(strlcat "stdio.h;string.h" HAVE_DECL_STRLCAT)
+check_symbol_exists(snprintf "stdio.h;string.h" HAVE_DECL_SNPRINTF)
+check_symbol_exists(vsnprintf "stdio.h;string.h" HAVE_DECL_VSNPRINTF)
 check_symbol_exists(unsetenv "stdlib.h" HAVE_UNSETENV)
 check_symbol_exists(isinf "math.h" HAVE_ISINF)
 check_symbol_exists(rint "math.h" HAVE_RINT)
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
 check_function_exists(memmove HAVE_MEMMOVE)
+
+set(CMAKE_MACOSX_RPATH 1)
 
 if(MSVC)
 	check_function_exists(_fseeki64 HAVE_FSEEKO)
