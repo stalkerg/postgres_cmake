@@ -75,6 +75,11 @@ if(NOT MANDIR)
 	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 endif(NOT MANDIR)
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	#set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS} -undefined dynamic_lookup")
+	set(CMAKE_SHARED_LINKER_FLAGS "-undefined dynamic_lookup")
+endif()
+
 if (${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-ignored-attributes")
 endif()
