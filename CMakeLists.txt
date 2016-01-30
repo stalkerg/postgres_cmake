@@ -445,6 +445,9 @@ check_type_size("struct sockaddr_un" HAVE_UNIX_SOCKETS)
 set(CMAKE_EXTRA_INCLUDE_FILES "netinet/in.h")
 check_type_size("struct sockaddr_in6" HAVE_IPV6)
 
+set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;sys/ipc.h;sys/sem.h")
+check_type_size("union semun" HAVE_UNION_SEMUN)
+
 check_include_file("sys/stat.h" HAVE_SYS_STAT_H)
 
 CHECK_SYMBOL_EXISTS(fdatasync "unistd.h" HAVE_FDATASYNC)
