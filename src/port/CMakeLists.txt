@@ -12,13 +12,6 @@ if(NOT MSVC)
 	ENDIF(ENABLE_SSE42)
 endif()
 
-add_custom_command(
-	MAIN_DEPENDENCY ${gen_errorcodes_depend}
-	OUTPUT ${gen_errorcodes_output}
-	COMMAND ${PERL_EXECUTABLE} generate-errcodes.pl errcodes.txt > ${gen_errorcodes_output}
-	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/utils
-)
-
 set(port_SRCS
 	chklocale.c
 	erand48.c
@@ -38,7 +31,6 @@ set(port_SRCS
 	thread.c
 	${fallback_SRCS}
 	${PG_CRC32C_OBJS}
-	${gen_errorcodes_output}
 )
 
 if(NOT HAVE_FLS)
@@ -74,6 +66,9 @@ endif()
 
 add_library(port_srv STATIC ${port_SRCS})
 add_library(port STATIC ${port_SRCS})
+
+add_dependencies(port_srv gen_errorcodes)
+add_dependencies(port gen_errorcodes)
 
 target_compile_definitions(port PRIVATE -DFRONTEND)
 set_source_files_properties(thread.c PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})

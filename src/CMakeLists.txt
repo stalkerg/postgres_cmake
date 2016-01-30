@@ -8,6 +8,15 @@ set(gen_errorcodes_output
 	${PROJECT_SOURCE_DIR}/src/include/utils/errcodes.h
 )
 
+add_custom_command(
+	MAIN_DEPENDENCY ${gen_errorcodes_depend}
+	OUTPUT ${gen_errorcodes_output}
+	COMMAND ${PERL_EXECUTABLE} generate-errcodes.pl errcodes.txt > ${gen_errorcodes_output}
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/utils
+)
+
+add_custom_target(gen_errorcodes DEPENDS ${gen_errorcodes_output})
+
 add_subdirectory(port)
 add_subdirectory(common)
 add_subdirectory(interfaces/libpq)
