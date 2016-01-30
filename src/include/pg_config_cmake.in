@@ -132,6 +132,8 @@
 #cmakedefine HAVE_UNIX_SOCKETS
 #cmakedefine HAVE_IPV6
 
+#cmakedefine HAVE_UNION_SEMUN
+
 #define MAXIMUM_ALIGNOF @MAXIMUM_ALIGNOF@
 
 #cmakedefine HAVE_HISTORY_H
