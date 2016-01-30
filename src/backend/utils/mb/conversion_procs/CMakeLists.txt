@@ -186,6 +186,7 @@ foreach(loop_var IN ITEMS ${procs_list})
 		add_library(${loop_var} SHARED ${loop_var}/${loop_var}.c)
 	endif()
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")
+	add_dependencies(${loop_var} gen_errorcodes)
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
 			LIBRARY DESTINATION ${LIBDIR})

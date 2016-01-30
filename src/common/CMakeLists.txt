@@ -20,4 +20,7 @@ set(pgcommon_SRCS
 add_library(pgcommon_srv STATIC ${pgcommon_srv_SRCS})
 add_library(pgcommon STATIC ${pgcommon_SRCS})
 
+add_dependencies(pgcommon_srv gen_errorcodes)
+add_dependencies(pgcommon gen_errorcodes)
+
 target_compile_definitions(pgcommon PRIVATE -DFRONTEND)
