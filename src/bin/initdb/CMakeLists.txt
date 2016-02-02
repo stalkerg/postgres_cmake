@@ -12,8 +12,9 @@ add_executable(initdb
 )
 
 target_link_libraries(initdb
-	port
 	pgcommon
+	port
+	pq
 )
 
 if(UNIX AND NOT APPLE)
