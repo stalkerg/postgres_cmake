@@ -27,11 +27,12 @@ target_link_libraries(regress
 )
 if (MSVC)
 	target_link_libraries(regress postgres pgcommon port)
+	gen_def(regress)
 endif()
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 
-set(pg_regress_check pg_regress --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --temp-instance="./tmp_check" --bindir= --encoding=UTF8 --no-locale)
+set(pg_regress_check pg_regress --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --temp-instance="tmp_check" --bindir=${PGBINDIR} --encoding=UTF8 --no-locale)
 
 if(MAX_CONNECTIONS)
 	set(MAXCONNOPT "${MAXCONNOPT} --max-connections=${MAX_CONNECTIONS}")
@@ -48,7 +49,6 @@ add_custom_target(tablespace-setup
 	COMMAND ${CMAKE_COMMAND} -E make_directory ./testtablespace
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
-
 
 add_custom_target(installcheck
 	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}

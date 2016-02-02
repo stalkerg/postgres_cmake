@@ -189,6 +189,7 @@ foreach(loop_var IN ITEMS ${procs_list})
 	add_dependencies(${loop_var} gen_errorcodes)
 	if (MSVC)
 		target_link_libraries(${loop_var} postgres)
+		gen_def(${loop_var})
 	endif()
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
