@@ -238,7 +238,7 @@ pg_perm_setlocale(int category, const char *locale)
 
 	snprintf(envbuf, LC_ENV_BUFSIZE - 1, "%s=%s", envvar, result);
 
-	if (putenv(envbuf))
+	if (pg_putenv_proxy(envbuf))
 		return NULL;
 
 	return result;

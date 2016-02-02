@@ -468,4 +468,7 @@ extern char *escape_single_quotes_ascii(const char *src);
 /* port/wait_error.c */
 extern char *wait_result_to_str(int exit_status);
 
+extern int pg_putenv_proxy(char *envval);
+
+
 #endif   /* PG_PORT_H */

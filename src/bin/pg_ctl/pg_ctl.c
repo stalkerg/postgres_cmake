@@ -917,7 +917,7 @@ do_start(void)
 
 		snprintf(env_var, sizeof(env_var), "PG_GRANDPARENT_PID=%d",
 				 (int) getppid());
-		putenv(env_var);
+		pg_putenv_proxy(env_var);
 	}
 #endif
 
@@ -2236,7 +2236,7 @@ main(int argc, char **argv)
 						pgdata_D = pg_strdup(optarg);
 						canonicalize_path(pgdata_D);
 						env_var = psprintf("PGDATA=%s", pgdata_D);
-						putenv(env_var);
+						pg_putenv_proxy(env_var);
 
 						/*
 						 * We could pass PGDATA just in an environment

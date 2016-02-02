@@ -17,7 +17,7 @@
 
 #include "c.h"
 
-PGDLLEXPORT int
+int
 pgwin32_putenv(const char *envval)
 {
 	char	   *envcpy;
