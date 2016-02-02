@@ -853,7 +853,7 @@ regress_putenv(PG_FUNCTION_ARGS)
 	envbuf = text_to_cstring((text *) PG_GETARG_POINTER(0));
 	MemoryContextSwitchTo(oldcontext);
 
-	if (putenv(envbuf) != 0)
+	if (pg_putenv_proxy(envbuf) != 0)
 		elog(ERROR, "could not set environment variable: %m");
 
 	PG_RETURN_VOID();

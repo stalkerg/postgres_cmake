@@ -401,7 +401,6 @@ extern void pgwin32_unsetenv(const char *);
 extern int	pgwin32_is_service(void);
 extern int	pgwin32_is_admin(void);
 
-#define putenv(x) pgwin32_putenv(x)
 #define unsetenv(x) pgwin32_unsetenv(x)
 
 /* Things that exist in MingW headers, but need to be added to MSVC & BCC */

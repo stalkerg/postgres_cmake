@@ -1279,7 +1279,7 @@ exec_command(const char *cmd,
 			char	   *newval;
 
 			newval = psprintf("%s=%s", envvar, envval);
-			putenv(newval);
+			pg_putenv_proxy(newval);
 			success = true;
 
 			/*

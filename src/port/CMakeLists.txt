@@ -29,6 +29,7 @@ set(port_SRCS
 	sprompt.c
 	tar.c
 	thread.c
+	pg_putenv_proxy.c
 	${fallback_SRCS}
 	${PG_CRC32C_OBJS}
 )

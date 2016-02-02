@@ -712,7 +712,7 @@ doputenv(const char *var, const char *val)
 	char	   *s;
 
 	s = psprintf("%s=%s", var, val);
-	putenv(s);
+	pg_putenv_proxy(s);
 }
 
 /*
@@ -721,7 +721,7 @@ doputenv(const char *var, const char *val)
 static void
 initialize_environment(void)
 {
-	putenv("PGAPPNAME=pg_regress");
+	pg_putenv_proxy("PGAPPNAME=pg_regress");
 
 	if (nolocale)
 	{
@@ -744,7 +744,7 @@ initialize_environment(void)
 		 * variables unset; see PostmasterMain().
 		 */
 #if defined(WIN32) || defined(__CYGWIN__) || defined(__darwin__)
-		putenv("LANG=C");
+		pg_putenv_proxy("LANG=C");
 #endif
 	}
 
@@ -756,7 +756,7 @@ initialize_environment(void)
 	 */
 	unsetenv("LANGUAGE");
 	unsetenv("LC_ALL");
-	putenv("LC_MESSAGES=C");
+	pg_putenv_proxy("LC_MESSAGES=C");
 
 	/*
 	 * Set encoding as requested
@@ -769,8 +769,8 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	putenv("PGTZ=PST8PDT");
-	putenv("PGDATESTYLE=Postgres, MDY");
+	pg_putenv_proxy("PGTZ=PST8PDT");
+	pg_putenv_proxy("PGDATESTYLE=Postgres, MDY");
 
 	/*
 	 * Likewise set intervalstyle to ensure consistent results.  This is a bit
@@ -786,7 +786,7 @@ initialize_environment(void)
 			old_pgoptions = "";
 		new_pgoptions = psprintf("PGOPTIONS=%s %s",
 								 old_pgoptions, my_pgoptions);
-		putenv(new_pgoptions);
+		pg_putenv_proxy(new_pgoptions);
 	}
 
 	if (temp_instance)

@@ -1490,10 +1490,10 @@ bootstrap_template1(void)
 	 * there doesn't seem to be any compelling reason to do that.
 	 */
 	snprintf(cmd, sizeof(cmd), "LC_COLLATE=%s", lc_collate);
-	putenv(pg_strdup(cmd));
+	pg_putenv_proxy(pg_strdup(cmd));
 
 	snprintf(cmd, sizeof(cmd), "LC_CTYPE=%s", lc_ctype);
-	putenv(pg_strdup(cmd));
+	pg_putenv_proxy(pg_strdup(cmd));
 
 	unsetenv("LC_ALL");
 
@@ -2625,7 +2625,7 @@ setup_pgdata(void)
 	 * have embedded spaces.
 	 */
 	pgdata_set_env = psprintf("PGDATA=%s", pg_data);
-	putenv(pgdata_set_env);
+	pg_putenv_proxy(pgdata_set_env);
 }
 
 

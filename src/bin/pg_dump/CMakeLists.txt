@@ -27,9 +27,9 @@ add_executable(pg_dump
 
 target_link_libraries(pg_dump
 	libdump
+	pgcommon
 	port
 	pq
-	pgcommon
 )
 
 add_executable(pg_restore
@@ -37,10 +37,10 @@ add_executable(pg_restore
 )
 
 target_link_libraries(pg_restore
+	libdump
 	pgcommon
 	port
 	pq
-	libdump
 )
 
 add_executable(pg_dumpall
@@ -50,9 +50,9 @@ add_executable(pg_dumpall
 
 target_link_libraries(pg_dumpall
 	libdump
+	pgcommon
 	port
 	pq
-	pgcommon
 )
 
 install(TARGETS pg_dump pg_restore pg_dumpall

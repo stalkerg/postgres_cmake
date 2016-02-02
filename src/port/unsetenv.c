@@ -44,7 +44,7 @@ unsetenv(const char *name)
 
 	/* Override the existing setting by forcibly defining the var */
 	sprintf(envstr, "%s=", name);
-	putenv(envstr);
+	pg_putenv_proxy(envstr);
 
 	/* Now we can clobber the variable definition this way: */
 	strcpy(envstr, "=");
@@ -53,5 +53,5 @@ unsetenv(const char *name)
 	 * This last putenv cleans up if we have multiple zero-length names as a
 	 * result of unsetting multiple things.
 	 */
-	putenv(envstr);
+	pg_putenv_proxy(envstr);
 }
