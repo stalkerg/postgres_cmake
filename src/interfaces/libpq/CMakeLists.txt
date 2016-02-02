@@ -61,7 +61,7 @@ target_link_libraries(pq
 )
 if(WIN32)
 	target_link_libraries(pq
-		port
+		#port
 		Secur32
 		ws2_32
 	)
@@ -73,6 +73,8 @@ if(MSVC)
 		TARGET pq
 		PRE_LINK
 		COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/src/tools/msvc/gendef.pl ${CMAKE_CURRENT_BINARY_DIR}/$<$<BOOL:${CMAKE_BUILD_TYPE}>:${CMAKE_FILES_DIRECTORY}>pq.dir/${CMAKE_CFG_INTDIR} ${CMAKE_CURRENT_BINARY_DIR}/pq.def ${CMAKE_VS_PLATFORM_NAME}
+		#Need because pgwin32_putenv build as __cdel
+		#COMMAND ${CMAKE_COMMAND} -E echo_append "  pgwin32_putenv" >>  ${CMAKE_CURRENT_BINARY_DIR}/pq.def
 		COMMENT " Gen defs "
     )
 endif()

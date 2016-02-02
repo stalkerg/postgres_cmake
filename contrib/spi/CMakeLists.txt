@@ -16,6 +16,9 @@ foreach(loop_var IN ITEMS ${modules_list})
 		pq
 		port
 	)
+	if (MSVC)
+		target_link_libraries(${loop_var} postgres)
+	endif()
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")
 	add_dependencies(${loop_var} postgres)
 	install(TARGETS ${loop_var}
