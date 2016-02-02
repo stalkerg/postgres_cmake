@@ -95,6 +95,9 @@ set(snowball_SRCS
 )
 
 add_library(dict_snowball SHARED ${snowball_SRCS})
+if (MSVC)
+	target_link_libraries(dict_snowball postgres pgcommon port)
+endif()
 set_target_properties(dict_snowball PROPERTIES PREFIX "")
 install(TARGETS dict_snowball
 		RUNTIME DESTINATION ${PGBINDIR}
