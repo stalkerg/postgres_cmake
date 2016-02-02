@@ -25,6 +25,9 @@ add_library(regress SHARED regress.c)
 target_link_libraries(regress
 	pq
 )
+if (MSVC)
+	target_link_libraries(regress postgres pgcommon)
+endif()
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 

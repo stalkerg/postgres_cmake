@@ -37,10 +37,10 @@ add_executable(pg_restore
 )
 
 target_link_libraries(pg_restore
-	libdump
+	pgcommon
 	port
 	pq
-	pgcommon
+	libdump
 )
 
 add_executable(pg_dumpall

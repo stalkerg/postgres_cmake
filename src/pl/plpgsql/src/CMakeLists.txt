@@ -19,6 +19,9 @@ set(plpgsql_SRCS
 )
 
 add_library(plpgsql SHARED ${plpgsql_SRCS})
+if (MSVC)
+	target_link_libraries(plpgsql postgres port)
+endif()
 set_target_properties(plpgsql PROPERTIES PREFIX "")
 add_dependencies(plpgsql postgres)
 
