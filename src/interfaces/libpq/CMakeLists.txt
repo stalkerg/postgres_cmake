@@ -68,15 +68,7 @@ if(WIN32)
 endif()
 
 if(MSVC)
-	SET_TARGET_PROPERTIES(pq PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_BINARY_DIR}/pq.def\" ")
-	add_custom_command(
-		TARGET pq
-		PRE_LINK
-		COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/src/tools/msvc/gendef.pl ${CMAKE_CURRENT_BINARY_DIR}/$<$<BOOL:${CMAKE_BUILD_TYPE}>:${CMAKE_FILES_DIRECTORY}>pq.dir/${CMAKE_CFG_INTDIR} ${CMAKE_CURRENT_BINARY_DIR}/pq.def ${CMAKE_VS_PLATFORM_NAME}
-		#Need because pgwin32_putenv build as __cdel
-		#COMMAND ${CMAKE_COMMAND} -E echo_append "  pgwin32_putenv" >>  ${CMAKE_CURRENT_BINARY_DIR}/pq.def
-		COMMENT " Gen defs "
-    )
+	gen_def(pq)
 endif()
 
 if(USE_OPENSSL)

@@ -980,13 +980,7 @@ endif()
 
 if(MSVC)
 	SET_TARGET_PROPERTIES(postgres PROPERTIES ENABLE_EXPORTS 1)
-	SET_TARGET_PROPERTIES(postgres PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_BINARY_DIR}/postgres.def\" ")
-	add_custom_command(
-		TARGET postgres
-		PRE_LINK
-		COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/src/tools/msvc/gendef.pl ${CMAKE_CURRENT_BINARY_DIR}/$<$<BOOL:${CMAKE_BUILD_TYPE}>:${CMAKE_FILES_DIRECTORY}>postgres.dir/${CMAKE_CFG_INTDIR} ${CMAKE_CURRENT_BINARY_DIR}/postgres.def ${CMAKE_VS_PLATFORM_NAME}
-		COMMENT " Gen defs "
-    )
+	gen_def(postgres)
 endif()
 
 #Realy need?
