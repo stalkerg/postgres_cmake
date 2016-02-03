@@ -75,7 +75,6 @@ if(USE_OPENSSL)
 	target_include_directories(pq PUBLIC ${OPENSSL_INCLUDE_DIR})
 endif()
 target_compile_definitions(pq PRIVATE -DFRONTEND -DUNSAFE_STAT_OK)
-set_target_properties(pq PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})
 install(TARGETS pq
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
