@@ -49,6 +49,9 @@ if(WIN32)
 		${PORT_DIR}/thread.c
 		${PORT_DIR}/getaddrinfo.c
 	)
+	if (Threads_FOUND)
+		set(pq_SRCS ${pq_SRCS} pthread-win32.c)
+	endif()
 	set(RES_FILES "libpq.rc")
 	set(CMAKE_RC_COMPILER_INIT windres)
 	ENABLE_LANGUAGE(RC)
