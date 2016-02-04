@@ -952,6 +952,10 @@ include_directories(BEFORE
 	${OPENSSL_INCLUDE_DIR}
 )
 
+if(MSVC)
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${WIN32_STACK_RLIMIT}")
+endif()
+
 add_executable(postgres
 	${postgres_SRCS}
 )
@@ -973,7 +977,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(WIN32)
-	target_compile_definitions(postgres PRIVATE -DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT} -DBUILDING_DLL -DEXEC_BACKEND)
+	target_compile_definitions(postgres PRIVATE -DBUILDING_DLL -DEXEC_BACKEND)
 else()
 	target_link_libraries(postgres m)
 endif()
@@ -981,6 +985,8 @@ endif()
 if(MSVC)
 	SET_TARGET_PROPERTIES(postgres PROPERTIES ENABLE_EXPORTS 1)
 	gen_def(postgres)
+	#SET_TARGET_PROPERTIES(postgres PROPERTIES LINK_FLAGS /STACK:${WIN32_STACK_RLIMIT})
+	#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${WIN32_STACK_RLIMIT}")
 endif()
 
 #Realy need?
