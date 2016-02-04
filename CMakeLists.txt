@@ -536,6 +536,9 @@ if(WIN32)
 endif(WIN32)
 
 set(WIN32_STACK_RLIMIT 4194304)
+if(WIN32)
+	add_definitions(-DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT})
+endif()
 
 # Need add sco and unixware?
 if(WIN32)
