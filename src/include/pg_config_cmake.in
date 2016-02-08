@@ -96,6 +96,12 @@
 /* Define to 1 if `long long int' works and is 64 bits. */
 #cmakedefine HAVE_LONG_LONG_INT_64
 
+#cmakedefine HAVE_INT64
+
+#cmakedefine HAVE_UINT64
+
+#cmakedefine HAVE_INT8
+
 #define PG_INT64_TYPE @PG_INT64_TYPE@
 
 #define PG_PRINTF_ATTRIBUTE @PG_PRINTF_ATTRIBUTE@
