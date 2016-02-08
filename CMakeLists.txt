@@ -188,6 +188,10 @@ check_include_files(sys/poll.h HAVE_SYS_POLL_H)
 check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
 check_include_files(dld.h HAVE_DLD_H)
 check_include_files(langinfo.h HAVE_LANGINFO_H)
+check_include_files(ieeefp.h HAVE_IEEEFP_H)
+check_include_files(wchar.h HAVE_WCHAR_H)
+check_include_files(wctype.h HAVE_WCTYPE_H)
+check_include_files(winldap.h HAVE_WINLDAP_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
