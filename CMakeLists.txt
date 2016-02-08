@@ -106,6 +106,8 @@ find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
 find_package(OpenSSL)
+
+set(DL_LIBRARIES "")
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
 	find_library(M_LIB m)
