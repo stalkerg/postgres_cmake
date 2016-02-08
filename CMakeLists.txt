@@ -85,7 +85,7 @@ if(NOT MANDIR)
 	set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 endif(NOT MANDIR)
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin|FreeBSD")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(CMAKE_SHARED_LINKER_FLAGS "-undefined dynamic_lookup")
 endif()
 
