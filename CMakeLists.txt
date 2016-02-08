@@ -419,6 +419,7 @@ check_c_source_compiles("
 " HAVE_INT_TIMEZONE)
 
 check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LANGUAGE C)
+check_struct_has_member("struct tm" tm_gmtoff "sys/types.h;time.h" HAVE_STRUCT_TM_TM_ZONE LANGUAGE C)
 set(CMAKE_EXTRA_INCLUDE_FILES "time.h")
 check_type_size("*tzname" HAVE_TZNAME)
 
