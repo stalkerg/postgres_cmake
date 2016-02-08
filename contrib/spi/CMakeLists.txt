@@ -16,8 +16,8 @@ foreach(loop_var IN ITEMS ${modules_list})
 		pq
 		port
 	)
+	target_link_libraries(${loop_var} postgres)
 	if (MSVC)
-		target_link_libraries(${loop_var} postgres)
 		gen_def(${loop_var})
 	endif()
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")
