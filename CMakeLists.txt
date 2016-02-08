@@ -511,6 +511,7 @@ else(WIN32)
 	set(LATCH_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/unix_latch.c")
 endif(WIN32)
 
+option(HAVE_SPINLOCKS "Define to ON if you have spinlocks." ON)
 option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
 
 option(USE_INTEGER_DATETIMES "Define to ON if you want 64-bit integer timestamp and interval support." ON)

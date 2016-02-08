@@ -85,6 +85,7 @@
 #cmakedefine USE_SYSV_SHARED_MEMORY
 #cmakedefine USE_WIN32_SHARED_MEMORY
 #cmakedefine HAVE_ATOMICS
+#cmakedefine HAVE_SPINLOCKS
 
 /* Define to 1 if `long int' works and is 64 bits. */
 #cmakedefine HAVE_LONG_INT_64
