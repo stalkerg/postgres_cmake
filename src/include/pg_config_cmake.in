@@ -172,6 +172,8 @@
 
 #cmakedefine HAVE_UNSETENV
 
+#cmakedefine HAVE_SRANDOM
+
 /* Define to 1 if you have the `getpeereid' function. */
 #cmakedefine HAVE_GETPEEREID
 
