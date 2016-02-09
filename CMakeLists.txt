@@ -142,6 +142,11 @@ check_symbol_exists(rint "math.h" HAVE_RINT)
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
 check_function_exists(memmove HAVE_MEMMOVE)
+check_function_exists(mbstowcs_l HAVE_MBSTOWCS_L)
+check_function_exists(towlower HAVE_TOWLOWER)
+check_function_exists(wcstombs HAVE_WCSTOMBS)
+check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
+
 
 set(CMAKE_MACOSX_RPATH 1)
 
@@ -192,6 +197,7 @@ check_include_files(ieeefp.h HAVE_IEEEFP_H)
 check_include_files(wchar.h HAVE_WCHAR_H)
 check_include_files(wctype.h HAVE_WCTYPE_H)
 check_include_files(winldap.h HAVE_WINLDAP_H)
+check_include_files(pwd.h HAVE_PWD_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
@@ -237,6 +243,8 @@ check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
 check_type_size("void *" VOID_POINTER_SIZE)
 check_type_size("long int" LONG_INT_SIZE)
+check_type_size("long" SIZEOF_LONG)
+check_type_size("size_t" SIZEOF_SIZE_T)
 
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};locale.h")
 check_type_size("locale_t" HAVE_LOCALE_T)
@@ -423,6 +431,32 @@ check_c_source_compiles("
 	}
 " HAVE_INT_TIMEZONE)
 
+check_c_source_compiles("
+	#include <stdio.h>
+	int main(void){
+		printf(\"%s\", __func__);
+		return 0;
+	}
+" HAVE_FUNCNAME__FUNC)
+
+check_c_source_compiles("
+	#include <stdio.h>
+	int main(void){
+		printf(\"%s\", __FUNCTION__);
+		return 0;
+	}
+" HAVE_FUNCNAME__FUNCTION)
+
+check_c_source_compiles("
+	#include <stdio.h>
+	int main(void){
+		#define debug(...) fprintf(stderr, __VA_ARGS__)
+		debug(\"%s\", \"blarg\");
+		return 0;
+	}
+" HAVE__VA_ARGS)
+
+
 check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LANGUAGE C)
 check_struct_has_member("struct tm" tm_gmtoff "sys/types.h;time.h" HAVE_STRUCT_TM_TM_ZONE LANGUAGE C)
 set(CMAKE_EXTRA_INCLUDE_FILES "time.h")
@@ -502,11 +536,11 @@ else(WIN32)
 	endif(USE_NAMED_POSIX_SEMAPHORES)
 endif(WIN32)
 
+#Realy bad name for win32
+set(USE_SYSV_SHARED_MEMORY 1)
 if(WIN32)
-	set(USE_WIN32_SHARED_MEMORY 1)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_shmem.c")
 else(WIN32)
-	set(USE_SYSV_SHARED_MEMORY 1)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_shmem.c")
 endif(WIN32)
 
