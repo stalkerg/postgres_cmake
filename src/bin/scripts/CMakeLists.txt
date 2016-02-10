@@ -1,17 +1,19 @@
 include_directories(BEFORE
- 	"${PROJECT_SOURCE_DIR}/src/include/libpq"
- 	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
- 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
- 	"${PROJECT_SOURCE_DIR}/src/bin/psql"
+	"${PROJECT_SOURCE_DIR}/src/include/libpq"
+	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
+	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
+	"${PROJECT_SOURCE_DIR}/src/bin/psql"
 )
 
-set(dump_parser_src
+add_library(common_dump STATIC
+	common.c
 	${PROJECT_SOURCE_DIR}/src/bin/pg_dump/dumputils.c
 	${PROJECT_SOURCE_DIR}/src/bin/pg_dump/keywords.c
 	${PROJECT_SOURCE_DIR}/src/backend/parser/kwlookup.c
 )
 
-set(psql_src
+add_library(common_print STATIC
+	common.c
 	${PROJECT_SOURCE_DIR}/src/bin/psql/print.c
 	${PROJECT_SOURCE_DIR}/src/bin/psql/mbprint.c
 )
@@ -25,21 +27,19 @@ set(common_libs
 
 add_executable(createlang
 	createlang.c
-	common.c
-	${psql_src}
 )
 
 target_link_libraries(createlang
+	common_print
 	${common_libs}
 )
 
 add_executable(droplang
 	droplang.c
-	common.c
-	${psql_src}
 )
 
 target_link_libraries(droplang
+	common_print
 	${common_libs}
 )
 
@@ -65,11 +65,11 @@ set(dump_modules_list
 foreach(loop_var IN ITEMS ${dump_modules_list})
 	add_executable(${loop_var}
 		${loop_var}.c
-		common.c
 		${dump_parser_src}
 	)
 
 	target_link_libraries(${loop_var}
+		common_dump
 		${common_libs}
 	)
 endforeach()
