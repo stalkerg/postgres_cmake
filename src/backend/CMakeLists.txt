@@ -970,6 +970,7 @@ target_link_libraries(postgres
 	${CMAKE_THREAD_LIBS_INIT}
 	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
+	${LIB_M}
 )
 
 add_dependencies(postgres gen_errorcodes)
@@ -980,8 +981,6 @@ endif()
 
 if(WIN32)
 	target_compile_definitions(postgres PRIVATE -DBUILDING_DLL -DEXEC_BACKEND)
-else()
-	target_link_libraries(postgres m)
 endif()
 
 set_target_properties(postgres PROPERTIES ENABLE_EXPORTS 1)
