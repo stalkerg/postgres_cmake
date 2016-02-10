@@ -25,6 +25,7 @@ add_subdirectory(bin/pg_ctl)
 add_subdirectory(bin/initdb)
 add_subdirectory(bin/pg_dump)
 add_subdirectory(bin/pgbench)
+add_subdirectory(bin/scripts)
 
 add_subdirectory(backend)
 add_subdirectory(timezone)

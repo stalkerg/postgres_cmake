@@ -147,7 +147,6 @@ check_function_exists(towlower HAVE_TOWLOWER)
 check_function_exists(wcstombs HAVE_WCSTOMBS)
 check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
 
-
 set(CMAKE_MACOSX_RPATH 1)
 
 if(MSVC)
@@ -456,6 +455,11 @@ check_c_source_compiles("
 	}
 " HAVE__VA_ARGS)
 
+if(WIN32)
+	set(LIB_M "")
+else()
+	set(LIB_M m)
+endif()
 
 check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LANGUAGE C)
 check_struct_has_member("struct tm" tm_gmtoff "sys/types.h;time.h" HAVE_STRUCT_TM_TM_ZONE LANGUAGE C)
