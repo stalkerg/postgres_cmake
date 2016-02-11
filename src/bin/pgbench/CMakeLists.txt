@@ -4,8 +4,6 @@ include_directories(BEFORE
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 )
 
-
-
 bison_target(PGBENCH_PARSER exprparse.y ${PROJECT_SOURCE_DIR}/src/bin/pgbench/exprparse.c)
 flex_target(PGBENCH_SCANNER exprscan.l  ${PROJECT_SOURCE_DIR}/src/bin/pgbench/exprscan.c)
 add_flex_bison_dependency(PGBENCH_SCANNER PGBENCH_PARSER)
