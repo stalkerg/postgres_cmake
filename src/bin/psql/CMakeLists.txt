@@ -55,6 +55,7 @@ target_link_libraries(psql
 	port
 	pq
 	${READLINE_LIBRARY}
+	${CURSES_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT}
 	${OPENSSL_LIBRARIES}
 )
