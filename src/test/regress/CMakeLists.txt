@@ -32,7 +32,55 @@ endif()
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 
-set(pg_regress_check pg_regress --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --temp-instance="tmp_check" --bindir=${PGBINDIR} --encoding=UTF8 --no-locale)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+	set(env_cmd
+		${CMAKE_COMMAND} -E env
+		"DYLD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$DYLD_LIBRARY_PATH"
+	)
+	set(tmp_env_cmd
+		${CMAKE_COMMAND} -E env
+		"DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$DYLD_LIBRARY_PATH"
+	)
+elif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
+	set(env_cmd
+		${CMAKE_COMMAND} -E env
+		"LIBPATH=$ENV{DESTDIR}${LIBDIR}:$LIBPATH"
+	)
+	set(tmp_env_cmd
+		${CMAKE_COMMAND} -E env
+		"LIBPATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$LIBPATH"
+	)
+else()
+	set(env_cmd
+		${CMAKE_COMMAND} -E env
+		"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH"
+	)
+	set(tmp_env_cmd
+		${CMAKE_COMMAND} -E env
+		"LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$LD_LIBRARY_PATH"
+	)
+endif()
+
+
+set(pre_pg_regress_check
+	${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
+	--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
+	--temp-instance="tmp_check"
+	--encoding=UTF8
+	--no-locale
+)
+
+set(pg_regress_check
+	${env_cmd}
+	${pre_pg_regress_check}
+	--bindir=$ENV{DESTDIR}${PGBINDIR}
+)
+
+set(pg_regress_check_tmp
+	${tmp_env_cmd}
+	${pre_pg_regress_check}
+	--bindir=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${PGBINDIR}
+)
 
 if(MAX_CONNECTIONS)
 	set(MAXCONNOPT "${MAXCONNOPT} --max-connections=${MAX_CONNECTIONS}")
@@ -42,17 +90,28 @@ if(TEMP_CONFIG)
 	set(TEMP_CONF "${TEMP_CONF} --temp-config=${TEMP_CONFIG}")
 endif()
 
-#PATH="$(abs_top_builddir)/tmp_install$(bindir):$$PATH" $(call add_to_path,$(ld_library_path_var),$(abs_top_builddir)/tmp_install$(libdir))
-
 add_custom_target(tablespace-setup
 	COMMAND ${CMAKE_COMMAND} -E remove_directory ./testtablespace
 	COMMAND ${CMAKE_COMMAND} -E make_directory ./testtablespace
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+add_custom_target(check
+	COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+	COMMAND ${CMAKE_COMMAND} -E env DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+	COMMAND ${CMAKE_COMMAND} -E env DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install make installcheck_tmp
+	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
 add_custom_target(installcheck
-	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
-	DEPENDS tablespace-setup 
+	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
+	DEPENDS tablespace-setup
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_custom_target(installcheck_tmp
+	COMMAND ${pg_regress_check_tmp} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
+	DEPENDS tablespace-setup
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

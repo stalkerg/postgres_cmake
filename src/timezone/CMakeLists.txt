@@ -57,5 +57,6 @@ endfunction()
 JOIN("${tzdata}" " " tzdata_string)
 
 install(
-	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"${PGSHAREDIR}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
+	CODE "execute_process(COMMAND echo 'zic \$ENV{DESTDIR}${PGSHAREDIR}/timezone')"
+	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"\$ENV{DESTDIR}${PGSHAREDIR}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
 )
