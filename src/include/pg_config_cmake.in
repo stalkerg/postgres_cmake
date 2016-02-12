@@ -36,6 +36,10 @@
 
 #define PG_INT128_TYPE @PG_INT128_TYPE@
 
+#ifdef WIN32
+#undef PG_INT128_TYPE
+#endif
+
 /* Size of a disk block --- this also limits the size of a tuple. You can set
    it bigger if you need bigger tuples (although TOAST should reduce the need
    to have large tuples, since fields can be spread across multiple tuples).
