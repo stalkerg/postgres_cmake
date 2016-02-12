@@ -32,7 +32,7 @@ if(NOT PGBINDIR)
 endif(NOT PGBINDIR)
 
 if(NOT PGSHAREDIR)
-	set(PGSHAREDIR "${CMAKE_INSTALL_PREFIX}/share")
+	set(PGSHAREDIR "${CMAKE_INSTALL_PREFIX}/share/postgresql")
 endif(NOT PGSHAREDIR)
 
 if(NOT SYSCONFDIR)
@@ -148,6 +148,7 @@ check_function_exists(wcstombs HAVE_WCSTOMBS)
 check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
 
 set(CMAKE_MACOSX_RPATH 1)
+#set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 if(MSVC)
 	check_function_exists(_fseeki64 HAVE_FSEEKO)
