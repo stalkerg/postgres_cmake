@@ -4,7 +4,8 @@ git clone https://github.com/stalkerg/postgres_cmake.git
 cd ./postgres_cmake
 mkdir build
 cd build
-cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
+CFLAGS="-s -O2" cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
+#strip binary + O2 optimisation
 make -j2
 make check
 
