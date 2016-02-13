@@ -98,8 +98,8 @@ add_custom_target(tablespace-setup
 
 add_custom_target(check
 	COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND ${CMAKE_COMMAND} -E env DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND ${CMAKE_COMMAND} -E env DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install make installcheck_tmp
+	COMMAND make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+	COMMAND make installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
