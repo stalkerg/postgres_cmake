@@ -110,6 +110,7 @@ set(access_SRCS
 	access/brin/brin_xlog.c
 	access/brin/brin_minmax.c
 	access/brin/brin_inclusion.c
+	access/brin/brin_validate.c
 
 	access/common/heaptuple.c
 	access/common/indextuple.c
@@ -133,6 +134,7 @@ set(access_SRCS
 	access/gin/ginfast.c
 	access/gin/ginpostinglist.c
 	access/gin/ginlogic.c
+	access/gin/ginvalidate.c
 
 	access/gist/gist.c
 	access/gist/gistutil.c
@@ -144,6 +146,7 @@ set(access_SRCS
 	access/gist/gistsplit.c
 	access/gist/gistbuild.c
 	access/gist/gistbuildbuffers.c
+	access/gist/gistvalidate.c
 
 	access/hash/hash.c
 	access/hash/hashfunc.c
@@ -154,6 +157,7 @@ set(access_SRCS
 	access/hash/hashsearch.c
 	access/hash/hashsort.c
 	access/hash/hashutil.c
+	access/hash/hashvalidate.c
 
 	access/heap/heapam.c
 	access/heap/hio.c
@@ -165,6 +169,8 @@ set(access_SRCS
 
 	access/index/genam.c
 	access/index/indexam.c
+	access/index/amapi.c
+	access/index/amvalidate.c
 
 	access/nbtree/nbtcompare.c
 	access/nbtree/nbtinsert.c
@@ -174,6 +180,7 @@ set(access_SRCS
 	access/nbtree/nbtutils.c
 	access/nbtree/nbtsort.c
 	access/nbtree/nbtxlog.c
+	access/nbtree/nbtvalidate.c
 
 	access/rmgrdesc/brindesc.c
 	access/rmgrdesc/clogdesc.c
@@ -204,6 +211,7 @@ set(access_SRCS
 	access/spgist/spgtextproc.c
 	access/spgist/spgquadtreeproc.c
 	access/spgist/spgkdtreeproc.c
+	access/spgist/spgvalidate.c
 
 	access/tablesample/bernoulli.c
 	access/tablesample/system.c
@@ -607,6 +615,8 @@ set(utils_SRCS
 	utils/misc/guc.c
 	utils/misc/help_config.c
 	utils/misc/pg_rusage.c
+	utils/misc/pg_controldata.c
+	utils/misc/pg_config.c
 	utils/misc/ps_status.c
 	utils/misc/rls.c
 	utils/misc/sampling.c
@@ -638,6 +648,7 @@ set(nodes_SRCS
 	nodes/read.c
 	nodes/params.c
 	nodes/value.c
+	nodes/extensible.c
 )
 
 set(optimizer_SRCS
@@ -771,11 +782,15 @@ set(tsearch_SRCS
 )
 
 install(FILES 
-			tsearch/ispell_sample.dict
-			tsearch/ispell_sample.affix
-			tsearch/hunspell_sample.affix
-			tsearch/synonym_sample.syn
-			tsearch/thesaurus_sample.ths
+			tsearch/dicts/ispell_sample.dict
+			tsearch/dicts/ispell_sample.affix
+			tsearch/dicts/hunspell_sample.affix
+			tsearch/dicts/hunspell_sample_long.affix
+			tsearch/dicts/hunspell_sample_long.dict
+			tsearch/dicts/hunspell_sample_num.affix
+			tsearch/dicts/hunspell_sample_num.dict
+			tsearch/dicts/synonym_sample.syn
+			tsearch/dicts/thesaurus_sample.ths
 		DESTINATION ${PGSHAREDIR}/tsearch_data)
 
 set(regex_SRCS

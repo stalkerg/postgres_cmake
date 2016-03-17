@@ -8,6 +8,8 @@ set(pgcommon_srv_SRCS
 	string.c
 	username.c
 	wait_error.c
+	controldata_utils.c
+	config_info.c
 )
 
 set(pgcommon_SRCS
