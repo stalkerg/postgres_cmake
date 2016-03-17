@@ -96,12 +96,39 @@ add_custom_command(
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${dynloader_H} ${PROJECT_SOURCE_DIR}/src/include/dynloader.h
 )
 
+#Need for bin/pg_xlogdump
+set(access_rmgrdesc_SRC
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/brindesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/clogdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/committsdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/dbasedesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/gindesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/gistdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/hashdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/heapdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/mxactdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/nbtdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/relmapdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/replorigindesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/seqdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/smgrdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/spgdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/standbydesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/tblspcdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/xactdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/xlogdesc.c
+)
 
+set(rmgrdesc_SRC
+	${access_rmgrdesc_SRC}
+	PARENT_SCOPE
+)
 
 set(access_SRCS
 	${gen_fmgrtab_output}
 	${gen_probe_output}
 	${PROJECT_SOURCE_DIR}/src/include/dynloader.h
+	${access_rmgrdesc_SRC}
 
 	access/brin/brin.c
 	access/brin/brin_pageops.c
@@ -181,26 +208,6 @@ set(access_SRCS
 	access/nbtree/nbtsort.c
 	access/nbtree/nbtxlog.c
 	access/nbtree/nbtvalidate.c
-
-	access/rmgrdesc/brindesc.c
-	access/rmgrdesc/clogdesc.c
-	access/rmgrdesc/committsdesc.c
-	access/rmgrdesc/dbasedesc.c
-	access/rmgrdesc/gindesc.c
-	access/rmgrdesc/gistdesc.c
-	access/rmgrdesc/hashdesc.c
-	access/rmgrdesc/heapdesc.c
-	access/rmgrdesc/mxactdesc.c
-	access/rmgrdesc/nbtdesc.c
-	access/rmgrdesc/relmapdesc.c
-	access/rmgrdesc/replorigindesc.c
-	access/rmgrdesc/seqdesc.c
-	access/rmgrdesc/smgrdesc.c
-	access/rmgrdesc/spgdesc.c
-	access/rmgrdesc/standbydesc.c
-	access/rmgrdesc/tblspcdesc.c
-	access/rmgrdesc/xactdesc.c
-	access/rmgrdesc/xlogdesc.c
 
 	access/spgist/spgutils.c
 	access/spgist/spginsert.c
