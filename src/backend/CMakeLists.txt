@@ -631,8 +631,6 @@ set(utils_SRCS
 	utils/mb/wstrncmp.c
 )
 
-
-
 set(nodes_SRCS
 	nodes/nodeFuncs.c
 	nodes/nodes.c

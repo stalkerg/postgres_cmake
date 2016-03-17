@@ -18,7 +18,6 @@ set(pgcommon_SRCS
 	restricted_token.c
 )
 
-
 add_library(pgcommon_srv STATIC ${pgcommon_srv_SRCS})
 add_library(pgcommon STATIC ${pgcommon_SRCS})
 
