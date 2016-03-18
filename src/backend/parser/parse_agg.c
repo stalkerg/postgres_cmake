@@ -15,11 +15,12 @@
 #include "postgres.h"
 
 #include "catalog/pg_aggregate.h"
-#include "catalog/pg_constraint.h"
+#include "catalog/pg_constraint_fn.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/tlist.h"
+#include "optimizer/var.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
@@ -1925,6 +1926,42 @@ build_aggregate_transfn_expr(Oid *agg_input_types,
 		else
 			*invtransfnexpr = NULL;
 	}
+}
+
+/*
+ * Like build_aggregate_transfn_expr, but creates an expression tree for the
+ * combine function of an aggregate, rather than the transition function.
+ */
+void
+build_aggregate_combinefn_expr(Oid agg_state_type,
+							   Oid agg_input_collation,
+							   Oid combinefn_oid,
+							   Expr **combinefnexpr)
+{
+	Param	   *argp;
+	List	   *args;
+	FuncExpr   *fexpr;
+
+	/* Build arg list to use in the combinefn FuncExpr node. */
+	argp = makeNode(Param);
+	argp->paramkind = PARAM_EXEC;
+	argp->paramid = -1;
+	argp->paramtype = agg_state_type;
+	argp->paramtypmod = -1;
+	argp->paramcollid = agg_input_collation;
+	argp->location = -1;
+
+	/* transition state type is arg 1 and 2 */
+	args = list_make2(argp, argp);
+
+	fexpr = makeFuncExpr(combinefn_oid,
+						 agg_state_type,
+						 args,
+						 InvalidOid,
+						 agg_input_collation,
+						 COERCE_EXPLICIT_CALL);
+	fexpr->funcvariadic = false;
+	*combinefnexpr = (Expr *) fexpr;
 }
 
 /*

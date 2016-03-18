@@ -379,6 +379,19 @@ static const struct config_enum_entry huge_pages_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry force_parallel_mode_options[] = {
+	{"off", FORCE_PARALLEL_OFF, false},
+	{"on", FORCE_PARALLEL_ON, false},
+	{"regress", FORCE_PARALLEL_REGRESS, false},
+	{"true", FORCE_PARALLEL_ON, true},
+	{"false", FORCE_PARALLEL_OFF, true},
+	{"yes", FORCE_PARALLEL_ON, true},
+	{"no", FORCE_PARALLEL_OFF, true},
+	{"1", FORCE_PARALLEL_ON, true},
+	{"0", FORCE_PARALLEL_OFF, true},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -863,6 +876,7 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
 			gettext_noop("Enables genetic query optimization."),
@@ -1618,6 +1632,26 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"syslog_sequence_numbers", PGC_SIGHUP, LOGGING_WHERE,
+			gettext_noop("Add sequence number to syslog messags to avoid duplicate suppression."),
+			NULL
+		},
+		&syslog_sequence_numbers,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"syslog_split_messages", PGC_SIGHUP, LOGGING_WHERE,
+			gettext_noop("Split messages sent to syslog by lines and to fit into 1024 bytes."),
+			NULL
+		},
+		&syslog_split_messages,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -2052,6 +2086,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"idle_in_transaction_session_timeout", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum allowed duration of any idling transaction."),
+			gettext_noop("A value of 0 turns off the timeout."),
+			GUC_UNIT_MS
+		},
+		&IdleInTransactionSessionTimeout,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"vacuum_freeze_min_age", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Minimum age at which VACUUM should freeze a table row."),
 			NULL
@@ -2221,12 +2266,23 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"wal_writer_delay", PGC_SIGHUP, WAL_SETTINGS,
-			gettext_noop("WAL writer sleep time between WAL flushes."),
+			gettext_noop("Time between WAL flushes performed in the WAL writer."),
 			NULL,
 			GUC_UNIT_MS
 		},
 		&WalWriterDelay,
 		200, 1, 10000,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"wal_writer_flush_after", PGC_SIGHUP, WAL_SETTINGS,
+			gettext_noop("Amount of WAL written out by WAL writer triggering a flush."),
+			NULL,
+			GUC_UNIT_XBLOCKS
+		},
+		&WalWriterFlushAfter,
+		128, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -2357,6 +2413,42 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, 0,
 #endif
 		check_effective_io_concurrency, assign_effective_io_concurrency, NULL
+	},
+
+	{
+		{"checkpoint_flush_after", PGC_SIGHUP, RESOURCES_ASYNCHRONOUS,
+			gettext_noop("Number of pages after which previously performed writes are flushed to disk."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&checkpoint_flush_after,
+		/* see bufmgr.h: OS dependent default */
+		DEFAULT_CHECKPOINT_FLUSH_AFTER, 0, WRITEBACK_MAX_PENDING_FLUSHES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"backend_flush_after", PGC_USERSET, WAL_CHECKPOINTS,
+			gettext_noop("Number of pages after which previously performed writes are flushed to disk."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&backend_flush_after,
+		/* see bufmgr.h: OS dependent default */
+		DEFAULT_BACKEND_FLUSH_AFTER, 0, WRITEBACK_MAX_PENDING_FLUSHES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"bgwriter_flush_after", PGC_SIGHUP, WAL_CHECKPOINTS,
+			gettext_noop("Number of pages after which previously performed writes are flushed to disk."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&bgwriter_flush_after,
+		/* see bufmgr.h: 16 on Linux, 0 otherwise */
+		DEFAULT_BGWRITER_FLUSH_AFTER, 0, WRITEBACK_MAX_PENDING_FLUSHES,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3672,6 +3764,16 @@ static struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"force_parallel_mode", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Forces use of parallel query facilities."),
+			gettext_noop("If possible, run query using a parallel worker and with parallel restrictions.")
+		},
+		&force_parallel_mode,
+		FORCE_PARALLEL_OFF, force_parallel_mode_options,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -4463,6 +4565,17 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	else
 		configdir = make_absolute_path(getenv("PGDATA"));
 
+	if (configdir && stat(configdir, &stat_buf) != 0)
+	{
+		write_stderr("%s: could not access directory \"%s\": %s\n",
+					 progname,
+					 configdir,
+					 strerror(errno));
+		if (errno == ENOENT)
+			write_stderr("Run initdb or pg_basebackup to initialize a PostgreSQL data directory.\n");
+		return false;
+	}
+
 	/*
 	 * Find the configuration file: if config_file was specified on the
 	 * command line, use it, else use configdir/postgresql.conf.  In any case
@@ -4498,7 +4611,7 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	 */
 	if (stat(ConfigFileName, &stat_buf) != 0)
 	{
-		write_stderr("%s cannot access the server configuration file \"%s\": %s\n",
+		write_stderr("%s: could not access the server configuration file \"%s\": %s\n",
 					 progname, ConfigFileName, strerror(errno));
 		free(configdir);
 		return false;
@@ -6991,11 +7104,7 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 		 * at worst it can lose the parameters set by last ALTER SYSTEM
 		 * command.
 		 */
-		if (rename(AutoConfTmpFileName, AutoConfFileName) < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not rename file \"%s\" to \"%s\": %m",
-							AutoConfTmpFileName, AutoConfFileName)));
+		durable_rename(AutoConfTmpFileName, AutoConfFileName, ERROR);
 	}
 	PG_CATCH();
 	{
@@ -7252,6 +7361,17 @@ init_custom_variable(const char *name,
 	if (context == PGC_POSTMASTER &&
 		!process_shared_preload_libraries_in_progress)
 		elog(FATAL, "cannot create PGC_POSTMASTER variables after startup");
+
+	/*
+	 * Before pljava commit 398f3b876ed402bdaec8bc804f29e2be95c75139
+	 * (2015-12-15), two of that module's PGC_USERSET variables facilitated
+	 * trivial escalation to superuser privileges.  Restrict the variables to
+	 * protect sites that have yet to upgrade pljava.
+	 */
+	if (context == PGC_USERSET &&
+		(strcmp(name, "pljava.classpath") == 0 ||
+		 strcmp(name, "pljava.vmoptions") == 0))
+		context = PGC_SUSET;
 
 	gen = (struct config_generic *) guc_malloc(ERROR, sz);
 	memset(gen, 0, sz);

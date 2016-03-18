@@ -12,6 +12,7 @@
 #ifndef FDWAPI_H
 #define FDWAPI_H
 
+#include "access/parallel.h"
 #include "nodes/execnodes.h"
 #include "nodes/relation.h"
 
@@ -57,6 +58,9 @@ typedef void (*GetForeignJoinPaths_function) (PlannerInfo *root,
 														RelOptInfo *innerrel,
 														  JoinType jointype,
 												   JoinPathExtraData *extra);
+
+typedef void (*GetForeignUpperPaths_function) (PlannerInfo *root,
+											   RelOptInfo *scan_join_rel);
 
 typedef void (*AddForeignUpdateTargets_function) (Query *parsetree,
 												   RangeTblEntry *target_rte,
@@ -122,6 +126,18 @@ typedef bool (*AnalyzeForeignTable_function) (Relation relation,
 typedef List *(*ImportForeignSchema_function) (ImportForeignSchemaStmt *stmt,
 														   Oid serverOid);
 
+typedef Size (*EstimateDSMForeignScan_function) (ForeignScanState *node,
+												ParallelContext *pcxt);
+typedef void (*InitializeDSMForeignScan_function) (ForeignScanState *node,
+												   ParallelContext *pcxt,
+												   void *coordinate);
+typedef void (*InitializeWorkerForeignScan_function) (ForeignScanState *node,
+													  shm_toc *toc,
+													  void *coordinate);
+typedef bool (*IsForeignScanParallelSafe_function) (PlannerInfo *root,
+															 RelOptInfo *rel,
+														 RangeTblEntry *rte);
+
 /*
  * FdwRoutine is the struct returned by a foreign-data wrapper's handler
  * function.  It provides pointers to the callback functions needed by the
@@ -153,6 +169,9 @@ typedef struct FdwRoutine
 	/* Functions for remote-join planning */
 	GetForeignJoinPaths_function GetForeignJoinPaths;
 
+	/* Functions for remote upper-relation (post scan/join) planning */
+	GetForeignUpperPaths_function GetForeignUpperPaths;
+
 	/* Functions for updating foreign tables */
 	AddForeignUpdateTargets_function AddForeignUpdateTargets;
 	PlanForeignModify_function PlanForeignModify;
@@ -177,6 +196,12 @@ typedef struct FdwRoutine
 
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	ImportForeignSchema_function ImportForeignSchema;
+
+	/* Support functions for parallelism under Gather node */
+	IsForeignScanParallelSafe_function IsForeignScanParallelSafe;
+	EstimateDSMForeignScan_function EstimateDSMForeignScan;
+	InitializeDSMForeignScan_function InitializeDSMForeignScan;
+	InitializeWorkerForeignScan_function InitializeWorkerForeignScan;
 } FdwRoutine;
 
 
@@ -188,5 +213,6 @@ extern FdwRoutine *GetFdwRoutineByRelId(Oid relid);
 extern FdwRoutine *GetFdwRoutineForRelation(Relation relation, bool makecopy);
 extern bool IsImportableForeignTable(const char *tablename,
 						 ImportForeignSchemaStmt *stmt);
+extern Path *GetExistingLocalJoinPath(RelOptInfo *joinrel);
 
 #endif   /* FDWAPI_H */

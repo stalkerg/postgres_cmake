@@ -73,6 +73,7 @@ typedef struct PlannedStmt
 	bool		hasRowSecurity; /* row security applied? */
 
 	bool		parallelModeNeeded; /* parallel mode required to execute? */
+	bool		hasForeignJoin;	/* Plan has a pushed down foreign join */
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -713,21 +714,17 @@ typedef struct Group
  * we are using the Agg node to implement hash-based grouping.)
  * ---------------
  */
-typedef enum AggStrategy
-{
-	AGG_PLAIN,					/* simple agg across all input rows */
-	AGG_SORTED,					/* grouped agg, input must be sorted */
-	AGG_HASHED					/* grouped agg, use internal hashtable */
-} AggStrategy;
-
 typedef struct Agg
 {
 	Plan		plan;
-	AggStrategy aggstrategy;
+	AggStrategy aggstrategy;	/* basic strategy, see nodes.h */
+	bool		combineStates;	/* input tuples contain transition states */
+	bool		finalizeAggs;	/* should we call the finalfn on agg states? */
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
 	Oid		   *grpOperators;	/* equality operators to compare with */
 	long		numGroups;		/* estimated number of groups in input */
+	/* Note: the planner only provides numGroups in AGG_HASHED case */
 	List	   *groupingSets;	/* grouping sets to use */
 	List	   *chain;			/* chained Agg/Sort nodes */
 } Agg;
@@ -772,6 +769,7 @@ typedef struct Gather
 	Plan		plan;
 	int			num_workers;
 	bool		single_copy;
+	bool		invisible;		/* suppress EXPLAIN display (for testing)? */
 } Gather;
 
 /* ----------------
@@ -798,25 +796,11 @@ typedef struct Hash
  *		setop node
  * ----------------
  */
-typedef enum SetOpCmd
-{
-	SETOPCMD_INTERSECT,
-	SETOPCMD_INTERSECT_ALL,
-	SETOPCMD_EXCEPT,
-	SETOPCMD_EXCEPT_ALL
-} SetOpCmd;
-
-typedef enum SetOpStrategy
-{
-	SETOP_SORTED,				/* input must be sorted */
-	SETOP_HASHED				/* use internal hashtable */
-} SetOpStrategy;
-
 typedef struct SetOp
 {
 	Plan		plan;
-	SetOpCmd	cmd;			/* what to do */
-	SetOpStrategy strategy;		/* how to do it */
+	SetOpCmd	cmd;			/* what to do, see nodes.h */
+	SetOpStrategy strategy;		/* how to do it, see nodes.h */
 	int			numCols;		/* number of columns to check for
 								 * duplicate-ness */
 	AttrNumber *dupColIdx;		/* their indexes in the target list */

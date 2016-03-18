@@ -32,7 +32,7 @@ if(NOT PGBINDIR)
 endif(NOT PGBINDIR)
 
 if(NOT PGSHAREDIR)
-	set(PGSHAREDIR "${CMAKE_INSTALL_PREFIX}/share")
+	set(PGSHAREDIR "${CMAKE_INSTALL_PREFIX}/share/postgresql")
 endif(NOT PGSHAREDIR)
 
 if(NOT SYSCONFDIR)
@@ -148,6 +148,7 @@ check_function_exists(wcstombs HAVE_WCSTOMBS)
 check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
 
 set(CMAKE_MACOSX_RPATH 1)
+#set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 if(MSVC)
 	check_function_exists(_fseeki64 HAVE_FSEEKO)
@@ -203,6 +204,8 @@ option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
 if(WITH_READLINE AND NOT MSVC)
 	find_package(Readline)
 	if(READLINE_FOUND)
+		#Sometimes for redline need curses
+		find_package(Curses)
 		check_include_files("stdio.h;readline.h" HAVE_READLINE_H)
 		check_include_files("stdio.h;history.h" HAVE_HISTORY_H)
 		check_include_files("stdio.h;readline/history.h" HAVE_READLINE_HISTORY_H)
@@ -210,7 +213,7 @@ if(WITH_READLINE AND NOT MSVC)
 		check_include_files("stdio.h;editline/history.h" HAVE_EDITLINE_HISTORY_H)
 		check_include_files("stdio.h;editline/readline.h" HAVE_EDITLINE_READLINE_H)
 
-		set(CMAKE_REQUIRED_LIBRARIES ${READLINE_LIBRARY})
+		set(CMAKE_REQUIRED_LIBRARIES ${READLINE_LIBRARY} ${CURSES_LIBRARIES})
 		check_function_exists(rl_completion_matches HAVE_RL_COMPLETION_MATCHES)
 		check_function_exists(rl_filename_completion_function HAVE_RL_FILENAME_COMPLETION_FUNCTION)
 	endif(READLINE_FOUND)
@@ -244,6 +247,10 @@ check_type_size("void *" VOID_POINTER_SIZE)
 check_type_size("long int" LONG_INT_SIZE)
 check_type_size("long" SIZEOF_LONG)
 check_type_size("size_t" SIZEOF_SIZE_T)
+check_type_size(__int128 PG_INT128_TYPE)
+if(PG_INT128_TYPE)
+	set(PG_INT128_TYPE __int128)
+endif()
 
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};locale.h")
 check_type_size("locale_t" HAVE_LOCALE_T)
@@ -639,5 +646,4 @@ configure_file(
 
 # Add sub-directories
 add_subdirectory(src)
-add_subdirectory(contrib/spi)
-#add_subdirectory(contrib)
+add_subdirectory(contrib)

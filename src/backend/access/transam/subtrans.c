@@ -44,7 +44,8 @@
  * 0xFFFFFFFF/SUBTRANS_XACTS_PER_PAGE, and segment numbering at
  * 0xFFFFFFFF/SUBTRANS_XACTS_PER_PAGE/SLRU_PAGES_PER_SEGMENT.  We need take no
  * explicit notice of that fact in this module, except when comparing segment
- * and page numbers in TruncateSUBTRANS (see SubTransPagePrecedes).
+ * and page numbers in TruncateSUBTRANS (see SubTransPagePrecedes) and zeroing
+ * them in StartupSUBTRANS.
  */
 
 /* We need four bytes per xact */
@@ -179,7 +180,8 @@ SUBTRANSShmemInit(void)
 {
 	SubTransCtl->PagePrecedes = SubTransPagePrecedes;
 	SimpleLruInit(SubTransCtl, "subtrans", NUM_SUBTRANS_BUFFERS, 0,
-				  SubtransControlLock, "pg_subtrans");
+				  SubtransControlLock, "pg_subtrans",
+				  LWTRANCHE_SUBTRANS_BUFFERS);
 	/* Override default assumption that writes should be fsync'd */
 	SubTransCtl->do_fsync = false;
 }
@@ -253,6 +255,9 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 	{
 		(void) ZeroSUBTRANSPage(startPage);
 		startPage++;
+		/* must account for wraparound */
+		if (startPage > TransactionIdToPage(MaxTransactionId))
+			startPage=0;
 	}
 	(void) ZeroSUBTRANSPage(startPage);
 

@@ -22,6 +22,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/pqmq.h"
 #include "miscadmin.h"
+#include "optimizer/planmain.h"
 #include "storage/ipc.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
@@ -432,6 +433,9 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 	if (pcxt->nworkers == 0)
 		return;
 
+	/* We need to be a lock group leader. */
+	BecomeLockGroupLeader();
+
 	/* If we do have workers, we'd better have a DSM segment. */
 	Assert(pcxt->seg != NULL);
 
@@ -516,7 +520,7 @@ WaitForParallelWorkersToFinish(ParallelContext *pcxt)
 		 */
 		CHECK_FOR_INTERRUPTS();
 
-		for (i = 0; i < pcxt->nworkers; ++i)
+		for (i = 0; i < pcxt->nworkers_launched; ++i)
 		{
 			if (pcxt->worker[i].error_mqh != NULL)
 			{
@@ -556,7 +560,7 @@ WaitForParallelWorkersToExit(ParallelContext *pcxt)
 	int			i;
 
 	/* Wait until the workers actually die. */
-	for (i = 0; i < pcxt->nworkers; ++i)
+	for (i = 0; i < pcxt->nworkers_launched; ++i)
 	{
 		BgwHandleStatus status;
 
@@ -606,7 +610,7 @@ DestroyParallelContext(ParallelContext *pcxt)
 	/* Kill each worker in turn, and forget their error queues. */
 	if (pcxt->worker != NULL)
 	{
-		for (i = 0; i < pcxt->nworkers; ++i)
+		for (i = 0; i < pcxt->nworkers_launched; ++i)
 		{
 			if (pcxt->worker[i].error_mqh != NULL)
 			{
@@ -704,7 +708,7 @@ HandleParallelMessages(void)
 		if (pcxt->worker == NULL)
 			continue;
 
-		for (i = 0; i < pcxt->nworkers; ++i)
+		for (i = 0; i < pcxt->nworkers_launched; ++i)
 		{
 			/*
 			 * Read as many messages as we can from each worker, but stop when
@@ -952,6 +956,19 @@ ParallelWorkerMain(Datum main_arg)
 	 */
 
 	/*
+	 * Join locking group.  We must do this before anything that could try
+	 * to acquire a heavyweight lock, because any heavyweight locks acquired
+	 * to this point could block either directly against the parallel group
+	 * leader or against some process which in turn waits for a lock that
+	 * conflicts with the parallel group leader, causing an undetected
+	 * deadlock.  (If we can't join the lock group, the leader has gone away,
+	 * so just exit quietly.)
+	 */
+	if (!BecomeLockGroupMember(fps->parallel_master_pgproc,
+							   fps->parallel_master_pid))
+		return;
+
+	/*
 	 * Load libraries that were loaded by original backend.  We want to do
 	 * this before restoring GUCs, because the libraries might define custom
 	 * variables.
@@ -1063,7 +1080,8 @@ ParallelExtensionTrampoline(dsm_segment *seg, shm_toc *toc)
 static void
 ParallelErrorContext(void *arg)
 {
-	errcontext("parallel worker, PID %d", *(int32 *) arg);
+	if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
+		errcontext("parallel worker, PID %d", *(int32 *) arg);
 }
 
 /*

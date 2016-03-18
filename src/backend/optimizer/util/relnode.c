@@ -14,6 +14,9 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
+#include "catalog/pg_class.h"
+#include "foreign/foreign.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -21,6 +24,7 @@
 #include "optimizer/placeholder.h"
 #include "optimizer/plancat.h"
 #include "optimizer/restrictinfo.h"
+#include "optimizer/tlist.h"
 #include "utils/hsearch.h"
 
 
@@ -99,14 +103,14 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->reloptkind = reloptkind;
 	rel->relids = bms_make_singleton(relid);
 	rel->rows = 0;
-	rel->width = 0;
 	/* cheap startup cost is interesting iff not all tuples to be retrieved */
 	rel->consider_startup = (root->tuple_fraction > 0);
 	rel->consider_param_startup = false;		/* might get changed later */
 	rel->consider_parallel = false;		/* might get changed later */
-	rel->reltargetlist = NIL;
+	rel->reltarget = create_empty_pathtarget();
 	rel->pathlist = NIL;
 	rel->ppilist = NIL;
+	rel->partial_pathlist = NIL;
 	rel->cheapest_startup_path = NULL;
 	rel->cheapest_total_path = NULL;
 	rel->cheapest_unique_path = NULL;
@@ -122,10 +126,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->pages = 0;
 	rel->tuples = 0;
 	rel->allvisfrac = 0;
-	rel->subplan = NULL;
 	rel->subroot = NULL;
 	rel->subplan_params = NIL;
 	rel->serverid = InvalidOid;
+	rel->umid = InvalidOid;
 	rel->fdwroutine = NULL;
 	rel->fdw_private = NULL;
 	rel->baserestrictinfo = NIL;
@@ -164,6 +168,26 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 				 (int) rte->rtekind);
 			break;
 	}
+
+	/* For foreign tables get the user mapping */
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+	{
+		/*
+		 * This should match what ExecCheckRTEPerms() does.
+		 *
+		 * Note that if the plan ends up depending on the user OID in any
+		 * way - e.g. if it depends on the computed user mapping OID - we must
+		 * ensure that it gets invalidated in the case of a user OID change.
+		 * See RevalidateCachedQuery and more generally the hasForeignJoin
+		 * flags in PlannerGlobal and PlannedStmt.
+		 */
+		Oid		userid;
+
+		userid = OidIsValid(rte->checkAsUser) ? rte->checkAsUser : GetUserId();
+		rel->umid = GetUserMappingId(userid, rel->serverid);
+	}
+	else
+		rel->umid = InvalidOid;
 
 	/* Save the finished struct in the query's simple_rel_array */
 	root->simple_rel_array[relid] = rel;
@@ -362,14 +386,14 @@ build_join_rel(PlannerInfo *root,
 	joinrel->reloptkind = RELOPT_JOINREL;
 	joinrel->relids = bms_copy(joinrelids);
 	joinrel->rows = 0;
-	joinrel->width = 0;
 	/* cheap startup cost is interesting iff not all tuples to be retrieved */
 	joinrel->consider_startup = (root->tuple_fraction > 0);
 	joinrel->consider_param_startup = false;
 	joinrel->consider_parallel = false;
-	joinrel->reltargetlist = NIL;
+	joinrel->reltarget = create_empty_pathtarget();
 	joinrel->pathlist = NIL;
 	joinrel->ppilist = NIL;
+	joinrel->partial_pathlist = NIL;
 	joinrel->cheapest_startup_path = NULL;
 	joinrel->cheapest_total_path = NULL;
 	joinrel->cheapest_unique_path = NULL;
@@ -392,10 +416,10 @@ build_join_rel(PlannerInfo *root,
 	joinrel->pages = 0;
 	joinrel->tuples = 0;
 	joinrel->allvisfrac = 0;
-	joinrel->subplan = NULL;
 	joinrel->subroot = NULL;
 	joinrel->subplan_params = NIL;
 	joinrel->serverid = InvalidOid;
+	joinrel->umid = InvalidOid;
 	joinrel->fdwroutine = NULL;
 	joinrel->fdw_private = NULL;
 	joinrel->baserestrictinfo = NIL;
@@ -406,12 +430,19 @@ build_join_rel(PlannerInfo *root,
 
 	/*
 	 * Set up foreign-join fields if outer and inner relation are foreign
-	 * tables (or joins) belonging to the same server.
+	 * tables (or joins) belonging to the same server and using the same
+	 * user mapping.
+	 *
+	 * Otherwise those fields are left invalid, so FDW API will not be called
+	 * for the join relation.
 	 */
 	if (OidIsValid(outer_rel->serverid) &&
-		inner_rel->serverid == outer_rel->serverid)
+		inner_rel->serverid == outer_rel->serverid &&
+		inner_rel->umid == outer_rel->umid)
 	{
+		Assert(OidIsValid(outer_rel->umid));
 		joinrel->serverid = outer_rel->serverid;
+		joinrel->umid = outer_rel->umid;
 		joinrel->fdwroutine = outer_rel->fdwroutine;
 	}
 
@@ -425,7 +456,7 @@ build_join_rel(PlannerInfo *root,
 	 */
 	build_joinrel_tlist(root, joinrel, outer_rel);
 	build_joinrel_tlist(root, joinrel, inner_rel);
-	add_placeholders_to_joinrel(root, joinrel);
+	add_placeholders_to_joinrel(root, joinrel, outer_rel, inner_rel);
 
 	/*
 	 * add_placeholders_to_joinrel also took care of adding the ph_lateral
@@ -470,7 +501,7 @@ build_join_rel(PlannerInfo *root,
 	 * level.
 	 *
 	 * Note that if there are more than two rels in this relation, they could
-	 * be divided between inner_rel and outer_rel in any arbitary way.  We
+	 * be divided between inner_rel and outer_rel in any arbitrary way.  We
 	 * assume this doesn't matter, because we should hit all the same baserels
 	 * and joinclauses while building up to this joinrel no matter which we
 	 * take; therefore, we should make the same decision here however we get
@@ -575,7 +606,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 	Relids		relids = joinrel->relids;
 	ListCell   *vars;
 
-	foreach(vars, input_rel->reltargetlist)
+	foreach(vars, input_rel->reltarget->exprs)
 	{
 		Var		   *var = (Var *) lfirst(vars);
 		RelOptInfo *baserel;
@@ -594,7 +625,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		 * rels, which will never be seen here.)
 		 */
 		if (!IsA(var, Var))
-			elog(ERROR, "unexpected node type in reltargetlist: %d",
+			elog(ERROR, "unexpected node type in rel targetlist: %d",
 				 (int) nodeTag(var));
 
 		/* Get the Var's original base rel */
@@ -605,8 +636,9 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		if (bms_nonempty_difference(baserel->attr_needed[ndx], relids))
 		{
 			/* Yup, add it to the output */
-			joinrel->reltargetlist = lappend(joinrel->reltargetlist, var);
-			joinrel->width += baserel->attr_widths[ndx];
+			joinrel->reltarget->exprs = lappend(joinrel->reltarget->exprs, var);
+			/* Vars have cost zero, so no need to adjust reltarget->cost */
+			joinrel->reltarget->width += baserel->attr_widths[ndx];
 		}
 	}
 }
@@ -792,12 +824,68 @@ build_empty_join_rel(PlannerInfo *root)
 	joinrel->reloptkind = RELOPT_JOINREL;
 	joinrel->relids = NULL;		/* empty set */
 	joinrel->rows = 1;			/* we produce one row for such cases */
-	joinrel->width = 0;			/* it contains no Vars */
 	joinrel->rtekind = RTE_JOIN;
+	joinrel->reltarget = create_empty_pathtarget();
 
 	root->join_rel_list = lappend(root->join_rel_list, joinrel);
 
 	return joinrel;
+}
+
+
+/*
+ * fetch_upper_rel
+ *		Build a RelOptInfo describing some post-scan/join query processing,
+ *		or return a pre-existing one if somebody already built it.
+ *
+ * An "upper" relation is identified by an UpperRelationKind and a Relids set.
+ * The meaning of the Relids set is not specified here, and very likely will
+ * vary for different relation kinds.
+ *
+ * Most of the fields in an upper-level RelOptInfo are not used and are not
+ * set here (though makeNode should ensure they're zeroes).  We basically only
+ * care about fields that are of interest to add_path() and set_cheapest().
+ */
+RelOptInfo *
+fetch_upper_rel(PlannerInfo *root, UpperRelationKind kind, Relids relids)
+{
+	RelOptInfo *upperrel;
+	ListCell   *lc;
+
+	/*
+	 * For the moment, our indexing data structure is just a List for each
+	 * relation kind.  If we ever get so many of one kind that this stops
+	 * working well, we can improve it.  No code outside this function should
+	 * assume anything about how to find a particular upperrel.
+	 */
+
+	/* If we already made this upperrel for the query, return it */
+	foreach(lc, root->upper_rels[kind])
+	{
+		upperrel = (RelOptInfo *) lfirst(lc);
+
+		if (bms_equal(upperrel->relids, relids))
+			return upperrel;
+	}
+
+	upperrel = makeNode(RelOptInfo);
+	upperrel->reloptkind = RELOPT_UPPER_REL;
+	upperrel->relids = bms_copy(relids);
+
+	/* cheap startup cost is interesting iff not all tuples to be retrieved */
+	upperrel->consider_startup = (root->tuple_fraction > 0);
+	upperrel->consider_param_startup = false;
+	upperrel->consider_parallel = false;		/* might get changed later */
+	upperrel->reltarget = create_empty_pathtarget();
+	upperrel->pathlist = NIL;
+	upperrel->cheapest_startup_path = NULL;
+	upperrel->cheapest_total_path = NULL;
+	upperrel->cheapest_unique_path = NULL;
+	upperrel->cheapest_parameterized_paths = NIL;
+
+	root->upper_rels[kind] = lappend(root->upper_rels[kind], upperrel);
+
+	return upperrel;
 }
 
 

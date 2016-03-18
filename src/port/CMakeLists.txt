@@ -71,5 +71,9 @@ add_library(port STATIC ${port_SRCS})
 add_dependencies(port_srv gen_errorcodes)
 add_dependencies(port gen_errorcodes)
 
+# because port used in shared libraries
+set_property(TARGET port PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+
 target_compile_definitions(port PRIVATE -DFRONTEND)
 set_source_files_properties(thread.c PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})
+

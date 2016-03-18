@@ -106,6 +106,8 @@ int			Log_error_verbosity = PGERROR_VERBOSE;
 char	   *Log_line_prefix = NULL;		/* format for extra log line info */
 int			Log_destination = LOG_DESTINATION_STDERR;
 char	   *Log_destination_string = NULL;
+bool		syslog_sequence_numbers = true;
+bool		syslog_split_messages = true;
 
 #ifdef HAVE_SYSLOG
 
@@ -801,6 +803,7 @@ errmsg(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
+	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -830,6 +833,7 @@ errmsg_internal(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
+	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, false);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -853,6 +857,7 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
+	edata->message_id = fmt_singular;
 	EVALUATE_MESSAGE_PLURAL(edata->domain, message, false);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1361,6 +1366,7 @@ elog_finish(int elevel, const char *fmt,...)
 	recursion_depth++;
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
+	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, false);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1420,6 +1426,7 @@ format_elog_string(const char *fmt,...)
 
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
+	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1458,6 +1465,11 @@ EmitErrorReport(void)
 	 * where it would have much less information available.  emit_log_hook is
 	 * intended for custom log filtering and custom log message transmission
 	 * mechanisms.
+	 *
+	 * The log hook has access to both the translated and original English
+	 * error message text, which is passed through to allow it to be used
+	 * as a message identifier. Note that the original text is not available
+	 * for detail, detail_log, hint and context text elements.
 	 */
 	if (edata->output_to_server && emit_log_hook)
 		(*emit_log_hook) (edata);
@@ -1955,7 +1967,7 @@ write_syslog(int level, const char *line)
 	 */
 	len = strlen(line);
 	nlpos = strchr(line, '\n');
-	if (len > PG_SYSLOG_LIMIT || nlpos != NULL)
+	if (syslog_split_messages && (len > PG_SYSLOG_LIMIT || nlpos != NULL))
 	{
 		int			chunk_nr = 0;
 
@@ -2008,7 +2020,11 @@ write_syslog(int level, const char *line)
 
 			chunk_nr++;
 
-			syslog(level, "[%lu-%d] %s", seq, chunk_nr, buf);
+			if (syslog_sequence_numbers)
+				syslog(level, "[%lu-%d] %s", seq, chunk_nr, buf);
+			else
+				syslog(level, "[%d] %s", chunk_nr, buf);
+
 			line += buflen;
 			len -= buflen;
 		}
@@ -2016,7 +2032,10 @@ write_syslog(int level, const char *line)
 	else
 	{
 		/* message short enough */
-		syslog(level, "[%lu] %s", seq, line);
+		if (syslog_sequence_numbers)
+			syslog(level, "[%lu] %s", seq, line);
+		else
+			syslog(level, "%s", line);
 	}
 }
 #endif   /* HAVE_SYSLOG */

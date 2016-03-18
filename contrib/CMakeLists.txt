@@ -1,0 +1,5 @@
+add_subdirectory(spi)
+add_subdirectory(adminpack)
+add_subdirectory(auth_delay)
+add_subdirectory(auto_explain)
+add_subdirectory(btree_gin)

@@ -192,6 +192,7 @@
 #wal_buffers = -1			# min 32kB, -1 sets based on shared_buffers
 					# (change requires restart)
 #wal_writer_delay = 200ms		# 1-10000 milliseconds
+#wal_writer_flush_after = 1MB		# 0 disables
 
 #commit_delay = 0			# range 0-100000, in microseconds
 #commit_siblings = 5			# range 1-1000
@@ -313,6 +314,7 @@
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
 					# JOIN clauses
+#force_parallel_mode = off
 
 
 #------------------------------------------------------------------------------
@@ -356,6 +358,8 @@
 # These are relevant when logging to syslog:
 #syslog_facility = 'LOCAL0'
 #syslog_ident = 'postgres'
+#syslog_sequence_numbers = on
+#syslog_split_messages = on
 
 # This is only relevant when logging to eventlog (win32):
 #event_source = 'PostgreSQL'
@@ -527,6 +531,7 @@
 #session_replication_role = 'origin'
 #statement_timeout = 0			# in milliseconds, 0 is disabled
 #lock_timeout = 0			# in milliseconds, 0 is disabled
+#idle_in_transaction_session_timeout = 0		# in milliseconds, 0 is disabled
 #vacuum_freeze_min_age = 50000000
 #vacuum_freeze_table_age = 150000000
 #vacuum_multixact_freeze_min_age = 5000000

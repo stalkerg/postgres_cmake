@@ -26,6 +26,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "pg_getopt.h"
+#include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/startup.h"
 #include "postmaster/walwriter.h"
@@ -204,7 +205,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 * process command arguments
 	 */
 
-	/* Set defaults, to be overriden by explicit options below */
+	/* Set defaults, to be overridden by explicit options below */
 	if (!IsUnderPostmaster)
 		InitializeGUCOptions();
 
@@ -534,6 +535,7 @@ static void
 ShutdownAuxiliaryProcess(int code, Datum arg)
 {
 	LWLockReleaseAll();
+	pgstat_report_wait_end();
 }
 
 /* ----------------------------------------------------------------

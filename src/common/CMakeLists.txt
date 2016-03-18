@@ -8,6 +8,8 @@ set(pgcommon_srv_SRCS
 	string.c
 	username.c
 	wait_error.c
+	controldata_utils.c
+	config_info.c
 )
 
 set(pgcommon_SRCS
@@ -15,7 +17,6 @@ set(pgcommon_SRCS
 	fe_memutils.c
 	restricted_token.c
 )
-
 
 add_library(pgcommon_srv STATIC ${pgcommon_srv_SRCS})
 add_library(pgcommon STATIC ${pgcommon_SRCS})

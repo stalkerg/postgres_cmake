@@ -9,14 +9,14 @@ program_help_ok('createlang');
 program_version_ok('createlang');
 program_options_handling_ok('createlang');
 
-my $node = get_new_node();
+my $node = get_new_node('main');
 $node->init;
 $node->start;
 
 $node->command_fails([ 'createlang', 'plpgsql' ],
 	'fails if language already exists');
 
-$node->psql('postgres', 'DROP EXTENSION plpgsql');
+$node->safe_psql('postgres', 'DROP EXTENSION plpgsql');
 $node->issues_sql_like(
 	[ 'createlang', 'plpgsql' ],
 	qr/statement: CREATE EXTENSION "plpgsql"/,

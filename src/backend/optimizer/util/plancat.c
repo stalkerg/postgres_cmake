@@ -27,6 +27,7 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
+#include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -163,6 +164,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			Oid			indexoid = lfirst_oid(l);
 			Relation	indexRelation;
 			Form_pg_index index;
+			IndexAmRoutine *amroutine;
 			IndexOptInfo *info;
 			int			ncolumns;
 			int			i;
@@ -223,13 +225,17 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			}
 
 			info->relam = indexRelation->rd_rel->relam;
-			info->amcostestimate = indexRelation->rd_am->amcostestimate;
-			info->amcanorderbyop = indexRelation->rd_am->amcanorderbyop;
-			info->amoptionalkey = indexRelation->rd_am->amoptionalkey;
-			info->amsearcharray = indexRelation->rd_am->amsearcharray;
-			info->amsearchnulls = indexRelation->rd_am->amsearchnulls;
-			info->amhasgettuple = OidIsValid(indexRelation->rd_am->amgettuple);
-			info->amhasgetbitmap = OidIsValid(indexRelation->rd_am->amgetbitmap);
+
+			/* We copy just the fields we need, not all of rd_amroutine */
+			amroutine = indexRelation->rd_amroutine;
+			info->amcanorderbyop = amroutine->amcanorderbyop;
+			info->amoptionalkey = amroutine->amoptionalkey;
+			info->amsearcharray = amroutine->amsearcharray;
+			info->amsearchnulls = amroutine->amsearchnulls;
+			info->amhasgettuple = (amroutine->amgettuple != NULL);
+			info->amhasgetbitmap = (amroutine->amgetbitmap != NULL);
+			info->amcostestimate = amroutine->amcostestimate;
+			Assert(info->amcostestimate != NULL);
 
 			/*
 			 * Fetch the ordering information for the index, if any.
@@ -240,7 +246,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				 * If it's a btree index, we can use its opfamily OIDs
 				 * directly as the sort ordering opfamily OIDs.
 				 */
-				Assert(indexRelation->rd_am->amcanorder);
+				Assert(amroutine->amcanorder);
 
 				info->sortopfamily = info->opfamily;
 				info->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
@@ -254,7 +260,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
-			else if (indexRelation->rd_am->amcanorder)
+			else if (amroutine->amcanorder)
 			{
 				/*
 				 * Otherwise, identify the corresponding btree opfamilies by
@@ -1136,7 +1142,27 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	List	   *safe_constraints;
 	ListCell   *lc;
 
-	/* Skip the test if constraint exclusion is disabled for the rel */
+	/*
+	 * Regardless of the setting of constraint_exclusion, detect
+	 * constant-FALSE-or-NULL restriction clauses.  Because const-folding will
+	 * reduce "anything AND FALSE" to just "FALSE", any such case should
+	 * result in exactly one baserestrictinfo entry.  This doesn't fire very
+	 * often, but it seems cheap enough to be worth doing anyway.  (Without
+	 * this, we'd miss some optimizations that 9.5 and earlier found via much
+	 * more roundabout methods.)
+	 */
+	if (list_length(rel->baserestrictinfo) == 1)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) linitial(rel->baserestrictinfo);
+		Expr	   *clause = rinfo->clause;
+
+		if (clause && IsA(clause, Const) &&
+			(((Const *) clause)->constisnull ||
+			 !DatumGetBool(((Const *) clause)->constvalue)))
+			return true;
+	}
+
+	/* Skip further tests if constraint exclusion is disabled for the rel */
 	if (constraint_exclusion == CONSTRAINT_EXCLUSION_OFF ||
 		(constraint_exclusion == CONSTRAINT_EXCLUSION_PARTITION &&
 		 !(rel->reloptkind == RELOPT_OTHER_MEMBER_REL ||

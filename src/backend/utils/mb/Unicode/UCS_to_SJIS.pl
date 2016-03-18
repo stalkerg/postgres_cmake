@@ -55,7 +55,7 @@ while (<FILE>)
 				&& ($code <= 0x879c)))
 		{
 			printf STDERR
-			  "Warning: duplicate UTF8 : UCS=0x%04x  SJIS=0x%04x\n", $ucs,
+			  "Warning: duplicate UTF8: UCS=0x%04x SJIS=0x%04x\n", $ucs,
 			  $code;
 			next;
 		}
@@ -65,10 +65,6 @@ while (<FILE>)
 }
 
 close(FILE);
-
-#
-# first, generate UTF8 --> SJIS table
-#
 
 $file = "utf8_to_sjis.map";
 open(FILE, "> $file") || die("cannot open $file");

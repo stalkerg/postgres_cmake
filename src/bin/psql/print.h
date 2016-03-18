@@ -152,7 +152,6 @@ typedef struct printQueryOpt
 {
 	printTableOpt topt;			/* the options above */
 	char	   *nullPrint;		/* how to print null entities */
-	bool		quote;			/* quote all values as much as possible */
 	char	   *title;			/* override title */
 	char	  **footers;		/* override footer (default is "(xx rows)") */
 	bool		translate_header;		/* do gettext on column headers */
@@ -164,7 +163,7 @@ typedef struct printQueryOpt
 
 extern const printTextFormat pg_asciiformat;
 extern const printTextFormat pg_asciiformat_old;
-extern const printTextFormat pg_utf8format;
+extern printTextFormat pg_utf8format;	/* ideally would be const, but... */
 
 
 extern void disable_sigpipe_trap(void);

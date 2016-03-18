@@ -9,7 +9,7 @@ program_help_ok('reindexdb');
 program_version_ok('reindexdb');
 program_options_handling_ok('reindexdb');
 
-my $node = get_new_node();
+my $node = get_new_node('main');
 $node->init;
 $node->start;
 
@@ -20,7 +20,7 @@ $node->issues_sql_like(
 	qr/statement: REINDEX DATABASE postgres;/,
 	'SQL REINDEX run');
 
-$node->psql('postgres',
+$node->safe_psql('postgres',
 	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a);');
 $node->issues_sql_like(
 	[ 'reindexdb', '-t', 'test1', 'postgres' ],

@@ -100,7 +100,7 @@ static relopt_int intRelOpts[] =
 			"fillfactor",
 			"Packs table pages only to this percentage",
 			RELOPT_KIND_HEAP,
-			AccessExclusiveLock
+			ShareUpdateExclusiveLock /* since it applies only to later inserts */
 		},
 		HEAP_DEFAULT_FILLFACTOR, HEAP_MIN_FILLFACTOR, 100
 	},
@@ -109,7 +109,7 @@ static relopt_int intRelOpts[] =
 			"fillfactor",
 			"Packs btree index pages only to this percentage",
 			RELOPT_KIND_BTREE,
-			AccessExclusiveLock
+			ShareUpdateExclusiveLock /* since it applies only to later inserts */
 		},
 		BTREE_DEFAULT_FILLFACTOR, BTREE_MIN_FILLFACTOR, 100
 	},
@@ -118,7 +118,7 @@ static relopt_int intRelOpts[] =
 			"fillfactor",
 			"Packs hash index pages only to this percentage",
 			RELOPT_KIND_HASH,
-			AccessExclusiveLock
+			ShareUpdateExclusiveLock /* since it applies only to later inserts */
 		},
 		HASH_DEFAULT_FILLFACTOR, HASH_MIN_FILLFACTOR, 100
 	},
@@ -127,7 +127,7 @@ static relopt_int intRelOpts[] =
 			"fillfactor",
 			"Packs gist index pages only to this percentage",
 			RELOPT_KIND_GIST,
-			AccessExclusiveLock
+			ShareUpdateExclusiveLock /* since it applies only to later inserts */
 		},
 		GIST_DEFAULT_FILLFACTOR, GIST_MIN_FILLFACTOR, 100
 	},
@@ -136,7 +136,7 @@ static relopt_int intRelOpts[] =
 			"fillfactor",
 			"Packs spgist index pages only to this percentage",
 			RELOPT_KIND_SPGIST,
-			AccessExclusiveLock
+			ShareUpdateExclusiveLock /* since it applies only to later inserts */
 		},
 		SPGIST_DEFAULT_FILLFACTOR, SPGIST_MIN_FILLFACTOR, 100
 	},
@@ -887,11 +887,13 @@ untransformRelOptions(Datum options)
  * other uses, consider grabbing the rd_options pointer from the relcache entry
  * instead.
  *
- * tupdesc is pg_class' tuple descriptor.  amoptions is the amoptions regproc
- * in the case of the tuple corresponding to an index, or InvalidOid otherwise.
+ * tupdesc is pg_class' tuple descriptor.  amoptions is a pointer to the index
+ * AM's options parser function in the case of a tuple corresponding to an
+ * index, or NULL otherwise.
  */
 bytea *
-extractRelOptions(HeapTuple tuple, TupleDesc tupdesc, Oid amoptions)
+extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
+				  amoptions_function amoptions)
 {
 	bytea	   *options;
 	bool		isnull;
@@ -1374,39 +1376,20 @@ heap_reloptions(char relkind, Datum reloptions, bool validate)
 /*
  * Parse options for indexes.
  *
- *	amoptions	Oid of option parser
+ *	amoptions	index AM's option parser function
  *	reloptions	options as text[] datum
  *	validate	error flag
  */
 bytea *
-index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
+index_reloptions(amoptions_function amoptions, Datum reloptions, bool validate)
 {
-	FmgrInfo	flinfo;
-	FunctionCallInfoData fcinfo;
-	Datum		result;
-
-	Assert(RegProcedureIsValid(amoptions));
+	Assert(amoptions != NULL);
 
 	/* Assume function is strict */
 	if (!PointerIsValid(DatumGetPointer(reloptions)))
 		return NULL;
 
-	/* Can't use OidFunctionCallN because we might get a NULL result */
-	fmgr_info(amoptions, &flinfo);
-
-	InitFunctionCallInfoData(fcinfo, &flinfo, 2, InvalidOid, NULL, NULL);
-
-	fcinfo.arg[0] = reloptions;
-	fcinfo.arg[1] = BoolGetDatum(validate);
-	fcinfo.argnull[0] = false;
-	fcinfo.argnull[1] = false;
-
-	result = FunctionCallInvoke(&fcinfo);
-
-	if (fcinfo.isnull || DatumGetPointer(result) == NULL)
-		return NULL;
-
-	return DatumGetByteaP(result);
+	return amoptions(reloptions, validate);
 }
 
 /*

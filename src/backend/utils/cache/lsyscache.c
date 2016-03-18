@@ -20,6 +20,7 @@
 #include "access/nbtree.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_collation.h"
@@ -1099,6 +1100,29 @@ get_opname(Oid opno)
 	}
 	else
 		return NULL;
+}
+
+/*
+ * get_op_rettype
+ *		Given operator oid, return the operator's result type.
+ */
+Oid
+get_op_rettype(Oid opno)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(OPEROID, ObjectIdGetDatum(opno));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_operator optup = (Form_pg_operator) GETSTRUCT(tp);
+		Oid			result;
+
+		result = optup->oprresult;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
 }
 
 /*

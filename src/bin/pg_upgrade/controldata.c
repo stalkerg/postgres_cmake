@@ -197,11 +197,23 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 			p++;				/* remove ':' char */
 			cluster->controldata.chkpnt_nxtepoch = str2uint(p);
 
-			p = strchr(p, '/');
+			/*
+			 * Delimiter changed from '/' to ':' in 9.6.  We don't test for
+			 * the catalog version of the change because the catalog version
+			 * is pulled from pg_controldata too, and it isn't worth adding
+			 * an order dependency for this --- we just check the string.
+			 */
+			if (strchr(p, '/') != NULL)
+				p = strchr(p, '/');
+			else if (GET_MAJOR_VERSION(cluster->major_version) >= 906)
+				p = strchr(p, ':');
+			else
+				p = NULL;
+
 			if (p == NULL || strlen(p) <= 1)
 				pg_fatal("%d: controldata retrieval problem\n", __LINE__);
 
-			p++;				/* remove '/' char */
+			p++;				/* remove '/' or ':' char */
 			cluster->controldata.chkpnt_nxtxid = str2uint(p);
 			got_xid = true;
 		}
@@ -539,7 +551,7 @@ check_control_data(ControlData *oldctrl,
 		pg_fatal("old and new pg_controldata block sizes are invalid or do not match\n");
 
 	if (oldctrl->largesz == 0 || oldctrl->largesz != newctrl->largesz)
-		pg_fatal("old and new pg_controldata maximum relation segement sizes are invalid or do not match\n");
+		pg_fatal("old and new pg_controldata maximum relation segment sizes are invalid or do not match\n");
 
 	if (oldctrl->walsz == 0 || oldctrl->walsz != newctrl->walsz)
 		pg_fatal("old and new pg_controldata WAL block sizes are invalid or do not match\n");
