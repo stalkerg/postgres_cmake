@@ -162,8 +162,8 @@ ginStepRight(Buffer buffer, Relation index, int lockmode)
 {
 	Buffer		nextbuffer;
 	Page		page = BufferGetPage(buffer);
-	bool		isLeaf = GinPageIsLeaf(page);
-	bool		isData = GinPageIsData(page);
+	uint8		isLeaf = GinPageIsLeaf(page);
+	uint8		isData = GinPageIsData(page);
 	BlockNumber blkno = GinPageGetOpaque(page)->rightlink;
 
 	nextbuffer = ReadBuffer(index, blkno);
