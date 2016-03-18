@@ -646,5 +646,4 @@ configure_file(
 
 # Add sub-directories
 add_subdirectory(src)
-add_subdirectory(contrib/spi)
-#add_subdirectory(contrib)
+add_subdirectory(contrib)
