@@ -233,7 +233,6 @@ endif()
 
 include(FuncAcceptArgtypes)
 include(CheckTypeAlignment)
-include(GenDef)
 check_type_alignment(double ALIGNOF_DOUBLE)
 check_type_alignment(int ALIGNOF_INT)
 check_type_alignment(long ALIGNOF_LONG)
@@ -601,6 +600,9 @@ set(WIN32_STACK_RLIMIT 4194304)
 if(WIN32)
 	add_definitions(-DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT})
 endif()
+
+include(GenDef)
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 # Need add sco and unixware?
 if(WIN32)

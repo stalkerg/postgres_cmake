@@ -8,9 +8,6 @@ target_link_libraries(${extension_name}
 	port
 )
 target_link_libraries(${extension_name} postgres)
-if (MSVC)
-	gen_def(${extension_name})
-endif()
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 install(TARGETS ${extension_name}

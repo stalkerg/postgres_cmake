@@ -7,7 +7,6 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-
 set(plpgsql_SRCS
 	pl_handler.c
 	pl_comp.c
@@ -22,7 +21,6 @@ add_library(plpgsql SHARED ${plpgsql_SRCS})
 target_link_libraries(plpgsql postgres)
 if (MSVC)
 	target_link_libraries(plpgsql port)
-	gen_def(plpgsql)
 endif()
 set_target_properties(plpgsql PROPERTIES PREFIX "")
 add_dependencies(plpgsql postgres)

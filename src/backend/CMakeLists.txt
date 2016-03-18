@@ -1005,10 +1005,7 @@ if(WIN32)
 endif()
 
 set_target_properties(postgres PROPERTIES ENABLE_EXPORTS 1)
-if(MSVC)
-	gen_def(postgres)
-endif()
-
+set_target_properties(postgres PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 #Realy need?
 add_custom_target(duplicate_oids
 	COMMAND ${PERL_EXECUTABLE} ./duplicate_oids
@@ -1022,6 +1019,7 @@ add_library(pqwalreceiver SHARED
 )
 target_link_libraries(pqwalreceiver pq)
 if (MSVC)
+	gen_def(postgres)
 	target_link_libraries(pqwalreceiver postgres)
 endif()
 

@@ -70,10 +70,6 @@ if(WIN32)
 	)
 endif()
 
-if(MSVC)
-	gen_def(pq)
-endif()
-
 if(USE_OPENSSL)
 	target_include_directories(pq PUBLIC ${OPENSSL_INCLUDE_DIR})
 endif()
