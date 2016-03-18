@@ -60,14 +60,23 @@ else()
 	)
 endif()
 
-
-set(pre_pg_regress_check
-	${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
-	--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
-	--temp-instance="tmp_check"
-	--encoding=UTF8
-	--no-locale
-)
+if(MSVC)
+	set(pre_pg_regress_check
+		${PGBINDIR}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
+		--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
+		--temp-instance="tmp_check"
+		--encoding=UTF8
+		--no-locale
+	)
+else(MSVC)
+	set(pre_pg_regress_check
+		${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
+		--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
+		--temp-instance="tmp_check"
+		--encoding=UTF8
+		--no-locale
+	)
+endif()
 
 set(pg_regress_check
 	${env_cmd}
@@ -102,6 +111,7 @@ add_custom_target(check
 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
+message(WARNING "${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}")
 add_custom_target(installcheck
 	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
 	DEPENDS tablespace-setup
