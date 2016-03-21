@@ -17,6 +17,7 @@ add_custom_command(
 
 add_custom_target(gen_errorcodes DEPENDS ${gen_errorcodes_output})
 
+add_subdirectory(include)
 add_subdirectory(port)
 add_subdirectory(common)
 add_subdirectory(interfaces/libpq)

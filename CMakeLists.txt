@@ -646,6 +646,15 @@ configure_file(
 	"${PROJECT_SOURCE_DIR}/src/port/pg_config_paths.h"
 )
 
+configure_file(
+	"${PROJECT_SOURCE_DIR}/PGXS.cmake.in"
+	"${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/PGXS.cmake"
+	@ONLY
+)
+
+install(FILES ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/PGXS.cmake
+		DESTINATION ${LIBDIR}/cmake)
+
 # Add sub-directories
 add_subdirectory(src)
 add_subdirectory(contrib)
