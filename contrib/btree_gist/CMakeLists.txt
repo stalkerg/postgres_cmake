@@ -24,11 +24,7 @@ add_library(${extension_name} SHARED
 	btree_bit.c
 	btree_numeric.c
 )
-target_link_libraries(${extension_name}
-	pq
-	port
-)
-target_link_libraries(${extension_name} postgres)
+target_link_libraries(${extension_name} ${contrib_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 install(TARGETS ${extension_name}
