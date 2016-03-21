@@ -25,3 +25,5 @@ add_dependencies(pgcommon_srv gen_errorcodes)
 add_dependencies(pgcommon gen_errorcodes)
 
 target_compile_definitions(pgcommon PRIVATE -DFRONTEND)
+# because port used in shared libraries
+set_property(TARGET pgcommon PROPERTY POSITION_INDEPENDENT_CODE TRUE)
