@@ -25,6 +25,10 @@ add_subdirectory(interfaces/libpq)
 add_subdirectory(backend)
 add_subdirectory(timezone)
 add_subdirectory(pl/plpgsql/src)
+if(PYTHONINTERP_FOUND AND PYTHONLIBS_FOUND)
+	add_subdirectory(pl/plpython)
+endif()
+
 add_subdirectory(test/regress)
 
 add_subdirectory(bin/initdb)

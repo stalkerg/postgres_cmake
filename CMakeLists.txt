@@ -109,6 +109,8 @@ find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
 find_package(OpenSSL)
+find_package(PythonInterp)
+find_package(PythonLibs)
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
