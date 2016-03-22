@@ -84,8 +84,8 @@
 #cmakedefine GETTIMEOFDAY_1ARG
 
 #cmakedefine HAVE_INT_TIMEZONE
-#cmakedefine HAVE_STRUCT_TM_TM_ZONE
-#cmakedefine HAVE_TM_ZONE
+#cmakedefine HAVE_STRUCT_TM_TM_ZONE 1
+#cmakedefine HAVE_TM_ZONE 1
 #cmakedefine HAVE_TZNAME
 
 #cmakedefine USE_NAMED_POSIX_SEMAPHORES
@@ -120,7 +120,7 @@
 
 #cmakedefine HAVE_IEEEFP_H
 
-#cmakedefine HAVE_WCHAR_H
+#cmakedefine HAVE_WCHAR_H 1
 
 #cmakedefine HAVE_WCTYPE_H
 
@@ -146,7 +146,7 @@
 
 #cmakedefine HAVE_STRUCT_ADDRINFO
 #cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE
-#cmakedefine HAVE_GETADDRINFO
+#cmakedefine HAVE_GETADDRINFO 1
 
 #cmakedefine HAVE_STRUCT_SOCKADDR_SA_LEN
 #cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY
@@ -167,15 +167,15 @@
 #cmakedefine HAVE_READLINE_READLINE_H
 #cmakedefine HAVE_EDITLINE_HISTORY_H
 #cmakedefine HAVE_EDITLINE_READLINE_H
-#cmakedefine HAVE_RL_COMPLETION_MATCHES
+#cmakedefine HAVE_RL_COMPLETION_MATCHES 1
 #cmakedefine HAVE_RL_FILENAME_COMPLETION_FUNCTION
-#cmakedefine HAVE_SYS_RESOURCE_H
-#cmakedefine HAVE_SYS_SELECT_H
-#cmakedefine HAVE_SYS_POLL_H
+#cmakedefine HAVE_SYS_RESOURCE_H 1
+#cmakedefine HAVE_SYS_SELECT_H 1
+#cmakedefine HAVE_SYS_POLL_H 1
 #cmakedefine HAVE_SYS_PSTAT_H
-#cmakedefine HAVE_LANGINFO_H
+#cmakedefine HAVE_LANGINFO_H 1
 #cmakedefine HAVE_DLD_H
-#cmakedefine HAVE_DLOPEN
+#cmakedefine HAVE_DLOPEN 1
 
 #ifdef GETTIMEOFDAY_1ARG
 #	define gettimeofday(a,b) gettimeofday(a)
@@ -195,7 +195,7 @@
 #define HAVE_DECL_SNPRINTF @HAVE_DECL_SNPRINTF@
 #define HAVE_DECL_VSNPRINTF @HAVE_DECL_VSNPRINTF@
 
-#cmakedefine HAVE_UNSETENV
+#cmakedefine HAVE_UNSETENV 1
 
 #cmakedefine HAVE_SRANDOM
 
@@ -206,7 +206,7 @@
 #cmakedefine HAVE_GETPEERUCRED
 
 /* Define if you have a function readline library */
-#cmakedefine HAVE_LIBREADLINE
+#cmakedefine HAVE_LIBREADLINE 1
 
 /* Define to 1 if you have the <ucred.h> header file. */
 #cmakedefine HAVE_UCRED_H
@@ -215,9 +215,9 @@
 #cmakedefine HAVE_SYS_UCRED_H
 
 /* Define to 1 if you have the <sys/un.h> header file. */
-#cmakedefine HAVE_SYS_UN_H
+#cmakedefine HAVE_SYS_UN_H 1
 
-#cmakedefine HAVE_SYMLINK
+#cmakedefine HAVE_SYMLINK 1
 
 #cmakedefine HAVE_SSL_GET_CURRENT_COMPRESSION
 #cmakedefine USE_OPENSSL
@@ -228,8 +228,8 @@
 #cmakedefine HAVE_SYS_SEM_H
 #cmakedefine HAVE_SYS_SHM_H
 
-#cmakedefine HAVE_SYS_STAT_H
-#cmakedefine HAVE_FDATASYNC
+#cmakedefine HAVE_SYS_STAT_H 1
+#cmakedefine HAVE_FDATASYNC 1
 
 #cmakedefine HAVE_FLS
 
@@ -243,11 +243,11 @@
 
 #cmakedefine HAVE_ISINF
 
-#cmakedefine HAVE_FSEEKO
+#cmakedefine HAVE_FSEEKO 1
 
 #cmakedefine HAVE_RINT
 
-#cmakedefine HAVE_MEMMOVE
+#cmakedefine HAVE_MEMMOVE 1
 
 #cmakedefine HAVE__GET_CPUID
 
