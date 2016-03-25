@@ -625,6 +625,9 @@ else(WIN32)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
 endif(WIN32)
 
+file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
+	INPUT ${pgos_include_SRCS})
+
 if(WIN32)
 	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32")
 endif()
