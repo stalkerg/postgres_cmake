@@ -946,6 +946,7 @@ set_source_files_properties(utils/sort/tuplesort.c
 	PROPERTIES OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c")
 
 set(postgres_SRCS
+	${storage_SRCS}
 	${access_SRCS}
 	${bootstrap_SRCS}
 	${commands_SRCS}
@@ -964,7 +965,6 @@ set(postgres_SRCS
 	${regex_SRCS}
 	${postmaster_SRCS}
 	${backend_port_SRCS}
-	${storage_SRCS}
 	${replication_SRCS}
 	${timezone_SRCS}
 	main/main.c
