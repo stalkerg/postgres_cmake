@@ -111,6 +111,7 @@ find_package(Threads)
 find_package(OpenSSL)
 find_package(PythonInterp)
 find_package(PythonLibs)
+find_package(SELinux)
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
