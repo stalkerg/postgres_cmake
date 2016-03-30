@@ -276,6 +276,11 @@
 
 #cmakedefine HAVE_UUID_E2FS
 
+#cmakedefine HAVE_LIBXML2
+
+/* Define to 1 if you have the `xslt' library (-lxslt). */
+#cmakedefine HAVE_LIBXSLT
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"

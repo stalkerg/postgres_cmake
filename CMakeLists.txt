@@ -112,6 +112,8 @@ find_package(OpenSSL)
 find_package(PythonInterp)
 find_package(PythonLibs)
 find_package(SELinux)
+find_package(LibXml2)
+find_package(LibXslt)
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
@@ -120,6 +122,14 @@ endif()
 
 if(NOT DL_LIBRARIES)
 	set(DL_LIBRARIES "")
+endif()
+
+if(LIBXML2_FOUND)
+	set(HAVE_LIBXML2 1)
+endif()
+
+if(LIBXSLT_FOUND)
+	set(HAVE_LIBXSLT 1)
 endif()
 
 check_symbol_exists(strlcpy "stdio.h;string.h" HAVE_DECL_STRLCPY)
