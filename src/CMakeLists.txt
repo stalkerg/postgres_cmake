@@ -31,6 +31,9 @@ endif()
 if(PERLLIBS_FOUND)
 	add_subdirectory(pl/plperl)
 endif()
+if(TCL_FOUND)
+	add_subdirectory(pl/tcl)
+endif()
 
 add_subdirectory(test/regress)
 
