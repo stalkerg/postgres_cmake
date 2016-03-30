@@ -626,6 +626,30 @@ else(WIN32)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
 endif(WIN32)
 
+set(WITH_UUID "OFF" CACHE STRING "type of uuid lib [bsd, e2fs, ossp]")
+if(WITH_UUID)
+	find_package(LibUUID)
+
+	if(WITH_UUID STREQUAL "bsd")
+		set(HAVE_UUID_BSD 1)
+		set(UUID_EXTRA_OBJS
+			${PROJECT_SOURCE_DIR}/contrib/pgcrypto/md5.c
+			${PROJECT_SOURCE_DIR}/contrib/pgcrypto/sha1.c
+		)
+	elseif(WITH_UUID STREQUAL "e2fs")
+		set(HAVE_UUID_E2FS 1)
+		set(UUID_EXTRA_OBJS
+			${PROJECT_SOURCE_DIR}/contrib/pgcrypto/md5.c
+			${PROJECT_SOURCE_DIR}/contrib/pgcrypto/sha1.c
+		)
+	elseif(WITH_UUID STREQUAL "ossp")
+		set(HAVE_UUID_OSSP 1)
+		set(UUID_EXTRA_OBJS "")
+	else()
+		message(WARNING "Not correct type of uuid lib:${WITH_UUID}")
+	endif()
+endif()
+
 file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
 	INPUT ${pgos_include_SRCS})
 

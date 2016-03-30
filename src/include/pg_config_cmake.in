@@ -270,6 +270,12 @@
 
 #cmakedefine HAVE__VA_ARGS
 
+#cmakedefine HAVE_UUID_OSSP
+
+#cmakedefine HAVE_UUID_BSD
+
+#cmakedefine HAVE_UUID_E2FS
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"

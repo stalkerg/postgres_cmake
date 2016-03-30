@@ -26,15 +26,7 @@
  */
 #define uuid_hash bsd_uuid_hash
 
-#ifdef HAVE_UUID_H
 #include <uuid.h>
-#endif
-#ifdef HAVE_OSSP_UUID_H
-#include <ossp/uuid.h>
-#endif
-#ifdef HAVE_UUID_UUID_H
-#include <uuid/uuid.h>
-#endif
 
 #undef uuid_hash
 

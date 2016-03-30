@@ -1,0 +1,18 @@
+include_directories("${PROJECT_SOURCE_DIR}/src/include")
+include_directories(${LIBUUID_INCLUDE_DIRS})
+include_directories("${PROJECT_SOURCE_DIR}/contrib/pgcrypto")
+
+set(extension_name uuid-ossp)
+
+add_library(${extension_name} SHARED ${extension_name}.c ${UUID_EXTRA_OBJS})
+target_link_libraries(${extension_name} ${contrib_libs} ${LIBUUID_LIBRARIES})
+set_target_properties(${extension_name} PROPERTIES PREFIX "")
+add_dependencies(${extension_name} postgres)
+install(TARGETS ${extension_name}
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})
+install(FILES
+	${extension_name}.control
+	${extension_name}--1.0.sql
+	${extension_name}--unpackaged--1.0.sql
+	DESTINATION ${PGSHAREDIR}/extension)
