@@ -28,6 +28,9 @@ add_subdirectory(pl/plpgsql/src)
 if(PYTHONINTERP_FOUND AND PYTHONLIBS_FOUND)
 	add_subdirectory(pl/plpython)
 endif()
+if(PERLLIBS_FOUND)
+	add_subdirectory(pl/plperl)
+endif()
 
 add_subdirectory(test/regress)
 
