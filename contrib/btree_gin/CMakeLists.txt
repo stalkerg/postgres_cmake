@@ -12,3 +12,30 @@ install(TARGETS ${extension_name}
 install(FILES ${extension_name}.control ${extension_name}--1.0.sql ${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
+set(regres_files
+	install_btree_gin
+	int2
+	int4
+	int8
+	float4
+	float8
+	money
+	oid
+	timestamp
+	timestamptz
+	time
+	timetz
+	date
+	interval
+	macaddr
+	inet
+	cidr
+	text
+	varchar
+	char
+	bytea
+	bit
+	varbit
+	numeric
+)
+REGRESS_CHECK(${extension_name} "" "${regres_files}")

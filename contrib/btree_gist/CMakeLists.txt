@@ -37,3 +37,32 @@ install(FILES
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
+
+set(regres_files
+	init
+	int2
+	int4
+	int8
+	float4
+	float8
+	cash
+	oid
+	timestamp
+	timestamptz
+	time
+	timetz
+	date
+	interval
+	macaddr
+	inet
+	cidr
+	text
+	varchar
+	char
+	bytea
+	bit
+	varbit
+	numeric
+	not_equal
+)
+REGRESS_CHECK(${extension_name} "" "${regres_files}")

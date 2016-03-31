@@ -31,76 +31,6 @@ endif()
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 
-set(tmp_check_folder ${CMAKE_CURRENT_BINARY_DIR}/tmp_install PARENT_SCOPE)
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-	set(env_cmd
-		${CMAKE_COMMAND} -E env
-		"DYLD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$DYLD_LIBRARY_PATH"
-	)
-	set(tmp_env_cmd
-		${CMAKE_COMMAND} -E env
-		"DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$DYLD_LIBRARY_PATH"
-	)
-elif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
-	set(env_cmd
-		${CMAKE_COMMAND} -E env
-		"LIBPATH=$ENV{DESTDIR}${LIBDIR}:$LIBPATH"
-	)
-	set(tmp_env_cmd
-		${CMAKE_COMMAND} -E env
-		"LIBPATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$LIBPATH"
-	)
-else()
-	set(env_cmd
-		${CMAKE_COMMAND} -E env
-		"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH"
-	)
-	set(tmp_env_cmd
-		${CMAKE_COMMAND} -E env
-		"LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR}:$LD_LIBRARY_PATH"
-	)
-endif()
-
-if(MSVC)
-	set(pre_pg_regress_check
-		${PGBINDIR}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
-		--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
-		--temp-instance="tmp_check"
-		--encoding=UTF8
-		--no-locale
-	)
-else(MSVC)
-	set(pre_pg_regress_check
-		${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
-		--inputdir="${CMAKE_CURRENT_SOURCE_DIR}"
-		--temp-instance="tmp_check"
-		--encoding=UTF8
-		--no-locale
-	)
-endif()
-
-set(pg_regress_check
-	${env_cmd}
-	${pre_pg_regress_check}
-	--bindir=$ENV{DESTDIR}${PGBINDIR}
-	PARENT_SCOPE
-)
-
-set(pg_regress_check_tmp
-	${tmp_env_cmd}
-	${pre_pg_regress_check}
-	--bindir=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${PGBINDIR}
-	PARENT_SCOPE
-)
-
-if(MAX_CONNECTIONS)
-	set(MAXCONNOPT "${MAXCONNOPT} --max-connections=${MAX_CONNECTIONS}")
-endif()
-
-if(TEMP_CONFIG)
-	set(TEMP_CONF "${TEMP_CONF} --temp-config=${TEMP_CONFIG}")
-endif()
-
 add_custom_target(tablespace-setup
 	COMMAND ${CMAKE_COMMAND} -E remove_directory ./testtablespace
 	COMMAND ${CMAKE_COMMAND} -E make_directory ./testtablespace
@@ -110,7 +40,8 @@ add_custom_target(tablespace-setup
 add_custom_target(check
 	COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
 	COMMAND make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND make installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+	COMMAND make installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/
+	DEPENDS tablespace-setup
 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
