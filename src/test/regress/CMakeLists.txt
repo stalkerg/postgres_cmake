@@ -31,6 +31,7 @@ endif()
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 
+set(tmp_check_folder ${CMAKE_CURRENT_BINARY_DIR}/tmp_install PARENT_SCOPE)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	set(env_cmd
 		${CMAKE_COMMAND} -E env
@@ -82,12 +83,14 @@ set(pg_regress_check
 	${env_cmd}
 	${pre_pg_regress_check}
 	--bindir=$ENV{DESTDIR}${PGBINDIR}
+	PARENT_SCOPE
 )
 
 set(pg_regress_check_tmp
 	${tmp_env_cmd}
 	${pre_pg_regress_check}
 	--bindir=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${PGBINDIR}
+	PARENT_SCOPE
 )
 
 if(MAX_CONNECTIONS)

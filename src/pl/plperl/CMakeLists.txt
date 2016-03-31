@@ -6,6 +6,11 @@ execute_process(
 	COMMAND ${PERL_EXECUTABLE} -e "use List::Util qw(first); print first { -r \"$_/ExtUtils/xsubpp\" } @INC"
 	OUTPUT_VARIABLE XSUBPPDIR
 )
+execute_process(
+	COMMAND ${PERL_EXECUTABLE} -V:usemultiplicity
+	OUTPUT_VARIABLE PERL_MULTIPLICITY
+)
+
 add_custom_command(
 	OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/SPI.c"
 	MAIN_DEPENDENCY SPI.xs plperl_helpers.h
@@ -64,3 +69,27 @@ install(FILES
 		plperlu--1.0.sql
 		plperlu--unpackaged--1.0.sql
 		DESTINATION ${PGSHAREDIR}/extension)
+install(FILES
+	plperl.h
+	ppport.h
+	DESTINATION ${INCLUDEDIRSERVER})
+
+set(PL_TESTDB pl_regression)
+set(REGRESS_OPTS --dbname=${PL_TESTDB} --load-extension=plperl --load-extension=plperlu)
+set(plregres_files
+	plperl
+	plperl_lc
+	plperl_trigger
+	plperl_shared
+	plperl_elog
+	plperl_util
+	plperl_init
+	plperlu
+	plperl_array
+)
+
+if(PERL_MULTIPLICITY STREQUAL "usemultiplicity='define'")
+	set(plregres_files ${plregres_files} plperl_plperlu)
+endif()
+
+REGRESS_CHECK(plperl "${REGRESS_OPTS}" "${plregres_files}")

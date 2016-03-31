@@ -618,6 +618,8 @@ endif()
 include(GenDef)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
+include(RegressCheck)
+
 # Need add sco and unixware?
 if(WIN32)
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/win32.h)

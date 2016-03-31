@@ -20,3 +20,12 @@ install(FILES
 		${plname}u--1.0.sql
 		${plname}u--unpackaged--1.0.sql
 		DESTINATION ${PGSHAREDIR}/extension)
+
+set(PL_TESTDB pl_regression)
+set(REGRESS_OPTS --dbname=${PL_TESTDB} --load-extension=pltcl)
+set(plregres_files
+	pltcl_setup
+	pltcl_queries
+	pltcl_unicode
+)
+REGRESS_CHECK(pltcl "${REGRESS_OPTS}" "${plregres_files}")
