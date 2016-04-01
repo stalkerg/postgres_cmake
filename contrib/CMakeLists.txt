@@ -12,6 +12,8 @@ if(MSVC)
 	)
 endif()
 
+set(contrib_check_targets "")
+
 add_subdirectory(adminpack)
 add_subdirectory(auth_delay)
 add_subdirectory(auto_explain)
@@ -65,3 +67,15 @@ add_subdirectory(vacuumlo)
 if(LIBXML2_FOUND)
 	add_subdirectory(xml2)
 endif()
+
+#add_custom_target(contrib_check
+#	DEPENDS ${contrib_check_targets}
+#)
+
+add_custom_target(contrib_check
+	COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+	COMMAND make install DESTDIR=${tmp_check_folder}
+	COMMAND make ${contrib_check_targets} DESTDIR=${tmp_check_folder}
+	DEPENDS tablespace-setup
+	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)

@@ -34,3 +34,6 @@ install(TARGETS ${extension_name}
 install(FILES
 	${CMAKE_CURRENT_SOURCE_DIR}/sepgsql.sql
 	DESTINATION ${PGSHAREDIR}/contrib)
+
+#set(regress_files seg)
+#CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

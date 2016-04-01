@@ -127,6 +127,7 @@ endif()
 
 if(LIBXML2_FOUND)
 	set(HAVE_LIBXML2 1)
+	set(USE_LIBXML 1)
 endif()
 
 if(LIBXSLT_FOUND)

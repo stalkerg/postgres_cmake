@@ -16,3 +16,4 @@ install(FILES
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
+CONTRIB_REGRESS_CHECK(${extension_name} "" "citext")

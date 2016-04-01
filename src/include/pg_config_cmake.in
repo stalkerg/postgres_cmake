@@ -281,6 +281,8 @@
 /* Define to 1 if you have the `xslt' library (-lxslt). */
 #cmakedefine HAVE_LIBXSLT
 
+#cmakedefine USE_LIBXML
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"

@@ -65,4 +65,4 @@ set(regres_files
 	numeric
 	not_equal
 )
-REGRESS_CHECK(${extension_name} "" "${regres_files}")
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regres_files}")

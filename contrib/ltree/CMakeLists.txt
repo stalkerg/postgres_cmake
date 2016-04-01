@@ -25,3 +25,6 @@ install(FILES
 	${extension_name}--1.0.sql
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
+
+set(regress_files ltree)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

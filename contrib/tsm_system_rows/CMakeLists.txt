@@ -13,3 +13,6 @@ install(FILES
 	${extension_name}.control
 	${extension_name}--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
+
+set(regress_files tsm_system_rows)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

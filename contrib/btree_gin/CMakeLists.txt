@@ -38,4 +38,4 @@ set(regres_files
 	varbit
 	numeric
 )
-REGRESS_CHECK(${extension_name} "" "${regres_files}")
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regres_files}")

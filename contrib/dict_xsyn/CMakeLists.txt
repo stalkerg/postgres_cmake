@@ -17,3 +17,6 @@ install(FILES
 install(FILES
 	xsyn_sample.rules
 	DESTINATION ${PGSHAREDIR}/tsearch_data)
+
+set(regress_files dict_xsyn)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

@@ -17,3 +17,6 @@ install(FILES
 install(FILES
 	${extension_name}.rules
 	DESTINATION ${PGSHAREDIR}/tsearch_data)
+
+set(regress_files unaccent)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

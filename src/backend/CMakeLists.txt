@@ -972,6 +972,7 @@ set(postgres_SRCS
 
 include_directories(BEFORE
 	${OPENSSL_INCLUDE_DIR}
+	${LIBXML2_INCLUDE_DIR}
 )
 
 if(MSVC)
@@ -992,6 +993,7 @@ target_link_libraries(postgres
 	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
 	${LIB_M}
+	${LIBXML2_LIBRARIES}
 )
 
 add_dependencies(postgres gen_errorcodes)

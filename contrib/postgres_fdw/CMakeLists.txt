@@ -19,3 +19,6 @@ install(FILES
 	${extension_name}.control
 	${extension_name}--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
+
+set(regress_files postgres_fdw)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")
