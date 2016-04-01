@@ -22,6 +22,8 @@ target_link_libraries(pgbench
 	${M_LIB}
 )
 
+add_dependencies(pgbench postgres)
+
 install(TARGETS pgbench
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
