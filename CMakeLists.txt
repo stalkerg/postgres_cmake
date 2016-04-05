@@ -109,6 +109,7 @@ find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
 find_package(OpenSSL)
+find_package(ZLIB)
 find_package(PythonInterp)
 find_package(PythonLibs)
 find_package(SELinux)
@@ -132,6 +133,10 @@ endif()
 
 if(LIBXSLT_FOUND)
 	set(HAVE_LIBXSLT 1)
+endif()
+
+if(ZLIB_FOUND)
+	set(HAVE_LIBZ 1)
 endif()
 
 check_symbol_exists(strlcpy "stdio.h;string.h" HAVE_DECL_STRLCPY)

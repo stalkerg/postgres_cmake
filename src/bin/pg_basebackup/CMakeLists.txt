@@ -2,6 +2,7 @@ include_directories(BEFORE
 	"${PROJECT_SOURCE_DIR}/src/include/libpq"
 	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
+	${ZLIB_INCLUDE_DIRS}
 )
 
 add_library(common_basebackup STATIC
@@ -28,6 +29,7 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 		pgcommon
 		${M_LIB}
 		common_basebackup
+		${ZLIB_LIBRARIES}
 	)
 endforeach()
 

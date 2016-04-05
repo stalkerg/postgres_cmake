@@ -283,6 +283,8 @@
 
 #cmakedefine USE_LIBXML
 
+#cmakedefine HAVE_LIBZ
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #include "@pgos_include_SRCS@"

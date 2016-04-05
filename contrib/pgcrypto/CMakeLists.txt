@@ -1,0 +1,119 @@
+include_directories(
+	"${PROJECT_SOURCE_DIR}/src/include"
+	${OPENSSL_INCLUDE_DIR}
+	${ZLIB_INCLUDE_DIRS}
+)
+
+set(extension_name pgcrypto)
+
+set(pgcrypto_src
+	pgcrypto.c
+	px.c
+	px-hmac.c
+	px-crypt.c
+	crypt-gensalt.c
+	crypt-blowfish.c
+	crypt-des.c
+	crypt-md5.c
+	mbuf.c
+	pgp.c
+	pgp-armor.c
+	pgp-cfb.c
+	pgp-compress.c
+	pgp-decrypt.c
+	pgp-encrypt.c
+	pgp-info.c
+	pgp-mpi.c
+	pgp-pubdec.c
+	pgp-pubenc.c
+	pgp-pubkey.c
+	pgp-s2k.c
+	pgp-pgsql.c
+)
+
+set(regress_files
+	init
+	md5
+	sha1
+	hmac-md5
+	hmac-sha1
+	blowfish
+	rijndael
+	crypt-des
+	crypt-md5
+	crypt-blowfish
+	crypt-xdes
+	pgp-armor
+	pgp-decrypt
+	pgp-encrypt
+	pgp-pubkey-decrypt
+	pgp-pubkey-encrypt
+	pgp-info
+)
+
+if(OPENSSL_FOUND)
+	set(pgcrypto_src ${pgcrypto_src} openssl.c pgp-mpi-openssl.c)
+	set(regress_files ${regress_files}
+		sha2
+		des
+		3des
+		cast5
+	)
+else()
+	add_executable(gen-rtab rijndael.c)
+	target_compile_definitions(gen-rtab PRIVATE -DPRINT_TABS)
+
+	add_custom_command(
+		MAIN_DEPENDENCY gen-rtab
+		OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/rijndael.tbl
+		COMMAND gen-rtab > rijndael.tbl
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	set(pgcrypto_src ${pgcrypto_src}
+		md5.c
+		sha1.c
+		sha2.c
+		internal.c
+		internal-sha2.c
+		blf.c
+		rijndael.tbl
+		rijndael.c
+		fortuna.c
+		random.c
+		pgp-mpi-internal.c
+		imath.c
+	)
+	set(regress_files ${regress_files} sha2)
+endif()
+
+if(ZLIB_FOUND)
+	set(regress_files ${regress_files} pgp-compression)
+endif()
+
+
+
+add_library(${extension_name} SHARED ${pgcrypto_src})
+target_link_libraries(${extension_name}
+	${contrib_libs}
+	${OPENSSL_LIBRARIES}
+	${ZLIB_LIBRARIES}
+)
+if(WIN32)
+	target_link_libraries(${extension_name} ws2_32)
+endif()
+set_target_properties(${extension_name} PROPERTIES PREFIX "")
+add_dependencies(${extension_name} postgres)
+install(TARGETS ${extension_name}
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})
+install(FILES
+	${extension_name}.control
+	${extension_name}--1.2.sql
+	${extension_name}--1.0--1.1.sql
+	${extension_name}--1.1--1.2.sql
+	${extension_name}--unpackaged--1.0.sql
+	DESTINATION ${PGSHAREDIR}/extension)
+
+
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

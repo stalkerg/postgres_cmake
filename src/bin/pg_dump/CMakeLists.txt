@@ -2,6 +2,7 @@ include_directories(BEFORE
  	"${PROJECT_SOURCE_DIR}/src/include/libpq"
  	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
  	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
+	${ZLIB_INCLUDE_DIRS}
 )
 
 add_library(libdump STATIC
@@ -30,6 +31,7 @@ target_link_libraries(pg_dump
 	pgcommon
 	port
 	pq
+	${ZLIB_LIBRARIES}
 )
 
 add_executable(pg_restore
@@ -41,6 +43,7 @@ target_link_libraries(pg_restore
 	pgcommon
 	port
 	pq
+	${ZLIB_LIBRARIES}
 )
 
 add_executable(pg_dumpall
@@ -53,6 +56,7 @@ target_link_libraries(pg_dumpall
 	pgcommon
 	port
 	pq
+	${ZLIB_LIBRARIES}
 )
 
 install(TARGETS pg_dump pg_restore pg_dumpall
