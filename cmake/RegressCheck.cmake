@@ -38,10 +38,24 @@ if(MSVC)
 		--encoding=UTF8
 		--no-locale
 	)
+	set(pre_pg_isolation_regress_check
+		${PGBINDIR}/pg_isolation_regress${CMAKE_EXECUTABLE_SUFFIX}
+		--inputdir="${CMAKE_SOURCE_DIR}/src/test/isolation"
+		--temp-instance="tmp_check"
+		--encoding=UTF8
+		--no-locale
+	)
 else(MSVC)
 	set(pre_pg_regress_check
 		${CMAKE_BINARY_DIR}/src/test/regress/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
 		--inputdir="${CMAKE_SOURCE_DIR}/src/test/regress"
+		--temp-instance="tmp_check"
+		--encoding=UTF8
+		--no-locale
+	)
+	set(pre_pg_isolation_regress_check
+		${CMAKE_BINARY_DIR}/src/test/isolation/${CMAKE_INSTALL_CONFIG_NAME}/pg_isolation_regress${CMAKE_EXECUTABLE_SUFFIX}
+		--inputdir="${CMAKE_SOURCE_DIR}/src/test/isolation"
 		--temp-instance="tmp_check"
 		--encoding=UTF8
 		--no-locale
@@ -57,6 +71,18 @@ set(pg_regress_check
 set(pg_regress_check_tmp
 	${tmp_env_cmd}
 	${pre_pg_regress_check}
+	--bindir=${tmp_check_folder}${PGBINDIR}
+)
+
+set(pg_isolation_regress_check
+	${env_cmd}
+	${pre_pg_isolation_regress_check}
+	--bindir=$ENV{DESTDIR}${PGBINDIR}
+)
+
+set(pg_isolation_regress_check_tmp
+	${tmp_env_cmd}
+	${pre_pg_isolation_regress_check}
 	--bindir=${tmp_check_folder}${PGBINDIR}
 )
 
@@ -83,6 +109,20 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
 endmacro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+
+macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+	add_custom_target(${TARGET_NAME}_isolation_installcheck_tmp
+		COMMAND ${pg_isolation_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	add_custom_target(${TARGET_NAME}_check
+		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+		COMMAND make install DESTDIR=${tmp_check_folder}
+		COMMAND make ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+endmacro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
 macro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
