@@ -34,6 +34,8 @@
 
 #define SIZEOF_SIZE_T @SIZEOF_SIZE_T@
 
+#cmakedefine HAVE_INT128
+
 #define PG_INT128_TYPE @PG_INT128_TYPE@
 
 #ifdef WIN32
