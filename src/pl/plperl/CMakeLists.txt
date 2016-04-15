@@ -49,13 +49,9 @@ set(plperl_SRCS
 	Util.c
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-endif()
-
 include_directories(${PERL_INCLUDE_PATH})
 add_library(${plname} SHARED ${plperl_SRCS})
-target_link_libraries(${plname} postgres ${PERL_LIBRARY})
+target_link_libraries(${plname} postgres ${PERL_LIBRARY} ${PERL_LDFLAGS})
 if (MSVC)
 	target_link_libraries(${plname} port)
 endif()
