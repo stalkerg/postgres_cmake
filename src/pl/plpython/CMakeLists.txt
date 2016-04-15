@@ -8,6 +8,7 @@ add_custom_command(
 set(plname "plpython${PYTHON_VERSION_MAJOR}")
 
 set(plpython_SRCS
+	"${CMAKE_CURRENT_SOURCE_DIR}/spiexceptions.h"
 	plpy_cursorobject.c
 	plpy_elog.c
 	plpy_exec.c
