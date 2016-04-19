@@ -19,14 +19,23 @@ elif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
 		"LIBPATH=${tmp_check_folder}${LIBDIR}:$LIBPATH"
 	)
 else()
-	set(env_cmd
-		${CMAKE_COMMAND} -E env
-		"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH"
-	)
-	set(tmp_env_cmd
-		${CMAKE_COMMAND} -E env
-		"LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$LD_LIBRARY_PATH"
-	)
+	if (CMAKE_VERSION VERSION_GREATER "3.2.0")
+		set(env_cmd
+			${CMAKE_COMMAND} -E env
+			"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH"
+		)
+		set(tmp_env_cmd
+			${CMAKE_COMMAND} -E env
+			"LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$LD_LIBRARY_PATH"
+		)
+	else()
+		set(env_cmd
+			export "LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH" &&
+		)
+		set(tmp_env_cmd
+			export "LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$LD_LIBRARY_PATH" &&
+		)
+	endif()
 endif()
 
 if(MSVC)
