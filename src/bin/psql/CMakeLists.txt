@@ -63,6 +63,8 @@ if(NOT MSVC)
 	target_link_libraries(psql m)
 endif()
 
+add_dependencies(psql postgres)
+
 install(TARGETS psql
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
