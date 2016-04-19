@@ -12,6 +12,13 @@ make isolation_check
 make contrib_check
 
 #Optional:
+make plperl_check
+make pltcl_check
+#Now working tests only for 2.7 python.
+#Setup python2.7:
+#-DPython_ADDITIONAL_VERSIONS=2.7 -DPYTHON_EXECUTABLE=/usr/bin/python2.7
+make plpython_check
+
 make install
 make installcheck
 
