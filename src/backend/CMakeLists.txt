@@ -43,26 +43,6 @@ add_custom_command(
 flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils/misc/guc-file.c)
 set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
 
-set(gen_lwlocknames_depend
-	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/generate-lwlocknames.pl
-	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.txt
-)
-
-set(gen_lwlocknames_output
-	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.c
-	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.h
-	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
-)
-
-add_custom_command(
-	MAIN_DEPENDENCY ${gen_lwlocknames_depend}
-	OUTPUT ${gen_lwlocknames_output}
-	COMMAND ${PERL_EXECUTABLE} generate-lwlocknames.pl lwlocknames.txt
-	COMMAND ${CMAKE_COMMAND} -E copy lwlocknames.h ${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
-	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr
-)
-
-
 if(WIN32)
 	#TODO: maybe need test CYGWIN also
 	set(dynloader_SRCS port/dynloader/win32.c)
@@ -786,7 +766,7 @@ set(tsearch_SRCS
 	tsearch/ts_utils.c
 )
 
-install(FILES 
+install(FILES
 			tsearch/dicts/ispell_sample.dict
 			tsearch/dicts/ispell_sample.affix
 			tsearch/dicts/hunspell_sample.affix
@@ -842,7 +822,25 @@ if(APPLE)
 	)
 endif(APPLE)
 
+set(gen_lwlocknames_depend
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/generate-lwlocknames.pl
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.txt
+)
 
+set(gen_lwlocknames_output
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.c
+	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.h
+	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
+)
+
+
+add_custom_command(
+	OUTPUT ${gen_lwlocknames_output}
+	MAIN_DEPENDENCY ${gen_lwlocknames_depend}
+	COMMAND ${PERL_EXECUTABLE} generate-lwlocknames.pl lwlocknames.txt
+	COMMAND ${CMAKE_COMMAND} -E copy lwlocknames.h ${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
+	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr
+)
 
 set(backend_port_SRCS
 	port/atomics.c
@@ -1013,7 +1011,7 @@ add_custom_target(duplicate_oids
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/include/catalog
 )
 
-add_library(pqwalreceiver SHARED 
+add_library(pqwalreceiver SHARED
 	replication/libpqwalreceiver/libpqwalreceiver.c
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
@@ -1028,7 +1026,7 @@ install(TARGETS postgres pqwalreceiver
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
-install(FILES 
+install(FILES
 			catalog/postgres.bki
 			catalog/postgres.description
 			catalog/postgres.shdescription
