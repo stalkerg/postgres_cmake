@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
+project(Postgres C)
+
 include(CheckTypeSize)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
@@ -7,8 +9,6 @@ include(CheckIncludeFiles)
 include(CheckCSourceCompiles)
 include(TestBigEndian)
 include(CheckStructHasMember)
-
-project(Postgres C)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
@@ -242,6 +242,10 @@ if(WITH_READLINE AND NOT MSVC)
 	if(READLINE_FOUND)
 		#Sometimes for redline need curses
 		find_package(Curses)
+		if(NOT CURSES_FOUND)
+			set(CURSES_NEED_NCURSES TRUE)
+		endif()
+		find_package(Curses)
 		check_include_files("stdio.h;readline.h" HAVE_READLINE_H)
 		check_include_files("stdio.h;history.h" HAVE_HISTORY_H)
 		check_include_files("stdio.h;readline/history.h" HAVE_READLINE_HISTORY_H)
@@ -249,7 +253,12 @@ if(WITH_READLINE AND NOT MSVC)
 		check_include_files("stdio.h;editline/history.h" HAVE_EDITLINE_HISTORY_H)
 		check_include_files("stdio.h;editline/readline.h" HAVE_EDITLINE_READLINE_H)
 
-		set(CMAKE_REQUIRED_LIBRARIES ${READLINE_LIBRARY} ${CURSES_LIBRARIES})
+
+		set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} ${READLINE_LIBRARY})
+		if(CURSES_FOUND)
+			set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} ${CURSES_LIBRARIES})
+			set(READLINE_LIBRARY ${READLINE_LIBRARY} ${CURSES_LIBRARIES})
+		endif()
 		check_function_exists(rl_completion_matches HAVE_RL_COMPLETION_MATCHES)
 		check_function_exists(rl_filename_completion_function HAVE_RL_FILENAME_COMPLETION_FUNCTION)
 	endif(READLINE_FOUND)
@@ -306,6 +315,7 @@ else(LONG_INT_SIZE EQUAL 8)
 	endif(HAVE_LONG_LONG_INT_64 EQUAL 8)
 endif(LONG_INT_SIZE EQUAL 8)
 
+message(STATUS "PG_INT64_TYPE: ${PG_INT64_TYPE} HAVE_LONG_INT_64: ${HAVE_LONG_INT_64}")
 # Compute maximum alignment of any basic type.
 # We assume long's alignment is at least as strong as char, short, or int;
 # but we must check long long (if it exists) and double.

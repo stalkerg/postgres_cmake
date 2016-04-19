@@ -988,7 +988,6 @@ target_link_libraries(postgres
 	port_srv
 	pq
 	${READLINE_LIBRARY}
-	${CURSES_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT}
 	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
