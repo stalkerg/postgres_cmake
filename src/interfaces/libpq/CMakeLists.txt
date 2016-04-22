@@ -38,7 +38,7 @@ set(pq_SRCS
 
 set(RES_FILES "")
 if(WIN32)
-	set(pq_SRCS ${pq_SRCS} 
+	set(pq_SRCS ${pq_SRCS}
 		win32.c
 		${PORT_DIR}/win32error.c
 		${PORT_DIR}/win32setlocale.c
@@ -61,6 +61,7 @@ endif()
 add_library(pq SHARED ${pq_SRCS} ${RES_FILES})
 target_link_libraries(pq
 	${OPENSSL_LIBRARIES}
+	${CMAKE_THREAD_LIBS_INIT}
 )
 if(WIN32)
 	target_link_libraries(pq
