@@ -76,5 +76,9 @@ set(plregres_files
 	plpython_drop
 )
 
-#Working only for python2 now
-REGRESS_CHECK(plpython "${REGRESS_OPTS}" "${plregres_files}")
+if(PYTHON_VERSION_MAJOR EQUAL 3)
+	replace_python_files("${plregres_files}")
+	REGRESS_CHECK(plpython "${REGRESS_OPTS}" "${regress_files3}")
+else()
+	REGRESS_CHECK(plpython "${REGRESS_OPTS}" "${plregres_files}")
+endif()

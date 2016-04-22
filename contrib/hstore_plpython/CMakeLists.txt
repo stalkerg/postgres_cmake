@@ -24,9 +24,18 @@ install(FILES
 	DESTINATION ${PGSHAREDIR}/extension)
 
 set(regress_files hstore_plpython)
-set(regress_options
-	"--load-extension=hstore"
-	"--load-extension=plpythonu"
-	"--load-extension=hstore_plpythonu"
-)
-CONTRIB_REGRESS_CHECK(${extension_name} "${regress_options}" "${regress_files}")
+
+if(PYTHON_VERSION_MAJOR EQUAL 3)
+	replace_python_files("${regress_files}")
+	set(regress_options
+		"--load-extension=hstore"
+	)
+	CONTRIB_REGRESS_CHECK(${extension_name} "${regress_options}" "${regress_files3}")
+else()
+	set(regress_options
+		"--load-extension=hstore"
+		"--load-extension=plpythonu"
+		"--load-extension=hstore_plpythonu"
+	)
+	CONTRIB_REGRESS_CHECK(${extension_name} "${regress_options}" "${regress_files}")
+endif()

@@ -288,6 +288,7 @@ check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 
+include(ReplacePython)
 include(CheckCpuID)
 if(MSVC AND HAVE__CPUID)
 	set(USE_SSE42_CRC32C_WITH_RUNTIME_CHECK 1)

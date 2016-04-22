@@ -855,6 +855,7 @@ set(backend_port_SRCS
 
 
 set(storage_SRCS
+	${gen_lwlocknames_output}
 	storage/buffer/buf_table.c
 	storage/buffer/buf_init.c
 	storage/buffer/bufmgr.c
@@ -896,7 +897,6 @@ set(storage_SRCS
 	storage/smgr/md.c
 	storage/smgr/smgr.c
 	storage/smgr/smgrtype.c
-	${gen_lwlocknames_output}
 )
 
 bison_target(REPL_GRAM
