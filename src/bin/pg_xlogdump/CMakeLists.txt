@@ -23,7 +23,3 @@ target_compile_definitions(pg_xlogdump PRIVATE -DFRONTEND)
 install(TARGETS pg_xlogdump
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
-
-
-
-

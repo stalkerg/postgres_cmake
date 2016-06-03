@@ -17,9 +17,32 @@ add_custom_command(
 
 add_custom_target(gen_errorcodes DEPENDS ${gen_errorcodes_output})
 
+set(PARSER_SCAN_FLEX_FLAGS, "-Cfe -p -p")
+bison_target(PARSER_GRAM
+	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.y
+	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.c
+)
+flex_target(PARSER_SCAN
+	${PROJECT_SOURCE_DIR}/src/backend/parser/scan.l
+	${PROJECT_SOURCE_DIR}/src/backend/parser/scan.c
+	${PARSER_SCAN_FLEX_FLAGS}
+)
+
+set_source_files_properties(${BISON_PARSER_GRAM_OUTPUTS}
+	PROPERTIES OBJECT_DEPENDS ${FLEX_PARSER_SCAN_OUTPUTS})
+
+add_custom_command(
+	MAIN_DEPENDENCY ${BISON_PARSER_GRAM_OUTPUTS}
+	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
+	COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/src/backend/parser/gram.h ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
+)
+
+add_custom_target(generate_parser_gram_h DEPENDS ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h)
+
 add_subdirectory(include)
 add_subdirectory(port)
 add_subdirectory(common)
+add_subdirectory(fe_utils)
 add_subdirectory(interfaces/libpq)
 
 add_subdirectory(backend)

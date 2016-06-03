@@ -20,6 +20,7 @@ set(POSTGRES_VERSION
 
 set(PG_VERSION "9.6devel")
 set(PG_VERSION_NUM 90600)
+set(PACKAGE_BUGREPORT "pgsql-bugs@postgresql.org")
 
  # Offer the user the choice of overriding the installation directories
 set(INSTALL_LIB_DIR lib CACHE PATH "Installation directory for libraries")
@@ -253,6 +254,7 @@ check_include_files(stdint.h HAVE_STDINT_H)
 check_include_files(sys/resource.h HAVE_SYS_RESOURCE_H)
 check_include_files(sys/select.h HAVE_SYS_SELECT_H)
 check_include_files(sys/poll.h HAVE_SYS_POLL_H)
+check_include_files(sys/epoll.h HAVE_SYS_EPOLL_H)
 check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
 check_include_files(dld.h HAVE_DLD_H)
 check_include_files(langinfo.h HAVE_LANGINFO_H)
@@ -633,12 +635,6 @@ if(WIN32)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_shmem.c")
 else(WIN32)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_shmem.c")
-endif(WIN32)
-
-if(WIN32)
-	set(LATCH_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_latch.c")
-else(WIN32)
-	set(LATCH_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/unix_latch.c")
 endif(WIN32)
 
 option(HAVE_SPINLOCKS "Define to ON if you have spinlocks." ON)

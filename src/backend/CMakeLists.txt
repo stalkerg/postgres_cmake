@@ -97,6 +97,8 @@ set(access_rmgrdesc_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/tblspcdesc.c
 	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/xactdesc.c
 	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/xlogdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/genericdesc.c
+	${CMAKE_CURRENT_SOURCE_DIR}/access/rmgrdesc/logicalmsgdesc.c
 )
 
 set(rmgrdesc_SRC
@@ -207,6 +209,7 @@ set(access_SRCS
 	access/transam/clog.c
 	access/transam/commit_ts.c
 	access/transam/multixact.c
+	access/transam/generic_xlog.c
 	access/transam/parallel.c
 	access/transam/rmgr.c
 	access/transam/slru.c
@@ -236,6 +239,10 @@ set(bootstrap_SRCS
 	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
 )
 
+set_source_files_properties(
+	${BISON_BOOTSTRAP_PARSER_OUTPUTS}
+	PROPERTIES GENERATED TRUE
+)
 
 set(POSTGRES_BKI_SRCS
 	${postgres_include_catalog}/pg_proc.h
@@ -287,6 +294,7 @@ set(POSTGRES_BKI_SRCS
 	${postgres_include_catalog}/pg_policy.h
 	${postgres_include_catalog}/pg_replication_origin.h
 	${postgres_include_catalog}/pg_default_acl.h
+	${postgres_include_catalog}/pg_init_privs.h
 	${postgres_include_catalog}/pg_seclabel.h
 	${postgres_include_catalog}/pg_shseclabel.h
 	${postgres_include_catalog}/pg_collation.h
@@ -346,6 +354,7 @@ set(commands_SRCS
 	commands/alter.c
 	commands/analyze.c
 	commands/async.c
+	commands/amcmds.c
 	commands/cluster.c
 	commands/comment.c
 	commands/collationcmds.c
@@ -515,6 +524,7 @@ set(utils_SRCS
 	utils/adt/genfile.c
 	utils/adt/geo_ops.c
 	utils/adt/geo_selfuncs.c
+	utils/adt/geo_spgist.c
 	utils/adt/inet_cidr_ntop.c
 	utils/adt/inet_net_pton.c
 	utils/adt/int.c
@@ -696,31 +706,9 @@ set(rewrite_SRCS
 	rewrite/rowsecurity.c
 )
 
-set(PARSER_SCAN_FLEX_FLAGS, "-Cfe -p -p")
-bison_target(PARSER_GRAM
-	parser/gram.y
-	${CMAKE_CURRENT_SOURCE_DIR}/parser/gram.c
-)
-flex_target(PARSER_SCAN
-	parser/scan.l
-	"${CMAKE_CURRENT_SOURCE_DIR}/parser/scan.c"
-	${PARSER_SCAN_FLEX_FLAGS}
-)
-
-set_source_files_properties(${BISON_PARSER_GRAM_OUTPUTS}
-	PROPERTIES OBJECT_DEPENDS ${FLEX_PARSER_SCAN_OUTPUTS})
-
-add_custom_command(
-	MAIN_DEPENDENCY ${BISON_PARSER_GRAM_OUTPUTS}
-	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
-	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/parser/gram.h ${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
-)
-
 set(parser_SRCS
 	parser/analyze.c
 	#parser/gram.c
-	parser/keywords.c
-	parser/kwlookup.c
 	parser/parser.c
 	parser/parse_agg.c
 	parser/parse_clause.c
@@ -737,7 +725,14 @@ set(parser_SRCS
 	parser/parse_type.c
 	parser/parse_utilcmd.c
 	parser/scansup.c
-	${BISON_PARSER_GRAM_OUTPUTS}
+	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.c
+	${PROJECT_SOURCE_DIR}/src/backend/parser/scan.c
+)
+
+set_source_files_properties(
+	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.c
+	${PROJECT_SOURCE_DIR}/src/backend/parser/scan.c
+	PROPERTIES GENERATED TRUE
 )
 
 set(tcop_SRCS
@@ -921,12 +916,14 @@ set(replication_SRCS
 	replication/slot.c
 	replication/slotfuncs.c
 	replication/syncrep.c
+	replication/syncrep_gram.c
 	replication/logical/decode.c
 	replication/logical/logical.c
 	replication/logical/logicalfuncs.c
 	replication/logical/reorderbuffer.c
 	replication/logical/origin.c
 	replication/logical/snapbuild.c
+	replication/logical/message.c
 	${BISON_REPL_GRAM_OUTPUTS}
 )
 
@@ -996,7 +993,7 @@ target_link_libraries(postgres
 	${LIBXML2_LIBRARIES}
 )
 
-add_dependencies(postgres gen_errorcodes)
+add_dependencies(postgres gen_errorcodes generate_parser_gram_h)
 
 if(UNIX AND NOT APPLE)
 	target_link_libraries(postgres rt)

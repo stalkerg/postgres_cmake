@@ -10,17 +10,25 @@ set(pgcommon_srv_SRCS
 	wait_error.c
 	controldata_utils.c
 	config_info.c
+	keywords.c
 )
 
 set(pgcommon_SRCS
 	${pgcommon_srv_SRCS}
 	fe_memutils.c
 	restricted_token.c
+	${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
 )
 
 add_library(pgcommon_srv STATIC ${pgcommon_srv_SRCS})
 add_library(pgcommon STATIC ${pgcommon_SRCS})
 
+set_source_files_properties(
+	${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
+	PROPERTIES GENERATED TRUE
+)
+
+add_dependencies(pgcommon_srv generate_parser_gram_h)
 add_dependencies(pgcommon_srv gen_errorcodes)
 add_dependencies(pgcommon gen_errorcodes)
 

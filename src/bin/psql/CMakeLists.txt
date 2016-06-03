@@ -4,17 +4,6 @@ include_directories(BEFORE
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 )
 
-set(psqlscan_flags, "-Cfe -p -p")
-
-flex_target(psqlscan
-	psqlscan.l 
-	"${CMAKE_CURRENT_SOURCE_DIR}/psqlscan.c"
-	${psqlscan_flags}
-)
-
-set_source_files_properties(mainloop.c
-	PROPERTIES OBJECT_DEPENDS ${FLEX_psqlscan_OUTPUTS})
-
 add_custom_command(
 	MAIN_DEPENDENCY create_help.pl
 	OUTPUT ${PROJECT_SOURCE_DIR}/src/bin/psql/sql_help.c ${PROJECT_SOURCE_DIR}/src/bin/psql/sql_help.h
@@ -36,14 +25,12 @@ set(psql_SRCS
 	prompt.c
 	variables.c
 	large_obj.c
-	print.c
 	describe.c
 	tab-complete.c
-	mbprint.c
 	../pg_dump/dumputils.c
-	../pg_dump/keywords.c
-	${PROJECT_SOURCE_DIR}/src/backend/parser/kwlookup.c
 	sql_help.c
+	psqlscanslash.c
+	crosstabview.c
 )
 
 add_executable(psql
@@ -51,6 +38,7 @@ add_executable(psql
 )
 
 target_link_libraries(psql
+	pgfeutils
 	pgcommon
 	port
 	pq

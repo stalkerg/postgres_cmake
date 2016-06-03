@@ -24,9 +24,6 @@ set(tzdata
 
 add_executable(zic
 	zic.c
-	ialloc.c
-	scheck.c
-	localtime.c
 )
 target_link_libraries(zic
 	port

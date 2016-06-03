@@ -16,8 +16,6 @@ add_library(libdump STATIC
 	parallel.c
 	compress_io.c
 	dumputils.c
-	keywords.c
-	${PROJECT_SOURCE_DIR}/src/backend/parser/kwlookup.c
 )
 
 add_executable(pg_dump
@@ -28,6 +26,7 @@ add_executable(pg_dump
 
 target_link_libraries(pg_dump
 	libdump
+	pgfeutils
 	pgcommon
 	port
 	pq
@@ -40,6 +39,7 @@ add_executable(pg_restore
 
 target_link_libraries(pg_restore
 	libdump
+	pgfeutils
 	pgcommon
 	port
 	pq
@@ -53,6 +53,7 @@ add_executable(pg_dumpall
 
 target_link_libraries(pg_dumpall
 	libdump
+	pgfeutils
 	pgcommon
 	port
 	pq

@@ -8,17 +8,14 @@ include_directories(BEFORE
 add_library(common_dump STATIC
 	common.c
 	${PROJECT_SOURCE_DIR}/src/bin/pg_dump/dumputils.c
-	${PROJECT_SOURCE_DIR}/src/bin/pg_dump/keywords.c
-	${PROJECT_SOURCE_DIR}/src/backend/parser/kwlookup.c
 )
 
 add_library(common_print STATIC
 	common.c
-	${PROJECT_SOURCE_DIR}/src/bin/psql/print.c
-	${PROJECT_SOURCE_DIR}/src/bin/psql/mbprint.c
 )
 
 set(common_libs
+	pgfeutils
 	pgcommon
 	port
 	pq
