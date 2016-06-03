@@ -899,6 +899,9 @@ set(storage_SRCS
 	storage/smgr/smgrtype.c
 )
 
+set_source_files_properties(storage/page/checksum.c
+	PROPERTIES COMPILE_FLAGS ${CFLAGS_VECTOR})
+
 bison_target(REPL_GRAM
 	replication/repl_gram.y
 	${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_gram.c

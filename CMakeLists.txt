@@ -157,6 +157,10 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
 	# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexcess-precision=standard")
+
+	# Optimization flags for specific files that benefit from vectorization
+	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -funroll-loops")
+	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -ftree-vectorize")
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -164,6 +168,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
 	# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
+
+	# Optimization flags for specific files that benefit from vectorization
+	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -funroll-loops")
+	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -ftree-vectorize")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Intel")
