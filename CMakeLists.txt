@@ -159,6 +159,13 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexcess-precision=standard")
 endif()
 
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+	# Disable strict-aliasing rules; needed for gcc 3.3+
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
+	# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
+endif()
+
 if(CMAKE_C_COMPILER_ID STREQUAL "Intel")
 	# Intel's compiler has a bug/misoptimization in checking for
 	# division by NAN (NaN == 0), -mp1 fixes it, so add it to the CFLAGS.
