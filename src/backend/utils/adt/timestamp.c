@@ -258,7 +258,7 @@ timestamp_recv(PG_FUNCTION_ARGS)
 				 errmsg("timestamp cannot be NaN")));
 #endif
 
-	/* rangecheck: see if timestamp_out would like it */
+	/* range check: see if timestamp_out would like it */
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		 /* ok */ ;
 	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0 ||
@@ -737,6 +737,64 @@ make_timestamptz_at_timezone(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(result);
 }
 
+/*
+ * to_timestamp(double precision)
+ * Convert UNIX epoch to timestamptz.
+ */
+Datum
+float8_timestamptz(PG_FUNCTION_ARGS)
+{
+	float8		seconds = PG_GETARG_FLOAT8(0);
+	TimestampTz result;
+
+	/* Deal with NaN and infinite inputs ... */
+	if (isnan(seconds))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp cannot be NaN")));
+
+	if (isinf(seconds))
+	{
+		if (seconds < 0)
+			TIMESTAMP_NOBEGIN(result);
+		else
+			TIMESTAMP_NOEND(result);
+	}
+	else
+	{
+		/* Out of range? */
+		if (seconds <
+			(float8) SECS_PER_DAY * (DATETIME_MIN_JULIAN - UNIX_EPOCH_JDATE))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range: \"%g\"", seconds)));
+
+		if (seconds >=
+			(float8) SECS_PER_DAY * (TIMESTAMP_END_JULIAN - UNIX_EPOCH_JDATE))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range: \"%g\"", seconds)));
+
+		/* Convert UNIX epoch to Postgres epoch */
+		seconds -= ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+
+#ifdef HAVE_INT64_TIMESTAMP
+		result = seconds * USECS_PER_SEC;
+#else
+		result = seconds;
+#endif
+
+		/* Recheck in case roundoff produces something just out of range */
+		if (!IS_VALID_TIMESTAMP(result))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range: \"%g\"",
+							PG_GETARG_FLOAT8(0))));
+	}
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
 /* timestamptz_out()
  * Convert a timestamp to external form.
  */
@@ -792,7 +850,7 @@ timestamptz_recv(PG_FUNCTION_ARGS)
 	timestamp = (TimestampTz) pq_getmsgfloat8(buf);
 #endif
 
-	/* rangecheck: see if timestamptz_out would like it */
+	/* range check: see if timestamptz_out would like it */
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		 /* ok */ ;
 	else if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0 ||
@@ -1435,7 +1493,7 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 		else
 			elog(ERROR, "unrecognized interval typmod: %d", typmod);
 
-		/* Need to adjust subsecond precision? */
+		/* Need to adjust sub-second precision? */
 		if (precision != INTERVAL_FULL_PRECISION)
 		{
 			if (precision < 0 || precision > MAX_INTERVAL_PRECISION)
@@ -1635,7 +1693,7 @@ IntegerTimestampToTimestampTz(int64 timestamp)
  * Both inputs must be ordinary finite timestamps (in current usage,
  * they'll be results from GetCurrentTimestamp()).
  *
- * We expect start_time <= stop_time.  If not, we return zeroes; for current
+ * We expect start_time <= stop_time.  If not, we return zeros; for current
  * callers there is no need to be tense about which way division rounds on
  * negative inputs.
  */
@@ -2276,7 +2334,7 @@ timestamp_hash(PG_FUNCTION_ARGS)
 
 
 /*
- * Crosstype comparison functions for timestamp vs timestamptz
+ * Cross-type comparison functions for timestamp vs timestamptz
  */
 
 Datum
@@ -2678,7 +2736,7 @@ overlaps_timestamp(PG_FUNCTION_ARGS)
 	{
 		/*
 		 * For ts1 = ts2 the spec says te1 <> te2 OR te1 = te2, which is a
-		 * rather silly way of saying "true if both are nonnull, else null".
+		 * rather silly way of saying "true if both are non-null, else null".
 		 */
 		if (te1IsNull || te2IsNull)
 			PG_RETURN_NULL();
@@ -2996,7 +3054,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from julian */
+			/* Add days by converting to and from Julian */
 			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
@@ -3104,7 +3162,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from julian */
+			/* Add days by converting to and from Julian */
 			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
@@ -3293,14 +3351,16 @@ interval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) ||
+		result_double > INT_MAX || result_double < INT_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 	result->month = (int32) result_double;
 
 	result_double = span->day * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) ||
+		result_double > INT_MAX || result_double < INT_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
@@ -3309,7 +3369,7 @@ interval_mul(PG_FUNCTION_ARGS)
 	/*
 	 * The above correctly handles the whole-number part of the month and day
 	 * products, but we have to do something with any fractional part
-	 * resulting when the factor is nonintegral.  We cascade the fractions
+	 * resulting when the factor is non-integral.  We cascade the fractions
 	 * down to lower units using the conversion factors DAYS_PER_MONTH and
 	 * SECS_PER_DAY.  Note we do NOT cascade up, since we are not forced to do
 	 * so by the representation.  The user can choose to cascade up later,
@@ -3319,7 +3379,7 @@ interval_mul(PG_FUNCTION_ARGS)
 	/*
 	 * Fractional months full days into days.
 	 *
-	 * Floating point calculation are inherently inprecise, so these
+	 * Floating point calculation are inherently imprecise, so these
 	 * calculations are crafted to produce the most reliable result possible.
 	 * TSROUND() is needed to more accurately produce whole numbers where
 	 * appropriate.
@@ -3459,6 +3519,55 @@ interval_accum(PG_FUNCTION_ARGS)
 	transdatums[1] = IntervalPGetDatum(&N);
 
 	result = construct_array(transdatums, 2,
+							 INTERVALOID, sizeof(Interval), false, 'd');
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+Datum
+interval_combine(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray1 = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *transarray2 = PG_GETARG_ARRAYTYPE_P(1);
+	Datum	   *transdatums1;
+	Datum	   *transdatums2;
+	int			ndatums1;
+	int			ndatums2;
+	Interval	sum1,
+				N1;
+	Interval	sum2,
+				N2;
+
+	Interval   *newsum;
+	ArrayType  *result;
+
+	deconstruct_array(transarray1,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &transdatums1, NULL, &ndatums1);
+	if (ndatums1 != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	sum1 = *(DatumGetIntervalP(transdatums1[0]));
+	N1 = *(DatumGetIntervalP(transdatums1[1]));
+
+	deconstruct_array(transarray2,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &transdatums2, NULL, &ndatums2);
+	if (ndatums2 != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	sum2 = *(DatumGetIntervalP(transdatums2[0]));
+	N2 = *(DatumGetIntervalP(transdatums2[1]));
+
+	newsum = DatumGetIntervalP(DirectFunctionCall2(interval_pl,
+												   IntervalPGetDatum(&sum1),
+												   IntervalPGetDatum(&sum2)));
+	N1.time += N2.time;
+
+	transdatums1[0] = IntervalPGetDatum(newsum);
+	transdatums1[1] = IntervalPGetDatum(&N1);
+
+	result = construct_array(transdatums1, 2,
 							 INTERVALOID, sizeof(Interval), false, 'd');
 
 	PG_RETURN_ARRAYTYPE_P(result);
@@ -5088,7 +5197,7 @@ timestamp_zone_transform(PG_FUNCTION_ARGS)
  *	This function is just timestamp2timestamptz() except instead of
  *	shifting to the global timezone, we shift to the specified timezone.
  *	This is different from the other AT TIME ZONE cases because instead
- *	of shifting to a _to_ a new time zone, it sets the time to _be_ the
+ *	of shifting _to_ a new time zone, it sets the time to _be_ the
  *	specified timezone.
  */
 Datum

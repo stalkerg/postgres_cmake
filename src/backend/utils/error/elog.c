@@ -293,7 +293,7 @@ errstart(int elevel, const char *filename, int lineno,
 	output_to_server = is_log_level_output(elevel, log_min_messages);
 
 	/* Determine whether message is enabled for client output */
-	if (whereToSendOutput == DestRemote && elevel != COMMERROR)
+	if (whereToSendOutput == DestRemote && elevel != LOG_SERVER_ONLY)
 	{
 		/*
 		 * client_min_messages is honored only after we complete the
@@ -1081,7 +1081,7 @@ errhidestmt(bool hide_stmt)
  * errhidecontext --- optionally suppress CONTEXT: field of log entry
  *
  * This should only be used for verbose debugging messages where the repeated
- * inclusion of CONTEXT: bloats the log volume too much.
+ * inclusion of context would bloat the log volume too much.
  */
 int
 errhidecontext(bool hide_ctx)
@@ -2086,7 +2086,7 @@ write_eventlog(int level, const char *line, int len)
 		case DEBUG2:
 		case DEBUG1:
 		case LOG:
-		case COMMERROR:
+		case LOG_SERVER_ONLY:
 		case INFO:
 		case NOTICE:
 			eventlevel = EVENTLOG_INFORMATION_TYPE;
@@ -2965,7 +2965,7 @@ send_message_to_server_log(ErrorData *edata)
 				syslog_level = LOG_DEBUG;
 				break;
 			case LOG:
-			case COMMERROR:
+			case LOG_SERVER_ONLY:
 			case INFO:
 				syslog_level = LOG_INFO;
 				break;
@@ -3595,7 +3595,7 @@ error_severity(int elevel)
 			prefix = _("DEBUG");
 			break;
 		case LOG:
-		case COMMERROR:
+		case LOG_SERVER_ONLY:
 			prefix = _("LOG");
 			break;
 		case INFO:
@@ -3699,7 +3699,7 @@ write_stderr(const char *fmt,...)
 static bool
 is_log_level_output(int elevel, int log_min_level)
 {
-	if (elevel == LOG || elevel == COMMERROR)
+	if (elevel == LOG || elevel == LOG_SERVER_ONLY)
 	{
 		if (log_min_level == LOG || log_min_level <= ERROR)
 			return true;

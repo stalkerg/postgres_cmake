@@ -850,7 +850,6 @@ set(backend_port_SRCS
 	${dynloader_SRCS}
 	${SEMA_IMPLEMENTATION}
 	${SHMEM_IMPLEMENTATION}
-	${LATCH_IMPLEMENTATION}
 )
 
 
@@ -882,6 +881,7 @@ set(storage_SRCS
 	storage/ipc/sinval.c
 	storage/ipc/sinvaladt.c
 	storage/ipc/standby.c
+	storage/ipc/latch.c
 	storage/large_object/inv_api.c
 	storage/lmgr/lmgr.c # Need some for check s_lock
 	storage/lmgr/lock.c
