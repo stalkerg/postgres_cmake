@@ -166,7 +166,9 @@ if(CMAKE_COMPILER_IS_GNUCC)
 
 	# Optimization flags for specific files that benefit from vectorization
 	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -funroll-loops")
-	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -ftree-vectorize")
+	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.5 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.5)
+		set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -ftree-vectorize")
+	endif()
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
