@@ -246,6 +246,16 @@
 
 #cmakedefine HAVE_ISINF
 
+#cmakedefine HAVE_FPCLASS
+
+#cmakedefine HAVE_FP_CLASS
+
+#cmakedefine HAVE_FP_CLASS_H
+
+#cmakedefine HAVE_FP_CLASS_D
+
+#cmakedefine HAVE_CLASS
+
 #cmakedefine HAVE_FSEEKO 1
 
 #cmakedefine HAVE_RINT

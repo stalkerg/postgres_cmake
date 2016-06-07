@@ -210,6 +210,9 @@ endif()
 check_symbol_exists(unsetenv "stdlib.h" HAVE_UNSETENV)
 check_symbol_exists(srandom "stdlib.h" HAVE_SRANDOM)
 
+# Test math functions
+check_symbol_exists(rint "math.h" HAVE_RINT)
+
 if(WIN32)
 	set(LIB_M "")
 else()
@@ -223,7 +226,27 @@ check_c_source_compiles("
 		return isinf(glob_double) ? 0 : 1;
 	}
 " HAVE_ISINF)
-check_symbol_exists(rint "math.h" HAVE_RINT)
+
+check_include_files(ieeefp.h HAVE_IEEEFP_H)
+if(NOT HAVE_IEEEFP_H)
+	set(HAVE_IEEEFP_H 0)
+else()
+	set(HAVE_IEEEFP_H 1)
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};ieeefp.h")
+endif()
+
+check_include_files(fp_class.h HAVE_FP_CLASS_H)
+if (HAVE_FP_CLASS_H)
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};fp_class.h")
+endif()
+set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};float.h;math.h")
+
+# Need for isinf implementation
+check_function_exists(fpclass HAVE_FPCLASS)
+check_function_exists(fp_class HAVE_FP_CLASS)
+check_function_exists(fp_class_d HAVE_FP_CLASS_D)
+check_function_exists(class HAVE_CLASS)
+
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
 check_function_exists(memmove HAVE_MEMMOVE)
@@ -279,12 +302,7 @@ check_include_files(sys/epoll.h HAVE_SYS_EPOLL_H)
 check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
 check_include_files(dld.h HAVE_DLD_H)
 check_include_files(langinfo.h HAVE_LANGINFO_H)
-check_include_files(ieeefp.h HAVE_IEEEFP_H)
-if(NOT HAVE_IEEEFP_H)
-	set(HAVE_IEEEFP_H 0)
-else()
-	set(HAVE_IEEEFP_H 1)
-endif()
+
 check_include_files(wchar.h HAVE_WCHAR_H)
 check_include_files(wctype.h HAVE_WCTYPE_H)
 check_include_files(winldap.h HAVE_WINLDAP_H)
