@@ -318,6 +318,7 @@ if(WITH_READLINE AND NOT MSVC)
 	find_package(Readline)
 	if(READLINE_FOUND)
 		#Sometimes for redline need curses
+		message(STATUS "Found Readline: ${READLINE_LIBRARY}")
 		find_package(Curses)
 		if(NOT CURSES_FOUND)
 			set(CURSES_NEED_NCURSES TRUE)
