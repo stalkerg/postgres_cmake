@@ -103,6 +103,7 @@ if(MSVC)
 endif()
 
 test_big_endian(WORDS_BIGENDIAN)
+set(FIND_LIBRARY_USE_LIB64_PATHS ON)
 
 find_package(Perl REQUIRED)
 find_package(PerlLibs)
