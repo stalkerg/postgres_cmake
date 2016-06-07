@@ -152,12 +152,17 @@ if(ZLIB_FOUND)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCC)
-	# Disable strict-aliasing rules; needed for gcc 3.3+
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-	# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
-	# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexcess-precision=standard")
+	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 3.3 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 3.3)
+		# Disable strict-aliasing rules; needed for gcc 3.3+
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
+	endif()
+
+	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.5 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.5)
+		# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
+		# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexcess-precision=standard")
+	endif()
 
 	# Optimization flags for specific files that benefit from vectorization
 	set(CFLAGS_VECTOR "${CFLAGS_VECTOR} -funroll-loops")
