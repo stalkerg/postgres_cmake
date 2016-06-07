@@ -11,6 +11,11 @@ add_custom_command(
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/bin/psql
 )
 
+flex_target(SCANSLASH_SCAN
+	psqlscanslash.l
+	${CMAKE_CURRENT_SOURCE_DIR}/psqlscanslash.c
+)
+
 set(psql_SRCS
 	command.c
 	common.c
@@ -29,8 +34,8 @@ set(psql_SRCS
 	tab-complete.c
 	../pg_dump/dumputils.c
 	sql_help.c
-	psqlscanslash.c
 	crosstabview.c
+	${FLEX_SCANSLASH_SCAN_OUTPUTS}
 )
 
 add_executable(psql

@@ -911,6 +911,18 @@ flex_target(REPL_SCAN
 set_source_files_properties(${BISON_REPL_GRAM_OUTPUTS}
 	PROPERTIES OBJECT_DEPENDS ${FLEX_REPL_SCAN_OUTPUTS})
 
+bison_target(SYNC_GRAM
+	replication/syncrep_gram.y
+	${CMAKE_CURRENT_SOURCE_DIR}/replication/syncrep_gram.c
+)
+flex_target(SYNC_SCAN
+	replication/syncrep_scanner.l
+	${CMAKE_CURRENT_SOURCE_DIR}/replication/syncrep_scanner.c
+)
+set_source_files_properties(${BISON_SYNC_GRAM_OUTPUTS}
+	PROPERTIES OBJECT_DEPENDS ${FLEX_SYNC_SCAN_OUTPUTS})
+
+
 set(replication_SRCS
 	replication/walsender.c
 	replication/walreceiverfuncs.c
@@ -919,7 +931,6 @@ set(replication_SRCS
 	replication/slot.c
 	replication/slotfuncs.c
 	replication/syncrep.c
-	replication/syncrep_gram.c
 	replication/logical/decode.c
 	replication/logical/logical.c
 	replication/logical/logicalfuncs.c
@@ -928,6 +939,7 @@ set(replication_SRCS
 	replication/logical/snapbuild.c
 	replication/logical/message.c
 	${BISON_REPL_GRAM_OUTPUTS}
+	${BISON_SYNC_GRAM_OUTPUTS}
 )
 
 set(timezone_SRCS
