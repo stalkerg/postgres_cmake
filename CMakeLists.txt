@@ -560,6 +560,7 @@ check_struct_has_member("struct tm" tm_gmtoff "sys/types.h;time.h" HAVE_STRUCT_T
 set(CMAKE_EXTRA_INCLUDE_FILES "time.h")
 check_type_size("*tzname" HAVE_TZNAME)
 
+set(CMAKE_REQUIRED_FLAGS "-Werror")
 check_c_source_compiles("
 	extern int pgac_write(int ignore, const char *fmt,...) __attribute__((format(gnu_printf, 2, 3)));
 	int main(void){return 0;}
