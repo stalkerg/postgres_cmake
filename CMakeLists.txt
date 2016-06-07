@@ -128,6 +128,7 @@ find_package(SELinux)
 find_package(LibXml2)
 find_package(LibXslt)
 find_package(TCL)
+find_package(LibSocket)
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)

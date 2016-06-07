@@ -62,6 +62,7 @@ add_library(pq SHARED ${pq_SRCS} ${RES_FILES})
 target_link_libraries(pq
 	${OPENSSL_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT}
+	${LIBSOCKET_LIBRARIES}
 )
 if(WIN32)
 	target_link_libraries(pq
