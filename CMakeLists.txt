@@ -209,7 +209,20 @@ if(NOT HAVE_DECL_VSNPRINTF)
 endif()
 check_symbol_exists(unsetenv "stdlib.h" HAVE_UNSETENV)
 check_symbol_exists(srandom "stdlib.h" HAVE_SRANDOM)
-check_symbol_exists(isinf "math.h" HAVE_ISINF)
+
+if(WIN32)
+	set(LIB_M "")
+else()
+	set(LIB_M m)
+endif()
+set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${LIB_M}")
+check_c_source_compiles("
+	#include <math.h>
+	double glob_double;
+	int main(void){
+		return isinf(glob_double) ? 0 : 1;
+	}
+" HAVE_ISINF)
 check_symbol_exists(rint "math.h" HAVE_RINT)
 check_function_exists(getpeereid HAVE_GETPEEREID)
 check_function_exists(getpeerucred HAVE_GETPEERUCRED)
@@ -551,12 +564,6 @@ check_c_source_compiles("
 		return 0;
 	}
 " HAVE__VA_ARGS)
-
-if(WIN32)
-	set(LIB_M "")
-else()
-	set(LIB_M m)
-endif()
 
 check_struct_has_member("struct tm" tm_zone "sys/types.h;time.h" HAVE_TM_ZONE LANGUAGE C)
 check_struct_has_member("struct tm" tm_gmtoff "sys/types.h;time.h" HAVE_STRUCT_TM_TM_ZONE LANGUAGE C)

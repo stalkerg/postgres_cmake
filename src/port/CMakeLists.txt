@@ -41,6 +41,13 @@ if(NOT HAVE_FLS)
 	)
 endif(NOT HAVE_FLS)
 
+if(NOT HAVE_ISINF)
+	set(port_SRCS
+		${port_SRCS}
+		isinf.c
+	)
+endif()
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}
