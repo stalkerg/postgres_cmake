@@ -48,6 +48,13 @@ if(NOT HAVE_ISINF)
 	)
 endif()
 
+if(NOT HAVE_MKDTEMP)
+	set(port_SRCS
+		${port_SRCS}
+		mkdtemp.c
+	)
+endif()
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}

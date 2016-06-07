@@ -254,6 +254,8 @@ check_function_exists(mbstowcs_l HAVE_MBSTOWCS_L)
 check_function_exists(towlower HAVE_TOWLOWER)
 check_function_exists(wcstombs HAVE_WCSTOMBS)
 check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
+check_function_exists(mkdtemp HAVE_MKDTEMP)
+check_function_exists(mkstemp HAVE_MKSTEMP)
 
 set(CMAKE_MACOSX_RPATH 1)
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -307,6 +309,8 @@ check_include_files(wchar.h HAVE_WCHAR_H)
 check_include_files(wctype.h HAVE_WCTYPE_H)
 check_include_files(winldap.h HAVE_WINLDAP_H)
 check_include_files(pwd.h HAVE_PWD_H)
+
+check_include_files(nbtool_config.h HAVE_NBTOOL_CONFIG_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)

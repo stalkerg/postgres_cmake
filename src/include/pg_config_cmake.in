@@ -298,6 +298,10 @@
 
 #cmakedefine HAVE_LIBZ
 
+#cmakedefine HAVE_MKDTEMP 1
+#cmakedefine HAVE_MKSTEMP 1
+#cmakedefine HAVE_NBTOOL_CONFIG_H 1
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #define PACKAGE_BUGREPORT "@PACKAGE_BUGREPORT@"
