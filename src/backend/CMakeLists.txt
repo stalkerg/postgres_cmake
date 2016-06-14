@@ -1042,16 +1042,20 @@ install(TARGETS postgres pqwalreceiver
 		LIBRARY DESTINATION ${LIBDIR})
 
 install(FILES
-			catalog/postgres.bki
-			catalog/postgres.description
-			catalog/postgres.shdescription
-			catalog/information_schema.sql
-			catalog/sql_features.txt
-			catalog/system_views.sql
-			libpq/pg_hba.conf.sample
-			libpq/pg_ident.conf.sample
-			utils/misc/postgresql.conf.sample
-		DESTINATION ${PGSHAREDIR})
+	catalog/postgres.bki
+	catalog/postgres.description
+	catalog/postgres.shdescription
+	catalog/information_schema.sql
+	catalog/sql_features.txt
+	catalog/system_views.sql
+	libpq/pg_hba.conf.sample
+	libpq/pg_ident.conf.sample
+	utils/misc/postgresql.conf.sample
+DESTINATION ${PGSHAREDIR})
 
 add_subdirectory(utils/mb/conversion_procs)
 add_subdirectory(snowball)
+
+if(ENABLE_NLS)
+	MAKE_MO(postgres "de;es;fr;id;it;ja;pl;pt_BR;ru;zh_CN")
+endif()

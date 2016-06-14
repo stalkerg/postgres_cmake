@@ -17,3 +17,6 @@ install(TARGETS pg_controldata
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
+if(ENABLE_NLS)
+	MAKE_MO(pg_controldata "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN")
+endif()

@@ -17,3 +17,7 @@ target_link_libraries(pg_ctl
 install(TARGETS pg_ctl
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+if(ENABLE_NLS)
+	MAKE_MO(pg_ctl "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN")
+endif()

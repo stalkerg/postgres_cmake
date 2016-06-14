@@ -133,6 +133,19 @@ find_package(LibXml2)
 find_package(LibXslt)
 find_package(TCL)
 find_package(LibSocket)
+option(ENABLE_NLS "Define if you want National Language Support" OFF)
+
+if(ENABLE_NLS)
+	include(MakeNLS)
+	find_package(Gettext REQUIRED)
+	find_program(GETTEXT_XGETTEXT_EXECUTABLE xgettext)
+	if(NOT GETTEXT_XGETTEXT_EXECUTABLE)
+		message(FATAL_ERROR "xgettext not found")
+	endif(NOT GETTEXT_XGETTEXT_EXECUTABLE)
+	if(NOT NLS_LANGUAGES)
+		set(NLS_LANGUAGES "ko;cs;pt_BR;zh_CN;ru;fr;de;es;it;tr;ja;pl;zh_TW")
+	endif()
+endif()
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
@@ -807,6 +820,8 @@ configure_file(
 
 install(FILES ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/PGXS.cmake
 		DESTINATION ${LIBDIR}/cmake)
+
+
 
 # Add sub-directories
 add_subdirectory(src)

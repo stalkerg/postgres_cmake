@@ -27,3 +27,7 @@ target_link_libraries(pg_rewind
 install(TARGETS pg_rewind
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+if(ENABLE_NLS)
+	MAKE_MO(pg_rewind "de;es;fr;it;ko;pl;ru;zh_CN")
+endif()

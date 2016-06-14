@@ -36,3 +36,7 @@ endforeach()
 install(TARGETS ${basebackup_list}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+if(ENABLE_NLS)
+	MAKE_MO(pg_basebackup "de;es;fr;it;ko;pl;pt_BR;ru;zh_CN")
+endif()

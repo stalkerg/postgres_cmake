@@ -82,3 +82,7 @@ if(PYTHON_VERSION_MAJOR EQUAL 3)
 else()
 	REGRESS_CHECK(plpython "${REGRESS_OPTS}" "${plregres_files}")
 endif()
+
+if(ENABLE_NLS)
+	MAKE_MO(plpython "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN")
+endif()

@@ -27,3 +27,6 @@ install(TARGETS initdb
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
+if(ENABLE_NLS)
+	MAKE_MO(initdb "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN")
+endif()

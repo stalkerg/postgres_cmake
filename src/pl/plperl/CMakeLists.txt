@@ -93,3 +93,7 @@ if(PERL_MULTIPLICITY STREQUAL "usemultiplicity='define'")
 endif()
 
 REGRESS_CHECK(plperl "${REGRESS_OPTS}" "${plregres_files}")
+
+if(ENABLE_NLS)
+	MAKE_MO(plperl "cs;de;es;fr;it;ja;ko;pl;pt_BR;ro;ru;sv;tr;zh_CN;zh_TW")
+endif()

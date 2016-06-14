@@ -80,5 +80,9 @@ install(TARGETS pq
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
+if(ENABLE_NLS)
+	MAKE_MO(libpq "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;tr;zh_CN;zh_TW")
+endif()
+
 #TODO 
 #set_target_properties(pq PROPERTIES LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.list")

@@ -42,3 +42,7 @@ set(plregres_files
 	pltcl_unicode
 )
 REGRESS_CHECK(pltcl "${REGRESS_OPTS}" "${plregres_files}")
+
+if(ENABLE_NLS)
+	MAKE_MO(pltcl "cs;de;es;fr;it;ja;ko;pl;pt_BR;ro;ru;tr;zh_CN;zh_TW")
+endif()

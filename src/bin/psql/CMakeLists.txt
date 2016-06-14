@@ -61,3 +61,8 @@ add_dependencies(psql postgres)
 install(TARGETS psql
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+if(ENABLE_NLS)
+	MAKE_MO(pslq "cs;de;es;fr;it;ja;pl;pt_BR;ru;zh_CN;zh_TW")
+endif()
+
