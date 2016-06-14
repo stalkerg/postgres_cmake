@@ -291,6 +291,10 @@
 
 #cmakedefine HAVE_LIBXML2
 
+#cmakedefine HAVE_POLL 1
+
+#cmakedefine HAVE_POLL_H 1
+
 /* Define to 1 if you have the `xslt' library (-lxslt). */
 #cmakedefine HAVE_LIBXSLT
 
