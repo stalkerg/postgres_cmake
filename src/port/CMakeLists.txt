@@ -79,6 +79,15 @@ if(MSVC)
 	)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+	# Solaris' getopt() doesn't do what we want for long options, so always use
+	# our version on that platform.
+	set(port_SRCS
+		${port_SRCS}
+		getopt.c
+	)
+endif()
+
 add_library(port_srv STATIC ${port_SRCS})
 add_library(port STATIC ${port_SRCS})
 

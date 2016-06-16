@@ -175,9 +175,12 @@ if(CMAKE_COMPILER_IS_GNUCC)
 		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
 	endif()
 
-	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.5 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.5)
+	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 3.4 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 3.4)
 		# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
 		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fwrapv")
+	endif()
+
+	if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.5 OR CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.5)
 		# Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
 		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexcess-precision=standard")
 	endif()
@@ -274,6 +277,11 @@ check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
 check_function_exists(mkdtemp HAVE_MKDTEMP)
 check_function_exists(mkstemp HAVE_MKSTEMP)
 check_function_exists(poll HAVE_POLL)
+check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
+if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};fcntl.h")
+	check_function_exists(posix_fadvise HAVE_DECL_POSIX_FADVISE)
+endif()
 
 set(CMAKE_MACOSX_RPATH 1)
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
