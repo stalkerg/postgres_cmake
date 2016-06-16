@@ -3,11 +3,11 @@ set(tmp_check_folder ${CMAKE_BINARY_DIR}/src/test/regress/tmp_install)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	set(env_cmd
 		${CMAKE_COMMAND} -E env
-		"DYLD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$DYLD_LIBRARY_PATH"
+		"DYLD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$DYLD_LIBRARY_PATH"
 	)
 	set(tmp_env_cmd
 		${CMAKE_COMMAND} -E env
-		"DYLD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$DYLD_LIBRARY_PATH"
+		"DYLD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$DYLD_LIBRARY_PATH"
 	)
 elif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
 	set(env_cmd
@@ -22,18 +22,18 @@ else()
 	if (CMAKE_VERSION VERSION_GREATER "3.2.0")
 		set(env_cmd
 			${CMAKE_COMMAND} -E env
-			"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH"
+			"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$LD_LIBRARY_PATH"
 		)
 		set(tmp_env_cmd
 			${CMAKE_COMMAND} -E env
-			"LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$LD_LIBRARY_PATH"
+			"LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$LD_LIBRARY_PATH"
 		)
 	else()
 		set(env_cmd
-			export "LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$LD_LIBRARY_PATH" &&
+			export "LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$LD_LIBRARY_PATH" &&
 		)
 		set(tmp_env_cmd
-			export "LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$LD_LIBRARY_PATH" &&
+			export "LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$LD_LIBRARY_PATH" &&
 		)
 	endif()
 endif()
