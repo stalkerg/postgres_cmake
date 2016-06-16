@@ -310,6 +310,12 @@
 
 #cmakedefine HAVE_GETHOSTBYNAME_R 1
 
+#cmakedefine HAVE_MBARRIER_H 1
+
+#cmakedefine HAVE_ATOMIC_H 1
+
+#cmakedefine HAVE_GETRLIMIT 1
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #define PACKAGE_BUGREPORT "@PACKAGE_BUGREPORT@"

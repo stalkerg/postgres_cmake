@@ -278,6 +278,7 @@ check_function_exists(mkdtemp HAVE_MKDTEMP)
 check_function_exists(mkstemp HAVE_MKSTEMP)
 check_function_exists(poll HAVE_POLL)
 check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
+check_function_exists(getrlimit HAVE_GETRLIMIT)
 if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};fcntl.h")
 	check_function_exists(posix_fadvise HAVE_DECL_POSIX_FADVISE)
@@ -338,6 +339,9 @@ check_include_files(winldap.h HAVE_WINLDAP_H)
 check_include_files(pwd.h HAVE_PWD_H)
 
 check_include_files(nbtool_config.h HAVE_NBTOOL_CONFIG_H)
+
+check_include_files(mbarrier.h HAVE_MBARRIER_H)
+check_include_files(atomic.h HAVE_ATOMIC_H)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
