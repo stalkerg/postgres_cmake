@@ -10,7 +10,7 @@ set(extension_name ltree_plpython)
 add_library(${extension_name}${PYTHON_VERSION_MAJOR} SHARED ${extension_name}.c)
 target_link_libraries(${extension_name}${PYTHON_VERSION_MAJOR} ${contrib_libs} ${PYTHON_LIBRARIES})
 set_target_properties(${extension_name}${PYTHON_VERSION_MAJOR} PROPERTIES PREFIX "")
-add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres)
+add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres ltree)
 install(TARGETS ${extension_name}${PYTHON_VERSION_MAJOR}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
@@ -35,6 +35,7 @@ else()
 	set(regress_options
 		"--load-extension=hstore"
 		"--load-extension=plpythonu"
+		"--load-extension=ltree"
 		"--load-extension=ltree_plpythonu"
 	)
 	CONTRIB_REGRESS_CHECK(${extension_name} "${regress_options}" "${regress_files}")
