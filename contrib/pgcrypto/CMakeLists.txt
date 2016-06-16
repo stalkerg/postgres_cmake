@@ -64,7 +64,7 @@ else()
 	target_compile_definitions(gen-rtab PRIVATE -DPRINT_TABS)
 
 	add_custom_command(
-		MAIN_DEPENDENCY gen-rtab
+		DEPENDS gen-rtab
 		OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/rijndael.tbl
 		COMMAND gen-rtab > rijndael.tbl
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
