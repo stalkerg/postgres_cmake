@@ -316,6 +316,10 @@
 
 #cmakedefine HAVE_GETRLIMIT 1
 
+#cmakedefine HAVE_CRYPT
+
+#cmakedefine HAVE_CRYPT_H
+
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 #define PACKAGE_BUGREPORT "@PACKAGE_BUGREPORT@"

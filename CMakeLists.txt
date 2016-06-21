@@ -284,6 +284,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	check_function_exists(posix_fadvise HAVE_DECL_POSIX_FADVISE)
 endif()
 
+find_library(CRYPT_LIB crypt)
+if(CRYPT_LIB)
+	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${CRYPT_LIB}")
+endif()
+check_include_files(crypt.h HAVE_CRYPT_H)
+if(HAVE_CRYPT_H)
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};crypt.h")
+endif()
+check_function_exists(crypt HAVE_CRYPT)
+
 set(CMAKE_MACOSX_RPATH 1)
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 

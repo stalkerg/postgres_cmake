@@ -99,6 +99,9 @@ target_link_libraries(${extension_name}
 	${OPENSSL_LIBRARIES}
 	${ZLIB_LIBRARIES}
 )
+if(CRYPT_LIB)
+	target_link_libraries(${extension_name} ${CRYPT_LIB})
+endif()
 if(WIN32)
 	target_link_libraries(${extension_name} ws2_32)
 endif()

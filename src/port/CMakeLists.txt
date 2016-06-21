@@ -88,6 +88,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	)
 endif()
 
+if(NOT HAVE_CRYPT)
+	set(port_SRCS
+		${port_SRCS}
+		crypt.c
+	)
+endif()
+
 add_library(port_srv STATIC ${port_SRCS})
 add_library(port STATIC ${port_SRCS})
 
