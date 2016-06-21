@@ -5,6 +5,10 @@ include_directories(BEFORE
 	${ZLIB_INCLUDE_DIRS}
 )
 
+if(ZLIB_FOUND)
+	include_directories(BEFORE ${ZLIB_INCLUDE_DIRS})
+endif()
+
 add_library(libdump STATIC
 	pg_backup_archiver.c
 	pg_backup_db.c
@@ -30,8 +34,10 @@ target_link_libraries(pg_dump
 	pgcommon
 	port
 	pq
-	${ZLIB_LIBRARIES}
 )
+if(ZLIB_FOUND)
+	target_link_libraries(pg_dump ${ZLIB_LIBRARIES})
+endif()
 
 add_executable(pg_restore
 	pg_restore.c
@@ -43,8 +49,10 @@ target_link_libraries(pg_restore
 	pgcommon
 	port
 	pq
-	${ZLIB_LIBRARIES}
 )
+if(ZLIB_FOUND)
+	target_link_libraries(pg_restore ${ZLIB_LIBRARIES})
+endif()
 
 add_executable(pg_dumpall
 	pg_dumpall.c
@@ -57,8 +65,10 @@ target_link_libraries(pg_dumpall
 	pgcommon
 	port
 	pq
-	${ZLIB_LIBRARIES}
 )
+if(ZLIB_FOUND)
+	target_link_libraries(pg_dumpall ${ZLIB_LIBRARIES})
+endif()
 
 install(TARGETS pg_dump pg_restore pg_dumpall
 		RUNTIME DESTINATION ${PGBINDIR}

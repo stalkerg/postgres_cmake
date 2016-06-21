@@ -4,6 +4,10 @@ include_directories(BEFORE
 	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
 	${ZLIB_INCLUDE_DIRS}
 )
+if(ZLIB_FOUND)
+	include_directories(BEFORE ${ZLIB_INCLUDE_DIRS})
+endif()
+
 
 add_library(common_basebackup STATIC
 	receivelog.c
@@ -29,8 +33,10 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 		pgcommon
 		${M_LIB}
 		common_basebackup
-		${ZLIB_LIBRARIES}
 	)
+	if(ZLIB_FOUND)
+		target_link_libraries(${loop_var} ${ZLIB_LIBRARIES})
+	endif()
 endforeach()
 
 install(TARGETS ${basebackup_list}

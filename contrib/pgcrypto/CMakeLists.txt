@@ -1,8 +1,10 @@
 include_directories(
 	"${PROJECT_SOURCE_DIR}/src/include"
 	${OPENSSL_INCLUDE_DIR}
-	${ZLIB_INCLUDE_DIRS}
 )
+if(ZLIB_FOUND)
+	include_directories(BEFORE ${ZLIB_INCLUDE_DIRS})
+endif()
 
 set(extension_name pgcrypto)
 
@@ -97,10 +99,12 @@ add_library(${extension_name} SHARED ${pgcrypto_src})
 target_link_libraries(${extension_name}
 	${contrib_libs}
 	${OPENSSL_LIBRARIES}
-	${ZLIB_LIBRARIES}
 )
 if(CRYPT_LIB)
 	target_link_libraries(${extension_name} ${CRYPT_LIB})
+endif()
+if(ZLIB_FOUND)
+	target_link_libraries(${extension_name} ${ZLIB_LIBRARIES})
 endif()
 if(WIN32)
 	target_link_libraries(${extension_name} ws2_32)
