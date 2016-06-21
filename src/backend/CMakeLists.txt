@@ -897,9 +897,10 @@ set(storage_SRCS
 	storage/smgr/smgrtype.c
 )
 
-set_source_files_properties(storage/page/checksum.c
-	PROPERTIES COMPILE_FLAGS ${CFLAGS_VECTOR})
-
+if(NOT MSVC)
+	set_source_files_properties(storage/page/checksum.c
+		PROPERTIES COMPILE_FLAGS ${CFLAGS_VECTOR})
+endif()
 bison_target(REPL_GRAM
 	replication/repl_gram.y
 	${CMAKE_CURRENT_SOURCE_DIR}/replication/repl_gram.c
@@ -983,10 +984,16 @@ set(postgres_SRCS
 	main/main.c
 )
 
-include_directories(BEFORE
-	${OPENSSL_INCLUDE_DIR}
-	${LIBXML2_INCLUDE_DIR}
-)
+if(OPENSSL_FOUND)
+	include_directories(BEFORE	${OPENSSL_INCLUDE_DIR})
+endif()
+if(LIBXML2_FOUND)
+	include_directories(BEFORE	${LIBXML2_INCLUDE_DIR})
+endif()
+#include_directories(BEFORE
+#	${OPENSSL_INCLUDE_DIR}
+#	${LIBXML2_INCLUDE_DIR}
+#)
 
 if(MSVC)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${WIN32_STACK_RLIMIT}")
@@ -1005,8 +1012,11 @@ target_link_libraries(postgres
 	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
 	${LIB_M}
-	${LIBXML2_LIBRARIES}
 )
+
+if(LIBXML2_FOUND)
+	target_link_libraries(postgres ${LIBXML2_LIBRARIES})
+endif()
 
 add_dependencies(postgres gen_errorcodes generate_parser_gram_h)
 
