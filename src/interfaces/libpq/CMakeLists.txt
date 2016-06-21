@@ -1,6 +1,7 @@
 include_directories(BEFORE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"${PROJECT_SOURCE_DIR}/src/port"
+	${OPENSSL_INCLUDE_DIR}
 )
 
 if(USE_OPENSSL)

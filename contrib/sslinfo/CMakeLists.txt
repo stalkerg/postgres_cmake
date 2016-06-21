@@ -1,4 +1,7 @@
-include_directories("${PROJECT_SOURCE_DIR}/src/include")
+include_directories(
+	"${PROJECT_SOURCE_DIR}/src/include"
+	${OPENSSL_INCLUDE_DIR}
+)
 
 set(extension_name sslinfo)
 
