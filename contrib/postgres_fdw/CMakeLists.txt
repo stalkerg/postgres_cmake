@@ -13,6 +13,9 @@ add_library(${extension_name} SHARED
 	shippable.c
 )
 target_link_libraries(${extension_name} ${contrib_libs})
+if(MSVC)
+	target_link_libraries(${extension_name} pq)
+endif()
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 install(TARGETS ${extension_name}
