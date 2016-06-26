@@ -761,7 +761,9 @@ if(WIN32)
 endif()
 
 include(GenDef)
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+#Not work correctly for postgres see bug: 
+#https://gitlab.kitware.com/cmake/cmake/issues/16161
+#set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 include(RegressCheck)
 
