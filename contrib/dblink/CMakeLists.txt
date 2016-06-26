@@ -12,6 +12,9 @@ if(MSVC)
 endif()
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
+if (MSVC)
+	gen_def(${extension_name})
+endif()
 install(TARGETS ${extension_name}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

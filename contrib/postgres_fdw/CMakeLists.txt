@@ -14,6 +14,7 @@ add_library(${extension_name} SHARED
 )
 target_link_libraries(${extension_name} ${contrib_libs})
 if(MSVC)
+	gen_def(${extension_name})
 	target_link_libraries(${extension_name} pq)
 endif()
 set_target_properties(${extension_name} PROPERTIES PREFIX "")

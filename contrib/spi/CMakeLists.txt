@@ -16,6 +16,9 @@ foreach(loop_var IN ITEMS ${modules_list})
 	target_link_libraries(${loop_var} ${contrib_libs})
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")
 	add_dependencies(${loop_var} postgres)
+	if(MSVC)
+		gen_def(${loop_var})
+	endif()
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
 			LIBRARY DESTINATION ${LIBDIR})

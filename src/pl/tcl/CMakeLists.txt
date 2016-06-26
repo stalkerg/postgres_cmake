@@ -17,6 +17,7 @@ add_library(${plname} SHARED
 
 target_link_libraries(${plname} postgres ${TCL_LIBRARY})
 if (MSVC)
+	gen_def(${plname})
 	target_link_libraries(${plname} port)
 endif()
 set_target_properties(${plname} PROPERTIES PREFIX "")

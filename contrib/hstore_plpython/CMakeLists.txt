@@ -11,6 +11,9 @@ add_library(${extension_name}${PYTHON_VERSION_MAJOR} SHARED ${extension_name}.c)
 target_link_libraries(${extension_name}${PYTHON_VERSION_MAJOR} ${contrib_libs} ${PYTHON_LIBRARIES})
 set_target_properties(${extension_name}${PYTHON_VERSION_MAJOR} PROPERTIES PREFIX "")
 add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres)
+if (MSVC)
+	gen_def(${extension_name})
+endif()
 install(TARGETS ${extension_name}${PYTHON_VERSION_MAJOR}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

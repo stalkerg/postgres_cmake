@@ -1043,6 +1043,7 @@ add_library(pqwalreceiver SHARED
 )
 target_link_libraries(pqwalreceiver pq)
 if (MSVC)
+	gen_def(pqwalreceiver)
 	gen_def(postgres)
 	target_link_libraries(pqwalreceiver postgres)
 endif()

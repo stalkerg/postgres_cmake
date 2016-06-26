@@ -11,6 +11,9 @@ add_library(${extension_name} SHARED
 target_link_libraries(${extension_name} ${contrib_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
+if(MSVC)
+	gen_def(${extension_name})
+endif()
 install(TARGETS ${extension_name}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

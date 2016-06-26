@@ -26,6 +26,7 @@ target_link_libraries(regress
 	pq
 )
 if (MSVC)
+	gen_def(regress)
 	target_link_libraries(regress postgres pgcommon port)
 endif()
 set_target_properties(regress PROPERTIES PREFIX "")
