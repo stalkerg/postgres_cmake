@@ -65,6 +65,9 @@ target_link_libraries(pq
 	${CMAKE_THREAD_LIBS_INIT}
 	${LIBSOCKET_LIBRARIES}
 )
+if (MSVC)
+	gen_def(pq)
+endif()
 if(CRYPT_LIB)
 	target_link_libraries(pq ${CRYPT_LIB})
 endif()
