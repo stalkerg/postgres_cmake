@@ -848,6 +848,19 @@ install(FILES ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/PGXS.cmake
 		DESTINATION ${LIBDIR}/cmake)
 
 
+option(CMAKE_USE_FOLDERS "Enable folder grouping of projects in IDEs." ON)
+mark_as_advanced(CMAKE_USE_FOLDERS)
+
+macro(CMAKE_SET_TARGET_FOLDER tgt folder)
+	if(CMAKE_USE_FOLDERS)
+		set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+		if(MSVC AND TARGET ${tgt})
+			set_property(TARGET "${tgt}" PROPERTY FOLDER "${folder}")
+		endif()
+	else()
+		set_property(GLOBAL PROPERTY USE_FOLDERS OFF)
+	endif()
+endmacro()
 
 # Add sub-directories
 add_subdirectory(src)
