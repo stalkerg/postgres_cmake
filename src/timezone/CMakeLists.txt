@@ -7,6 +7,7 @@ include_directories(
 )
 
 
+
 set(tzdata 
 	${CMAKE_CURRENT_SOURCE_DIR}/data/africa
 	${CMAKE_CURRENT_SOURCE_DIR}/data/antarctica
@@ -28,6 +29,16 @@ add_executable(zic
 target_link_libraries(zic
 	port
 )
+
+if(MSVC)
+	foreach( OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES} )
+		string( TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG )
+		set_target_properties(zic PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_BINARY_DIR} )
+		set_target_properties(zic PROPERTIES LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_BINARY_DIR} )
+		set_target_properties(zic PROPERTIES ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_BINARY_DIR} )
+	endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
+endif(MSVC)
+
 
 install(FILES 
 	tznames/Africa.txt
@@ -52,8 +63,8 @@ function(JOIN VALUES GLUE OUTPUT)
 endfunction()
 
 JOIN("${tzdata}" " " tzdata_string)
-
 install(
-	CODE "execute_process(COMMAND echo 'zic \$ENV{DESTDIR}${PGSHAREDIR}/timezone')"
-	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_CONFIG_NAME}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"\$ENV{DESTDIR}${PGSHAREDIR}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
+	CODE "message('zic \$ENV{DESTDIR}${PGSHAREDIR}/timezone')"
+	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"\$ENV{DESTDIR}${PGSHAREDIR}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
 )
+
