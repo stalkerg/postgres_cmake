@@ -58,6 +58,8 @@ endif()
 
 add_dependencies(psql postgres)
 
+CMAKE_SET_TARGET_FOLDER(psql bin)
+
 install(TARGETS psql
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

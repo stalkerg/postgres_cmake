@@ -35,6 +35,9 @@ target_link_libraries(pg_dump
 	port
 	pq
 )
+
+CMAKE_SET_TARGET_FOLDER(pg_dump bin)
+
 if(ZLIB_FOUND)
 	target_link_libraries(pg_dump ${ZLIB_LIBRARIES})
 endif()
@@ -50,6 +53,9 @@ target_link_libraries(pg_restore
 	port
 	pq
 )
+
+CMAKE_SET_TARGET_FOLDER(pg_restore bin)
+
 if(ZLIB_FOUND)
 	target_link_libraries(pg_restore ${ZLIB_LIBRARIES})
 endif()
@@ -66,6 +72,9 @@ target_link_libraries(pg_dumpall
 	port
 	pq
 )
+
+CMAKE_SET_TARGET_FOLDER(pg_dumpall bin)
+
 if(ZLIB_FOUND)
 	target_link_libraries(pg_dumpall ${ZLIB_LIBRARIES})
 endif()

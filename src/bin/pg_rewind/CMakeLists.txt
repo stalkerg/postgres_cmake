@@ -24,6 +24,8 @@ target_link_libraries(pg_rewind
 	pq
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_rewind bin)
+
 install(TARGETS pg_rewind
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

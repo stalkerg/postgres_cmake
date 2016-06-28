@@ -14,6 +14,8 @@ target_link_libraries(pg_test_fsync
 	port
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_test_fsync bin)
+
 install(TARGETS pg_test_fsync
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

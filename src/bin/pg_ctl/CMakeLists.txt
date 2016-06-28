@@ -14,6 +14,8 @@ target_link_libraries(pg_ctl
 	pgcommon
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_ctl bin)
+
 install(TARGETS pg_ctl
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

@@ -31,6 +31,8 @@ target_link_libraries(createlang
 	${common_libs}
 )
 
+CMAKE_SET_TARGET_FOLDER(createlang bin)
+
 add_executable(droplang
 	droplang.c
 )
@@ -40,6 +42,8 @@ target_link_libraries(droplang
 	${common_libs}
 )
 
+CMAKE_SET_TARGET_FOLDER(droplang bin)
+
 add_executable(pg_isready
 	pg_isready.c
 	common.c
@@ -48,6 +52,8 @@ add_executable(pg_isready
 target_link_libraries(pg_isready
 	${common_libs}
 )
+
+CMAKE_SET_TARGET_FOLDER(pg_isready bin)
 
 set(dump_modules_list 
 	createdb
@@ -69,6 +75,8 @@ foreach(loop_var IN ITEMS ${dump_modules_list})
 		common_dump
 		${common_libs}
 	)
+
+	CMAKE_SET_TARGET_FOLDER(${loop_var} bin)
 endforeach()
 
 

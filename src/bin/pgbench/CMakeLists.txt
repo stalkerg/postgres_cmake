@@ -25,6 +25,8 @@ target_link_libraries(pgbench
 
 add_dependencies(pgbench postgres)
 
+CMAKE_SET_TARGET_FOLDER(pgbench bin)
+
 install(TARGETS pgbench
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

@@ -12,6 +12,9 @@ add_dependencies(${extension_name} postgres)
 if (MSVC)
 	gen_def(${extension_name})
 endif()
+if(NOT PGXS)
+	CMAKE_SET_TARGET_FOLDER(${extension_name} contrib)
+endif()
 install(TARGETS ${extension_name}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

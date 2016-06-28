@@ -28,6 +28,8 @@ target_link_libraries(pg_upgrade
 	pq
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_upgrade bin)
+
 install(TARGETS pg_upgrade
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

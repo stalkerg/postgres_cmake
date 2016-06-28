@@ -22,6 +22,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 target_compile_definitions(initdb PRIVATE -DFRONTEND)
+CMAKE_SET_TARGET_FOLDER(initdb bin)
 
 install(TARGETS initdb
 		RUNTIME DESTINATION ${PGBINDIR}

@@ -14,6 +14,9 @@ add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres)
 if (MSVC)
 	gen_def(${extension_name})
 endif()
+if(NOT PGXS)
+	CMAKE_SET_TARGET_FOLDER(${extension_name}${PYTHON_VERSION_MAJOR} contrib)
+endif()
 install(TARGETS ${extension_name}${PYTHON_VERSION_MAJOR}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

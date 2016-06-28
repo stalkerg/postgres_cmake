@@ -14,6 +14,9 @@ add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres ltree)
 if (MSVC)
 	gen_def(${extension_name}${PYTHON_VERSION_MAJOR})
 endif()
+if(NOT PGXS)
+	CMAKE_SET_TARGET_FOLDER(${extension_name}${PYTHON_VERSION_MAJOR} contrib)
+endif()
 install(TARGETS ${extension_name}${PYTHON_VERSION_MAJOR}
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
@@ -27,6 +30,7 @@ install(FILES
 	DESTINATION ${PGSHAREDIR}/extension)
 
 set(regress_files ltree_plpython)
+
 
 if(PYTHON_VERSION_MAJOR EQUAL 3)
 	replace_python_files("${regress_files}")

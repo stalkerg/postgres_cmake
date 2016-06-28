@@ -13,6 +13,8 @@ target_link_libraries(pg_archivecleanup
 	${M_LIB}
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_archivecleanup bin)
+
 install(TARGETS pg_archivecleanup
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

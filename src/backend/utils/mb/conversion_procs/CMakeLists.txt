@@ -191,6 +191,7 @@ foreach(loop_var IN ITEMS ${procs_list})
 	if(MSVC)
 		gen_def(${loop_var})
 	endif()
+	CMAKE_SET_TARGET_FOLDER(${loop_var} conversion_procs)
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
 			LIBRARY DESTINATION ${LIBDIR})

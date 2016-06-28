@@ -20,6 +20,8 @@ target_link_libraries(pg_xlogdump
 
 target_compile_definitions(pg_xlogdump PRIVATE -DFRONTEND)
 
+CMAKE_SET_TARGET_FOLDER(pg_xlogdump bin)
+
 install(TARGETS pg_xlogdump
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})

@@ -34,6 +34,7 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 		${M_LIB}
 		common_basebackup
 	)
+	CMAKE_SET_TARGET_FOLDER(${loop_var} bin)
 	if(ZLIB_FOUND)
 		target_link_libraries(${loop_var} ${ZLIB_LIBRARIES})
 	endif()

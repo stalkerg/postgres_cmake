@@ -13,6 +13,8 @@ target_link_libraries(pg_controldata
 	port
 )
 
+CMAKE_SET_TARGET_FOLDER(pg_controldata bin)
+
 install(TARGETS pg_controldata
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
