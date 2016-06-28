@@ -805,6 +805,7 @@ if(WIN32)
 		port/win32/socket.c
 		port/win32/signal.c
 		port/win32/mingwcompat.c
+		port/win32/crashdump.c
 	)
 	if(NAVE_MINIDUMP_TYPE)
 		set(backend_port_win32_SRC

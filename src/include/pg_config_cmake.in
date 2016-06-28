@@ -262,6 +262,8 @@
 
 #cmakedefine HAVE_MEMMOVE 1
 
+#cmakedefine HAVE_MINIDUMP_TYPE 1
+
 #cmakedefine HAVE__GET_CPUID
 
 #cmakedefine HAVE__CPUID

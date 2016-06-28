@@ -7,8 +7,9 @@ endif()
 
 if(MSVC)
 	set(contrib_libs
-		${contrib_libs}
+		port
 		postgres
+		pgcommon
 	)
 endif()
 
