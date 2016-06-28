@@ -109,6 +109,12 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		DEPENDS tablespace-setup
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
+	
+	add_custom_target(${TARGET_NAME}_installcheck
+		COMMAND ${pg_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
+		DEPENDS tablespace-setup
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
 
 	add_custom_target(${TARGET_NAME}_check
 		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
@@ -117,6 +123,10 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		DEPENDS tablespace-setup
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
+	
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_installcheck_tmp tests/tmp)
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_installcheck "tests/install")
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_check tests)
 endmacro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
 macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
@@ -131,9 +141,12 @@ macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		COMMAND make ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_isolation_installcheck_tmp tests/tmp)
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_check tests)
 endmacro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
 macro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
+	set(contrib_installcheck_targets ${contrib_installcheck_targets} ${TARGET_NAME}_installcheck PARENT_SCOPE)
 	REGRESS_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
 endmacro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)

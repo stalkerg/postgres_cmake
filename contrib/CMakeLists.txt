@@ -9,11 +9,12 @@ if(MSVC)
 	set(contrib_libs
 		port
 		postgres
-		pgcommon
+		pgcommon_srv
 	)
 endif()
 
 set(contrib_check_targets "")
+set(contrib_installcheck_targets "")
 
 add_subdirectory(adminpack)
 add_subdirectory(auth_delay)
@@ -80,10 +81,6 @@ if(LIBXML2_FOUND)
 	add_subdirectory(xml2)
 endif()
 
-#add_custom_target(contrib_check
-#	DEPENDS ${contrib_check_targets}
-#)
-
 add_custom_target(contrib_check
 	COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
 	COMMAND make install DESTDIR=${tmp_check_folder}
@@ -91,3 +88,21 @@ add_custom_target(contrib_check
 	DEPENDS tablespace-setup
 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+
+#Make chain for run tests in strict order
+#TODO: we can't run tests separately now
+set(first_element "")
+list(GET contrib_installcheck_targets 0 first_element)
+add_custom_target(contrib_installcheck
+	COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+	DEPENDS tablespace-setup ${first_element}
+	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+set(last_element OFF)
+foreach(loop_var IN ITEMS ${contrib_installcheck_targets})
+	if(last_element)
+		add_dependencies(${last_element} ${loop_var})
+	endif()
+	set(last_element ${loop_var})
+endforeach()
