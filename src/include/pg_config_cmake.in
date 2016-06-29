@@ -306,6 +306,8 @@
 
 #cmakedefine HAVE_LIBZ
 
+#cmakedefine HAVE_READLINK 1
+
 #cmakedefine HAVE_MKDTEMP 1
 #cmakedefine HAVE_MKSTEMP 1
 #cmakedefine HAVE_NBTOOL_CONFIG_H 1
