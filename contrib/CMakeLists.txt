@@ -77,7 +77,7 @@ if(WITH_UUID)
 	add_subdirectory(uuid-ossp)
 endif()
 add_subdirectory(vacuumlo)
-if(LIBXML2_FOUND AND LIBXSLT_FOUND)
+if(LIBXML2_FOUND)
 	add_subdirectory(xml2)
 endif()
 

@@ -1,8 +1,11 @@
 include_directories(
 	"${PROJECT_SOURCE_DIR}/src/include"
 	${LIBXML2_INCLUDE_DIR}
-	${LIBXSLT_INCLUDE_DIR}
 )
+
+if(LIBXSLT_FOUND)
+	include_directories(BEFORE ${LIBXSLT_INCLUDE_DIR})
+endif()
 
 set(extension_name xml2)
 set(extension_lib_name pgxml)
@@ -11,8 +14,10 @@ add_library(${extension_lib_name} SHARED xpath.c xslt_proc.c)
 target_link_libraries(${extension_lib_name}
 	${contrib_libs}
 	${LIBXML2_LIBRARIES}
-	${LIBXSLT_LIBRARIES}
 )
+if(LIBXSLT_FOUND)
+	target_link_libraries(${extension_lib_name} ${LIBXSLT_LIBRARIES})
+endif()
 set_target_properties(${extension_lib_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_lib_name} postgres)
 if(MSVC)

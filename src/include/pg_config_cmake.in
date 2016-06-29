@@ -302,6 +302,8 @@
 
 #cmakedefine USE_LIBXML
 
+#cmakedefine USE_LIBXSLT
+
 #cmakedefine HAVE_LIBZ
 
 #cmakedefine HAVE_MKDTEMP 1
