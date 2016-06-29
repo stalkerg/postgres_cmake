@@ -22,10 +22,10 @@ target_compile_definitions(pg_isolation_regress PRIVATE
 	-DSHELLPROG="$ENV{SHELL}"
 )
 
-bison_target(SPEC_PARSER specparse.y ${CMAKE_CURRENT_SOURCE_DIR}/specparce.c)
+bison_target(SPEC_PARSER specparse.y ${CMAKE_CURRENT_SOURCE_DIR}/specparse.c)
 flex_target(SPEC_SCANNER specscanner.l  ${CMAKE_CURRENT_SOURCE_DIR}/specscanner.c)
 add_flex_bison_dependency(SPEC_SCANNER SPEC_PARSER)
-set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/specparce.c PROPERTIES OBJECT_DEPENDS ${FLEX_SPEC_SCANNER_OUTPUTS})
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/specparse.c PROPERTIES OBJECT_DEPENDS ${FLEX_SPEC_SCANNER_OUTPUTS})
 
 add_executable(isolationtester
 	isolationtester.c
