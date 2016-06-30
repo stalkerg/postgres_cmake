@@ -93,8 +93,6 @@ if(ZLIB_FOUND)
 	set(regress_files ${regress_files} pgp-compression)
 endif()
 
-
-
 add_library(${extension_name} SHARED ${pgcrypto_src})
 target_link_libraries(${extension_name}
 	${contrib_libs}
@@ -111,6 +109,9 @@ if(WIN32)
 endif()
 if(MSVC)
 	gen_def(${extension_name})
+endif()
+if(NOT PGXS)
+	CMAKE_SET_TARGET_FOLDER(${extension_name} contrib)
 endif()
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)

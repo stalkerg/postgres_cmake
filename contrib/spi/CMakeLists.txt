@@ -18,6 +18,9 @@ foreach(loop_var IN ITEMS ${modules_list})
 	if(MSVC)
 		gen_def(${loop_var})
 	endif()
+	if(NOT PGXS)
+		CMAKE_SET_TARGET_FOLDER(${loop_var} contrib/spi)
+	endif()
 	install(TARGETS ${loop_var}
 			RUNTIME DESTINATION ${PGBINDIR}
 			LIBRARY DESTINATION ${LIBDIR})
