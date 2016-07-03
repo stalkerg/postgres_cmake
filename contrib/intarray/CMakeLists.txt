@@ -26,8 +26,9 @@ install(TARGETS ${extension_lib_name}
 		LIBRARY DESTINATION ${LIBDIR})
 install(FILES
 	${extension_name}.control
-	${extension_name}--1.1.sql
+	${extension_name}--1.2.sql
 	${extension_name}--1.0--1.1.sql
+	${extension_name}--1.1--1.2.sql
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
