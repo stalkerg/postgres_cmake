@@ -605,7 +605,13 @@ dropRoles(PGconn *conn)
 	int			i_rolname;
 	int			i;
 
-	if (server_version >= 80100)
+	if (server_version >= 90600)
+		res = executeQuery(conn,
+						   "SELECT rolname "
+						   "FROM pg_authid "
+						   "WHERE rolname !~ '^pg_' "
+						   "ORDER BY 1");
+	else if (server_version >= 80100)
 		res = executeQuery(conn,
 						   "SELECT rolname "
 						   "FROM pg_authid "
@@ -782,7 +788,7 @@ dumpRoles(PGconn *conn)
 		auth_oid = atooid(PQgetvalue(res, i, i_oid));
 		rolename = PQgetvalue(res, i, i_rolname);
 
-		if (strncmp(rolename,"pg_",3) == 0)
+		if (strncmp(rolename, "pg_", 3) == 0)
 		{
 			fprintf(stderr, _("%s: role name starting with \"pg_\" skipped (%s)\n"),
 					progname, rolename);
@@ -914,7 +920,7 @@ dumpRoleMembership(PGconn *conn)
 					   "LEFT JOIN pg_authid ur on ur.oid = a.roleid "
 					   "LEFT JOIN pg_authid um on um.oid = a.member "
 					   "LEFT JOIN pg_authid ug on ug.oid = a.grantor "
-					   "WHERE NOT (ur.rolname ~ '^pg_' AND um.rolname ~ '^pg_')"
+					"WHERE NOT (ur.rolname ~ '^pg_' AND um.rolname ~ '^pg_')"
 					   "ORDER BY 1,2,3");
 
 	if (PQntuples(res) > 0)

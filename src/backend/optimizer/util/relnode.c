@@ -107,7 +107,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->consider_startup = (root->tuple_fraction > 0);
 	rel->consider_param_startup = false;		/* might get changed later */
 	rel->consider_parallel = false;		/* might get changed later */
-	rel->rel_parallel_degree = -1; /* set up in GetRelationInfo */
+	rel->rel_parallel_workers = -1;		/* set up in GetRelationInfo */
 	rel->reltarget = create_empty_pathtarget();
 	rel->pathlist = NIL;
 	rel->ppilist = NIL;
@@ -506,8 +506,8 @@ build_join_rel(PlannerInfo *root,
 	 * Set the consider_parallel flag if this joinrel could potentially be
 	 * scanned within a parallel worker.  If this flag is false for either
 	 * inner_rel or outer_rel, then it must be false for the joinrel also.
-	 * Even if both are true, there might be parallel-restricted quals at our
-	 * level.
+	 * Even if both are true, there might be parallel-restricted expressions
+	 * in the targetlist or quals.
 	 *
 	 * Note that if there are more than two rels in this relation, they could
 	 * be divided between inner_rel and outer_rel in any arbitrary way.  We
@@ -517,7 +517,8 @@ build_join_rel(PlannerInfo *root,
 	 * here.
 	 */
 	if (inner_rel->consider_parallel && outer_rel->consider_parallel &&
-		!has_parallel_hazard((Node *) restrictlist, false))
+		!has_parallel_hazard((Node *) restrictlist, false) &&
+		!has_parallel_hazard((Node *) joinrel->reltarget->exprs, false))
 		joinrel->consider_parallel = true;
 
 	/*
@@ -1263,8 +1264,8 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 
 	/* Estimate the number of rows returned by the parameterized join */
 	rows = get_parameterized_joinrel_size(root, joinrel,
-										  outer_path->rows,
-										  inner_path->rows,
+										  outer_path,
+										  inner_path,
 										  sjinfo,
 										  *restrict_clauses);
 

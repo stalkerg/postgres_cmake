@@ -479,7 +479,8 @@ typedef enum NodeTag
 	T_InlineCodeBlock,			/* in nodes/parsenodes.h */
 	T_FdwRoutine,				/* in foreign/fdwapi.h */
 	T_IndexAmRoutine,			/* in access/amapi.h */
-	T_TsmRoutine				/* in access/tsmapi.h */
+	T_TsmRoutine,				/* in access/tsmapi.h */
+	T_ForeignKeyCacheInfo		/* in utils/rel.h */
 } NodeTag;
 
 /*
@@ -558,7 +559,7 @@ extern void outToken(struct StringInfoData *str, const char *s);
 extern void outBitmapset(struct StringInfoData *str,
 			 const struct Bitmapset *bms);
 extern void outDatum(struct StringInfoData *str, uintptr_t value,
-					 int typlen, bool typbyval);
+		 int typlen, bool typbyval);
 
 /*
  * nodes/{readfuncs.c,read.c}

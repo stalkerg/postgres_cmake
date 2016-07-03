@@ -367,10 +367,9 @@ bool		pid_lock_file_exists(const char *datadir);
 
 /* file.c */
 
-const char *copyFile(const char *src, const char *dst, bool force);
+const char *copyFile(const char *src, const char *dst);
 const char *linkFile(const char *src, const char *dst);
-const char *rewriteVisibilityMap(const char *fromfile, const char *tofile,
-								 bool force);
+const char *rewriteVisibilityMap(const char *fromfile, const char *tofile);
 
 void		check_hard_link(void);
 FILE	   *fopen_priv(const char *path, const char *mode);
@@ -397,7 +396,6 @@ void		get_sock_dir(ClusterInfo *cluster, bool live_check);
 
 /* relfilenode.c */
 
-void		get_pg_database_relfilenode(ClusterInfo *cluster);
 void transfer_all_new_tablespaces(DbInfoArr *old_db_arr,
 				  DbInfoArr *new_db_arr, char *old_pgdata, char *new_pgdata);
 void transfer_all_new_dbs(DbInfoArr *old_db_arr,

@@ -15,7 +15,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
-#include "catalog/pg_aggregate.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/tlist.h"
@@ -736,17 +736,28 @@ apply_pathtarget_labeling_to_tlist(List *tlist, PathTarget *target)
 			 * this allows us to deal with some cases where a set-returning
 			 * function has been inlined, so that we now have more knowledge
 			 * about what it returns than we did when the original Var was
-			 * created.  Otherwise, use regular equal() to see if there's a
-			 * matching TLE.  (In current usage, only the Var case is actually
-			 * needed; but it seems best to have sane behavior here for
-			 * non-Vars too.)
+			 * created.  Otherwise, use regular equal() to find the matching
+			 * TLE.  (In current usage, only the Var case is actually needed;
+			 * but it seems best to have sane behavior here for non-Vars too.)
 			 */
 			if (expr && IsA(expr, Var))
 				tle = tlist_member_match_var((Var *) expr, tlist);
 			else
 				tle = tlist_member((Node *) expr, tlist);
-			if (tle)
-				tle->ressortgroupref = target->sortgrouprefs[i];
+
+			/*
+			 * Complain if noplace for the sortgrouprefs label, or if we'd
+			 * have to label a column twice.  (The case where it already has
+			 * the desired label probably can't happen, but we may as well
+			 * allow for it.)
+			 */
+			if (!tle)
+				elog(ERROR, "ORDER/GROUP BY expression not found in targetlist");
+			if (tle->ressortgroupref != 0 &&
+				tle->ressortgroupref != target->sortgrouprefs[i])
+				elog(ERROR, "targetlist item has multiple sortgroupref labels");
+
+			tle->ressortgroupref = target->sortgrouprefs[i];
 		}
 		i++;
 	}
@@ -755,49 +766,47 @@ apply_pathtarget_labeling_to_tlist(List *tlist, PathTarget *target)
 /*
  * apply_partialaggref_adjustment
  *	  Convert PathTarget to be suitable for a partial aggregate node. We simply
- *	  adjust any Aggref nodes found in the target and set the aggoutputtype to
- *	  the aggtranstype or aggserialtype. This allows exprType() to return the
+ *	  adjust any Aggref nodes found in the target and set the aggoutputtype
+ *	  appropriately. This allows exprType() to return the
  *	  actual type that will be produced.
  *
- * Note: We expect 'target' to be a flat target list and not have Aggrefs burried
+ * Note: We expect 'target' to be a flat target list and not have Aggrefs buried
  * within other expressions.
  */
 void
 apply_partialaggref_adjustment(PathTarget *target)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, target->exprs)
 	{
-		Aggref *aggref = (Aggref *) lfirst(lc);
+		Aggref	   *aggref = (Aggref *) lfirst(lc);
 
 		if (IsA(aggref, Aggref))
 		{
-			HeapTuple	aggTuple;
-			Form_pg_aggregate aggform;
 			Aggref	   *newaggref;
-
-			aggTuple = SearchSysCache1(AGGFNOID,
-									   ObjectIdGetDatum(aggref->aggfnoid));
-			if (!HeapTupleIsValid(aggTuple))
-				elog(ERROR, "cache lookup failed for aggregate %u",
-					 aggref->aggfnoid);
-			aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 
 			newaggref = (Aggref *) copyObject(aggref);
 
-			/* use the serialization type, if one exists */
-			if (OidIsValid(aggform->aggserialtype))
-				newaggref->aggoutputtype = aggform->aggserialtype;
+			/*
+			 * Normally, a partial aggregate returns the aggregate's
+			 * transition type, but if that's INTERNAL, it returns BYTEA
+			 * instead.  (XXX this assumes we're doing parallel aggregate with
+			 * serialization; later we might need an argument to tell this
+			 * function whether we're doing parallel or just local partial
+			 * aggregation.)
+			 */
+			Assert(OidIsValid(newaggref->aggtranstype));
+
+			if (newaggref->aggtranstype == INTERNALOID)
+				newaggref->aggoutputtype = BYTEAOID;
 			else
-				newaggref->aggoutputtype = aggform->aggtranstype;
+				newaggref->aggoutputtype = newaggref->aggtranstype;
 
 			/* flag it as partial */
 			newaggref->aggpartial = true;
 
 			lfirst(lc) = newaggref;
-
-			ReleaseSysCache(aggTuple);
 		}
 	}
 }

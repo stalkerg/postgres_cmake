@@ -22,7 +22,7 @@
 
 
 #ifndef WIN32
-static int	copy_file(const char *fromfile, const char *tofile, bool force);
+static int	copy_file(const char *fromfile, const char *tofile);
 #else
 static int	win32_pghardlink(const char *src, const char *dst);
 #endif
@@ -34,16 +34,16 @@ static int	win32_pghardlink(const char *src, const char *dst);
  *	Copies a relation file from src to dst.
  */
 const char *
-copyFile(const char *src, const char *dst, bool force)
+copyFile(const char *src, const char *dst)
 {
 #ifndef WIN32
-		if (copy_file(src, dst, force) == -1)
+	if (copy_file(src, dst) == -1)
 #else
-		if (CopyFile(src, dst, !force) == 0)
+	if (CopyFile(src, dst, true) == 0)
 #endif
-			return getErrorText();
-		else
-			return NULL;
+		return getErrorText();
+	else
+		return NULL;
 }
 
 
@@ -68,7 +68,7 @@ linkFile(const char *src, const char *dst)
 
 #ifndef WIN32
 static int
-copy_file(const char *srcfile, const char *dstfile, bool force)
+copy_file(const char *srcfile, const char *dstfile)
 {
 #define COPY_BUF_SIZE (50 * BLCKSZ)
 
@@ -87,7 +87,7 @@ copy_file(const char *srcfile, const char *dstfile, bool force)
 	if ((src_fd = open(srcfile, O_RDONLY, 0)) < 0)
 		return -1;
 
-	if ((dest_fd = open(dstfile, O_RDWR | O_CREAT | (force ? 0 : O_EXCL), S_IRUSR | S_IWUSR)) < 0)
+	if ((dest_fd = open(dstfile, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR)) < 0)
 	{
 		save_errno = errno;
 
@@ -159,12 +159,13 @@ copy_file(const char *srcfile, const char *dstfile, bool force)
  * VACUUM.
  */
 const char *
-rewriteVisibilityMap(const char *fromfile, const char *tofile, bool force)
+rewriteVisibilityMap(const char *fromfile, const char *tofile)
 {
 	int			src_fd = 0;
 	int			dst_fd = 0;
 	char		buffer[BLCKSZ];
 	ssize_t		bytesRead;
+	ssize_t		totalBytesRead = 0;
 	ssize_t		src_filesize;
 	int			rewriteVmBytesPerPage;
 	BlockNumber new_blkno = 0;
@@ -185,7 +186,7 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile, bool force)
 		return getErrorText();
 	}
 
-	if ((dst_fd = open(tofile, O_RDWR | O_CREAT | (force ? 0 : O_EXCL), S_IRUSR | S_IWUSR)) < 0)
+	if ((dst_fd = open(tofile, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR)) < 0)
 	{
 		close(src_fd);
 		return getErrorText();
@@ -200,13 +201,23 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile, bool force)
 	 * page is empty, we skip it, mostly to avoid turning one-page visibility
 	 * maps for small relations into two pages needlessly.
 	 */
-	while ((bytesRead = read(src_fd, buffer, BLCKSZ)) == BLCKSZ)
+	while (totalBytesRead < src_filesize)
 	{
 		char	   *old_cur;
 		char	   *old_break;
 		char	   *old_blkend;
 		PageHeaderData pageheader;
-		bool		old_lastblk = ((BLCKSZ * (new_blkno + 1)) == src_filesize);
+		bool		old_lastblk;
+
+		if ((bytesRead = read(src_fd, buffer, BLCKSZ)) != BLCKSZ)
+		{
+			close(dst_fd);
+			close(src_fd);
+			return getErrorText();
+		}
+
+		totalBytesRead += BLCKSZ;
+		old_lastblk = (totalBytesRead == src_filesize);
 
 		/* Save the page header data */
 		memcpy(&pageheader, buffer, SizeOfPageHeaderData);
@@ -262,7 +273,7 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile, bool force)
 				new_cur += BITS_PER_HEAPBLOCK;
 			}
 
-			/* If the last part of the old page is empty, skip to write it */
+			/* If the last part of the old page is empty, skip writing it */
 			if (old_lastpart && empty)
 				break;
 

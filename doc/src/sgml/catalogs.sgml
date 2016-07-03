@@ -14,11 +14,13 @@
    tables.  You can drop and recreate the tables, add columns, insert
    and update values, and severely mess up your system that way.
    Normally, one should not change the system catalogs by hand, there
-   are always SQL commands to do that.  (For example, <command>CREATE
+   are normally SQL commands to do that.  (For example, <command>CREATE
    DATABASE</command> inserts a row into the
    <structname>pg_database</structname> catalog &mdash; and actually
    creates the database on disk.)  There are some exceptions for
-   particularly esoteric operations, such as adding index access methods.
+   particularly esoteric operations, but many of those have been made
+   available as SQL commands over time, and so the need for direct manipulation
+   of the system catalogs is ever decreasing.
   </para>
 
  <sect1 id="catalogs-overview">
@@ -460,12 +462,6 @@
       <entry><type>oid</type></entry>
       <entry><literal><link linkend="catalog-pg-type"><structname>pg_type</structname></link>.oid</literal></entry>
       <entry>Data type of the aggregate function's internal transition (state) data</entry>
-     </row>
-     <row>
-      <entry><structfield>aggserialtype</structfield></entry>
-      <entry><type>oid</type></entry>
-      <entry><literal><link linkend="catalog-pg-type"><structname>pg_type</structname></link>.oid</literal></entry>
-      <entry>Return data type of the aggregate function's serialization function (zero if none)</entry>
      </row>
      <row>
       <entry><structfield>aggtransspace</structfield></entry>
@@ -3817,7 +3813,7 @@
   </para>
 
   <table>
-   <title><structname>pg_inherits</> Columns</title>
+   <title><structname>pg_init_privs</> Columns</title>
 
    <tgroup cols="4">
     <thead>
@@ -8914,6 +8910,16 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
       <entry></entry>
       <entry>Password expiry time (only used for password authentication);
        null if no expiration</entry>
+     </row>
+
+     <row>
+      <entry><structfield>rolbypassrls</structfield></entry>
+      <entry><type>bool</type></entry>
+      <entry></entry>
+      <entry>
+       Role bypasses every row level security policy, see
+       <xref linkend="ddl-rowsecurity"> for more information.
+      </entry>
      </row>
 
      <row>

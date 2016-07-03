@@ -137,8 +137,9 @@ static BufferAccessStrategy vac_strategy;
 
 
 /* non-export function prototypes */
-static void lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
-			   Relation *Irel, int nindexes, bool aggressive);
+static void lazy_scan_heap(Relation onerel, int options,
+			   LVRelStats *vacrelstats, Relation *Irel, int nindexes,
+			   bool aggressive);
 static void lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats);
 static bool lazy_check_needs_freeze(Buffer buf, bool *hastup);
 static void lazy_vacuum_index(Relation indrel,
@@ -223,15 +224,17 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 						  &MultiXactCutoff, &mxactFullScanLimit);
 
 	/*
-	 * We request an aggressive scan if either the table's frozen Xid is now
-	 * older than or equal to the requested Xid full-table scan limit; or if
-	 * the table's minimum MultiXactId is older than or equal to the requested
-	 * mxid full-table scan limit.
+	 * We request an aggressive scan if the table's frozen Xid is now older
+	 * than or equal to the requested Xid full-table scan limit; or if the
+	 * table's minimum MultiXactId is older than or equal to the requested
+	 * mxid full-table scan limit; or if DISABLE_PAGE_SKIPPING was specified.
 	 */
 	aggressive = TransactionIdPrecedesOrEquals(onerel->rd_rel->relfrozenxid,
 											   xidFullScanLimit);
 	aggressive |= MultiXactIdPrecedesOrEquals(onerel->rd_rel->relminmxid,
 											  mxactFullScanLimit);
+	if (options & VACOPT_DISABLE_PAGE_SKIPPING)
+		aggressive = true;
 
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
 
@@ -246,14 +249,14 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 	vacrelstats->hasindex = (nindexes > 0);
 
 	/* Do the vacuuming */
-	lazy_scan_heap(onerel, vacrelstats, Irel, nindexes, aggressive);
+	lazy_scan_heap(onerel, options, vacrelstats, Irel, nindexes, aggressive);
 
 	/* Done with indexes */
 	vac_close_indexes(nindexes, Irel, NoLock);
 
 	/*
-	 * Compute whether we actually scanned the whole relation. If we did, we
-	 * can adjust relfrozenxid and relminmxid.
+	 * Compute whether we actually scanned the all unfrozen pages. If we did,
+	 * we can adjust relfrozenxid and relminmxid.
 	 *
 	 * NB: We need to check this before truncating the relation, because that
 	 * will change ->rel_pages.
@@ -441,7 +444,7 @@ vacuum_log_cleanup_info(Relation rel, LVRelStats *vacrelstats)
  *		reference them have been killed.
  */
 static void
-lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
+lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 			   Relation *Irel, int nindexes, bool aggressive)
 {
 	BlockNumber nblocks,
@@ -542,25 +545,28 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 	 * the last page.  This is worth avoiding mainly because such a lock must
 	 * be replayed on any hot standby, where it can be disruptive.
 	 */
-	for (next_unskippable_block = 0;
-		 next_unskippable_block < nblocks;
-		 next_unskippable_block++)
+	next_unskippable_block = 0;
+	if ((options & VACOPT_DISABLE_PAGE_SKIPPING) == 0)
 	{
-		uint8		vmstatus;
+		while (next_unskippable_block < nblocks)
+		{
+			uint8		vmstatus;
 
-		vmstatus = visibilitymap_get_status(onerel, next_unskippable_block,
-											&vmbuffer);
-		if (aggressive)
-		{
-			if ((vmstatus & VISIBILITYMAP_ALL_FROZEN) == 0)
-				break;
+			vmstatus = visibilitymap_get_status(onerel, next_unskippable_block,
+												&vmbuffer);
+			if (aggressive)
+			{
+				if ((vmstatus & VISIBILITYMAP_ALL_FROZEN) == 0)
+					break;
+			}
+			else
+			{
+				if ((vmstatus & VISIBILITYMAP_ALL_VISIBLE) == 0)
+					break;
+			}
+			vacuum_delay_point();
+			next_unskippable_block++;
 		}
-		else
-		{
-			if ((vmstatus & VISIBILITYMAP_ALL_VISIBLE) == 0)
-				break;
-		}
-		vacuum_delay_point();
 	}
 
 	if (next_unskippable_block >= SKIP_PAGES_THRESHOLD)
@@ -594,26 +600,29 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		if (blkno == next_unskippable_block)
 		{
 			/* Time to advance next_unskippable_block */
-			for (next_unskippable_block++;
-				 next_unskippable_block < nblocks;
-				 next_unskippable_block++)
+			next_unskippable_block++;
+			if ((options & VACOPT_DISABLE_PAGE_SKIPPING) == 0)
 			{
-				uint8		vmskipflags;
+				while (next_unskippable_block < nblocks)
+				{
+					uint8		vmskipflags;
 
-				vmskipflags = visibilitymap_get_status(onerel,
-													   next_unskippable_block,
-													   &vmbuffer);
-				if (aggressive)
-				{
-					if ((vmskipflags & VISIBILITYMAP_ALL_FROZEN) == 0)
-						break;
+					vmskipflags = visibilitymap_get_status(onerel,
+													  next_unskippable_block,
+														   &vmbuffer);
+					if (aggressive)
+					{
+						if ((vmskipflags & VISIBILITYMAP_ALL_FROZEN) == 0)
+							break;
+					}
+					else
+					{
+						if ((vmskipflags & VISIBILITYMAP_ALL_VISIBLE) == 0)
+							break;
+					}
+					vacuum_delay_point();
+					next_unskippable_block++;
 				}
-				else
-				{
-					if ((vmskipflags & VISIBILITYMAP_ALL_VISIBLE) == 0)
-						break;
-				}
-				vacuum_delay_point();
 			}
 
 			/*
@@ -1054,6 +1063,8 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			}
 			else
 			{
+				bool		tuple_totally_frozen;
+
 				num_tuples += 1;
 				hastup = true;
 
@@ -1062,9 +1073,11 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				 * freezing.  Note we already have exclusive buffer lock.
 				 */
 				if (heap_prepare_freeze_tuple(tuple.t_data, FreezeLimit,
-										  MultiXactCutoff, &frozen[nfrozen]))
+										   MultiXactCutoff, &frozen[nfrozen],
+											  &tuple_totally_frozen))
 					frozen[nfrozen++].offset = offnum;
-				else if (heap_tuple_needs_eventual_freeze(tuple.t_data))
+
+				if (!tuple_totally_frozen)
 					all_frozen = false;
 			}
 		}						/* scan along page */
@@ -1192,9 +1205,9 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		}
 
 		/*
-		 * If the page is marked as all-visible but not all-frozen, we should
-		 * so mark it.  Note that all_frozen is only valid if all_visible is
-		 * true, so we must check both.
+		 * If the all-visible page is turned out to be all-frozen but not
+		 * marked, we should so mark it.  Note that all_frozen is only valid
+		 * if all_visible is true, so we must check both.
 		 */
 		else if (all_visible_according_to_vm && all_visible && all_frozen &&
 				 !VM_ALL_FROZEN(onerel, blkno, &vmbuffer))
@@ -1660,7 +1673,7 @@ should_attempt_truncation(LVRelStats *vacrelstats)
 	possibly_freeable = vacrelstats->rel_pages - vacrelstats->nonempty_pages;
 	if (possibly_freeable > 0 &&
 		(possibly_freeable >= REL_TRUNCATE_MINIMUM ||
-		 possibly_freeable >= vacrelstats->rel_pages / REL_TRUNCATE_FRACTION) &&
+	  possibly_freeable >= vacrelstats->rel_pages / REL_TRUNCATE_FRACTION) &&
 		old_snapshot_threshold < 0)
 		return true;
 	else
@@ -2068,6 +2081,7 @@ heap_page_is_all_visible(Relation rel, Buffer buf,
 		if (ItemIdIsDead(itemid))
 		{
 			all_visible = false;
+			*all_frozen = false;
 			break;
 		}
 
@@ -2087,6 +2101,7 @@ heap_page_is_all_visible(Relation rel, Buffer buf,
 					if (!HeapTupleHeaderXminCommitted(tuple.t_data))
 					{
 						all_visible = false;
+						*all_frozen = false;
 						break;
 					}
 
@@ -2098,6 +2113,7 @@ heap_page_is_all_visible(Relation rel, Buffer buf,
 					if (!TransactionIdPrecedes(xmin, OldestXmin))
 					{
 						all_visible = false;
+						*all_frozen = false;
 						break;
 					}
 
@@ -2116,23 +2132,16 @@ heap_page_is_all_visible(Relation rel, Buffer buf,
 			case HEAPTUPLE_RECENTLY_DEAD:
 			case HEAPTUPLE_INSERT_IN_PROGRESS:
 			case HEAPTUPLE_DELETE_IN_PROGRESS:
-				all_visible = false;
-				break;
-
+				{
+					all_visible = false;
+					*all_frozen = false;
+					break;
+				}
 			default:
 				elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result");
 				break;
 		}
 	}							/* scan along page */
-
-	/*
-	 * We don't bother clearing *all_frozen when the page is discovered not to
-	 * be all-visible, so do that now if necessary.  The page might fail to be
-	 * all-frozen for other reasons anyway, but if it's not all-visible, then
-	 * it definitely isn't all-frozen.
-	 */
-	if (!all_visible)
-		*all_frozen = false;
 
 	return all_visible;
 }

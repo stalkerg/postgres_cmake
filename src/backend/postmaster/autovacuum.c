@@ -204,7 +204,7 @@ typedef struct autovac_table
  * wi_links		entry into free list or running list
  * wi_dboid		OID of the database this worker is supposed to work on
  * wi_tableoid	OID of the table currently being vacuumed, if any
- * wi_sharedrel	flag indicating whether table is marked relisshared
+ * wi_sharedrel flag indicating whether table is marked relisshared
  * wi_proc		pointer to PGPROC of the running worker, NULL if not started
  * wi_launchtime Time at which this worker was launched
  * wi_cost_*	Vacuum cost-based delay parameters current in this worker
@@ -538,11 +538,13 @@ AutoVacLauncherMain(int argc, char *argv[])
 	SetConfigOption("zero_damaged_pages", "false", PGC_SUSET, PGC_S_OVERRIDE);
 
 	/*
-	 * Force statement_timeout and lock_timeout to zero to avoid letting these
-	 * settings prevent regular maintenance from being executed.
+	 * Force settable timeouts off to avoid letting these settings prevent
+	 * regular maintenance from being executed.
 	 */
 	SetConfigOption("statement_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
 	SetConfigOption("lock_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+	SetConfigOption("idle_in_transaction_session_timeout", "0",
+					PGC_SUSET, PGC_S_OVERRIDE);
 
 	/*
 	 * Force default_transaction_isolation to READ COMMITTED.  We don't want
@@ -672,9 +674,9 @@ AutoVacLauncherMain(int argc, char *argv[])
 
 		/*
 		 * There are some conditions that we need to check before trying to
-		 * start a worker.  First, we need to make sure that there is a
-		 * worker slot available.  Second, we need to make sure that no
-		 * other worker failed while starting up.
+		 * start a worker.  First, we need to make sure that there is a worker
+		 * slot available.  Second, we need to make sure that no other worker
+		 * failed while starting up.
 		 */
 
 		current_time = GetCurrentTimestamp();
@@ -1551,11 +1553,13 @@ AutoVacWorkerMain(int argc, char *argv[])
 	SetConfigOption("zero_damaged_pages", "false", PGC_SUSET, PGC_S_OVERRIDE);
 
 	/*
-	 * Force statement_timeout and lock_timeout to zero to avoid letting these
-	 * settings prevent regular maintenance from being executed.
+	 * Force settable timeouts off to avoid letting these settings prevent
+	 * regular maintenance from being executed.
 	 */
 	SetConfigOption("statement_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
 	SetConfigOption("lock_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+	SetConfigOption("idle_in_transaction_session_timeout", "0",
+					PGC_SUSET, PGC_S_OVERRIDE);
 
 	/*
 	 * Force default_transaction_isolation to READ COMMITTED.  We don't want

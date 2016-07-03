@@ -731,7 +731,9 @@ build_tlist_to_deparse(RelOptInfo *foreignrel)
 	 * We require columns specified in foreignrel->reltarget->exprs and those
 	 * required for evaluating the local conditions.
 	 */
-	tlist = add_to_flat_tlist(tlist, foreignrel->reltarget->exprs);
+	tlist = add_to_flat_tlist(tlist,
+					   pull_var_clause((Node *) foreignrel->reltarget->exprs,
+									   PVC_RECURSE_PLACEHOLDERS));
 	tlist = add_to_flat_tlist(tlist,
 							  pull_var_clause((Node *) fpinfo->local_conds,
 											  PVC_RECURSE_PLACEHOLDERS));
@@ -1112,8 +1114,10 @@ deparseExplicitTargetList(List *tlist, List **retrieved_attrs,
 		/* Extract expression if TargetEntry node */
 		Assert(IsA(tle, TargetEntry));
 		var = (Var *) tle->expr;
+
 		/* We expect only Var nodes here */
-		Assert(IsA(var, Var));
+		if (!IsA(var, Var))
+			elog(ERROR, "non-Var not expected in target list");
 
 		if (i > 0)
 			appendStringInfoString(buf, ", ");
@@ -1583,10 +1587,10 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 		/*
 		 * All other system attributes are fetched as 0, except for table OID,
 		 * which is fetched as the local table OID.  However, we must be
-		 * careful; the table could be beneath an outer join, in which case
-		 * it must go to NULL whenever the rest of the row does.
+		 * careful; the table could be beneath an outer join, in which case it
+		 * must go to NULL whenever the rest of the row does.
 		 */
-		Oid		fetchval = 0;
+		Oid			fetchval = 0;
 
 		if (varattno == TableOidAttributeNumber)
 		{
@@ -1633,10 +1637,10 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 									0 - FirstLowInvalidHeapAttributeNumber);
 
 		/*
-		 * In case the whole-row reference is under an outer join then it has to
-		 * go NULL whenver the rest of the row goes NULL. Deparsing a join query
-		 * would always involve multiple relations, thus qualify_col would be
-		 * true.
+		 * In case the whole-row reference is under an outer join then it has
+		 * to go NULL whenver the rest of the row goes NULL. Deparsing a join
+		 * query would always involve multiple relations, thus qualify_col
+		 * would be true.
 		 */
 		if (qualify_col)
 		{
@@ -1652,7 +1656,7 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 
 		/* Complete the CASE WHEN statement started above. */
 		if (qualify_col)
-			appendStringInfo(buf," END");
+			appendStringInfo(buf, " END");
 
 		heap_close(rel, NoLock);
 		bms_free(attrs_used);

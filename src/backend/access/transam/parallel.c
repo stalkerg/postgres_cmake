@@ -17,6 +17,7 @@
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/parallel.h"
+#include "catalog/namespace.h"
 #include "commands/async.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -67,6 +68,8 @@ typedef struct FixedParallelState
 	Oid			database_id;
 	Oid			authenticated_user_id;
 	Oid			current_user_id;
+	Oid			temp_namespace_id;
+	Oid			temp_toast_namespace_id;
 	int			sec_context;
 	PGPROC	   *parallel_master_pgproc;
 	pid_t		parallel_master_pid;
@@ -134,9 +137,9 @@ CreateParallelContext(parallel_worker_main_type entrypoint, int nworkers)
 		nworkers = 0;
 
 	/*
-	 * If we are running under serializable isolation, we can't use
-	 * parallel workers, at least not until somebody enhances that mechanism
-	 * to be parallel-aware.
+	 * If we are running under serializable isolation, we can't use parallel
+	 * workers, at least not until somebody enhances that mechanism to be
+	 * parallel-aware.
 	 */
 	if (IsolationIsSerializable())
 		nworkers = 0;
@@ -188,8 +191,8 @@ CreateParallelContextForExternalFunction(char *library_name,
 
 /*
  * Establish the dynamic shared memory segment for a parallel context and
- * copied state and other bookkeeping information that will need by parallel
- * workers into it.
+ * copy state and other bookkeeping information that will be needed by
+ * parallel workers into it.
  */
 void
 InitializeParallelDSM(ParallelContext *pcxt)
@@ -268,7 +271,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	 * parallelism than to fail outright.
 	 */
 	segsize = shm_toc_estimate(&pcxt->estimator);
-	if (pcxt->nworkers != 0)
+	if (pcxt->nworkers > 0)
 		pcxt->seg = dsm_create(segsize, DSM_CREATE_NULL_IF_MAXSEGMENTS);
 	if (pcxt->seg != NULL)
 		pcxt->toc = shm_toc_create(PARALLEL_MAGIC,
@@ -288,6 +291,8 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->database_id = MyDatabaseId;
 	fps->authenticated_user_id = GetAuthenticatedUserId();
 	GetUserIdAndSecContext(&fps->current_user_id, &fps->sec_context);
+	GetTempNamespaceState(&fps->temp_namespace_id,
+						  &fps->temp_toast_namespace_id);
 	fps->parallel_master_pgproc = MyProc;
 	fps->parallel_master_pid = MyProcPid;
 	fps->parallel_master_backend_id = MyBackendId;
@@ -392,11 +397,13 @@ ReinitializeParallelDSM(ParallelContext *pcxt)
 	char	   *error_queue_space;
 	int			i;
 
-	if (pcxt->nworkers_launched == 0)
-		return;
-
-	WaitForParallelWorkersToFinish(pcxt);
-	WaitForParallelWorkersToExit(pcxt);
+	/* Wait for any old workers to exit. */
+	if (pcxt->nworkers_launched > 0)
+	{
+		WaitForParallelWorkersToFinish(pcxt);
+		WaitForParallelWorkersToExit(pcxt);
+		pcxt->nworkers_launched = 0;
+	}
 
 	/* Reset a few bits of fixed parallel state to a clean state. */
 	fps = shm_toc_lookup(pcxt->toc, PARALLEL_KEY_FIXED);
@@ -415,9 +422,6 @@ ReinitializeParallelDSM(ParallelContext *pcxt)
 		shm_mq_set_receiver(mq, MyProc);
 		pcxt->worker[i].error_mqh = shm_mq_attach(mq, pcxt->seg, NULL);
 	}
-
-	/* Reset number of workers launched. */
-	pcxt->nworkers_launched = 0;
 }
 
 /*
@@ -488,6 +492,7 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 			 */
 			any_registrations_failed = true;
 			pcxt->worker[i].bgwhandle = NULL;
+			pfree(pcxt->worker[i].error_mqh);
 			pcxt->worker[i].error_mqh = NULL;
 		}
 	}
@@ -646,9 +651,9 @@ DestroyParallelContext(ParallelContext *pcxt)
 	}
 
 	/*
-	 * We can't finish transaction commit or abort until all of the
-	 * workers have exited.  This means, in particular, that we can't respond
-	 * to interrupts at this stage.
+	 * We can't finish transaction commit or abort until all of the workers
+	 * have exited.  This means, in particular, that we can't respond to
+	 * interrupts at this stage.
 	 */
 	HOLD_INTERRUPTS();
 	WaitForParallelWorkersToExit(pcxt);
@@ -783,7 +788,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				 */
 				save_error_context_stack = error_context_stack;
 				errctx.callback = ParallelErrorContext;
-				errctx.arg = &pcxt->worker[i].pid;
+				errctx.arg = NULL;
 				errctx.previous = pcxt->error_context_stack;
 				error_context_stack = &errctx;
 
@@ -918,7 +923,7 @@ ParallelWorkerMain(Datum main_arg)
 	if (toc == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-			   errmsg("invalid magic number in dynamic shared memory segment")));
+		   errmsg("invalid magic number in dynamic shared memory segment")));
 
 	/* Look up fixed parallel state. */
 	fps = shm_toc_lookup(toc, PARALLEL_KEY_FIXED);
@@ -958,9 +963,9 @@ ParallelWorkerMain(Datum main_arg)
 	 */
 
 	/*
-	 * Join locking group.  We must do this before anything that could try
-	 * to acquire a heavyweight lock, because any heavyweight locks acquired
-	 * to this point could block either directly against the parallel group
+	 * Join locking group.  We must do this before anything that could try to
+	 * acquire a heavyweight lock, because any heavyweight locks acquired to
+	 * this point could block either directly against the parallel group
 	 * leader or against some process which in turn waits for a lock that
 	 * conflicts with the parallel group leader, causing an undetected
 	 * deadlock.  (If we can't join the lock group, the leader has gone away,
@@ -1018,6 +1023,13 @@ ParallelWorkerMain(Datum main_arg)
 
 	/* Restore user ID and security context. */
 	SetUserIdAndSecContext(fps->current_user_id, fps->sec_context);
+
+	/* Restore temp-namespace state to ensure search path matches leader's. */
+	SetTempNamespaceState(fps->temp_namespace_id,
+						  fps->temp_toast_namespace_id);
+
+	/* Set ParallelMasterBackendId so we know how to address temp relations. */
+	ParallelMasterBackendId = fps->parallel_master_backend_id;
 
 	/*
 	 * We've initialized all of our state now; nothing should change
@@ -1083,7 +1095,7 @@ static void
 ParallelErrorContext(void *arg)
 {
 	if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
-		errcontext("parallel worker, PID %d", *(int32 *) arg);
+		errcontext("parallel worker");
 }
 
 /*

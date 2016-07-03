@@ -3146,15 +3146,15 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 				{
 					int			matched,
 								years,
-								millenia,
+								millennia,
 								nch;
 
-					matched = sscanf(s, "%d,%03d%n", &millenia, &years, &nch);
+					matched = sscanf(s, "%d,%03d%n", &millennia, &years, &nch);
 					if (matched < 2)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 							  errmsg("invalid input string for \"Y,YYY\"")));
-					years += (millenia * 1000);
+					years += (millennia * 1000);
 					from_char_set_int(&out->year, years, n);
 					out->yysz = 4;
 					s += nch;
@@ -5074,9 +5074,9 @@ numeric_to_number(PG_FUNCTION_ARGS)
 	{
 		Numeric		x;
 		Numeric		a = DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-													 Int32GetDatum(10)));
+														 Int32GetDatum(10)));
 		Numeric		b = DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-											  Int32GetDatum(-Num.multi)));
+												 Int32GetDatum(-Num.multi)));
 
 		x = DatumGetNumeric(DirectFunctionCall2(numeric_power,
 												NumericGetDatum(a),

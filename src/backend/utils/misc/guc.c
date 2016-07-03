@@ -877,15 +877,6 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
-	{
-		{"enable_fkey_estimates", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables use of foreign keys for estimating joins."),
-			NULL
-		},
-		&enable_fkey_estimates,
-		true,
-		NULL, NULL, NULL
-	},
 
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
@@ -2466,8 +2457,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_BLOCKS
 		},
 		&backend_flush_after,
-		/* see bufmgr.h: OS dependent default */
-		DEFAULT_BACKEND_FLUSH_AFTER, 0, WRITEBACK_MAX_PENDING_FLUSHES,
+		0, 0, WRITEBACK_MAX_PENDING_FLUSHES,
 		NULL, NULL, NULL
 	},
 
@@ -2657,11 +2647,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_parallel_degree", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+		{"max_parallel_workers_per_gather", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
 			gettext_noop("Sets the maximum number of parallel processes per executor node."),
 			NULL
 		},
-		&max_parallel_degree,
+		&max_parallel_workers_per_gather,
 		2, 0, 1024,
 		NULL, NULL, NULL
 	},
@@ -2754,6 +2744,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&effective_cache_size,
 		DEFAULT_EFFECTIVE_CACHE_SIZE, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"min_parallel_relation_size", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the minimum size of relations to be considered for parallel scan."),
+			NULL,
+			GUC_UNIT_BLOCKS,
+		},
+		&min_parallel_relation_size,
+		1024, 0, INT_MAX / 3,
 		NULL, NULL, NULL
 	},
 
@@ -2878,7 +2879,7 @@ static struct config_real ConfigureNamesReal[] =
 	{
 		{"parallel_setup_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the cost of "
-				  "starting up worker processes for parallel query."),
+						 "starting up worker processes for parallel query."),
 			NULL
 		},
 		&parallel_setup_cost,
@@ -5935,13 +5936,14 @@ set_config_option(const char *name, const char *value,
 				 * don't re-read the config file during backend start.
 				 *
 				 * In EXEC_BACKEND builds, this works differently: we load all
-				 * non-default settings from the CONFIG_EXEC_PARAMS file during
-				 * backend start.  In that case we must accept PGC_SIGHUP
-				 * settings, so as to have the same value as if we'd forked
-				 * from the postmaster.  This can also happen when using
-				 * RestoreGUCState() within a background worker that needs to
-				 * have the same settings as the user backend that started it.
-				 * is_reload will be true when either situation applies.
+				 * non-default settings from the CONFIG_EXEC_PARAMS file
+				 * during backend start.  In that case we must accept
+				 * PGC_SIGHUP settings, so as to have the same value as if
+				 * we'd forked from the postmaster.  This can also happen when
+				 * using RestoreGUCState() within a background worker that
+				 * needs to have the same settings as the user backend that
+				 * started it. is_reload will be true when either situation
+				 * applies.
 				 */
 				if (IsUnderPostmaster && !is_reload)
 					return -1;

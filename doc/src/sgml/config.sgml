@@ -1998,16 +1998,16 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
 
-      <varlistentry id="guc-max-parallel-degree" xreflabel="max_parallel_degree">
-       <term><varname>max_parallel_degree</varname> (<type>integer</type>)
+      <varlistentry id="guc-max-parallel-workers-per-gather" xreflabel="max_parallel_workers_per_gather">
+       <term><varname>max_parallel_workers_per_gather</varname> (<type>integer</type>)
        <indexterm>
-        <primary><varname>max_parallel_degree</> configuration parameter</primary>
+        <primary><varname>max_parallel_workers_per_gather</> configuration parameter</primary>
        </indexterm>
        </term>
        <listitem>
         <para>
-         Sets the maximum number of workers that can be started for an
-         individual parallel operation.  Parallel workers are taken from the
+         Sets the maximum number of workers that can be started by a single
+         <literal>Gather</literal> node.  Parallel workers are taken from the
          pool of processes established by
          <xref linkend="guc-max-worker-processes">.  Note that the requested
          number of workers may not actually be available at runtime.  If this
@@ -2038,9 +2038,9 @@ include_dir 'conf.d'
          than the OS's page cache, where performance might degrade.  This
          setting may have no effect on some platforms.  The valid range is
          between <literal>0</literal>, which disables controlled writeback,
-         and <literal>2MB</literal>.  The default is <literal>128Kb</> on
-         Linux, <literal>0</> elsewhere.  (Non-default values of
-         <symbol>BLCKSZ</symbol> change the default and maximum.)
+         and <literal>2MB</literal>.  The default is <literal>0</> (i.e. no
+         flush control).  (Non-default values of <symbol>BLCKSZ</symbol>
+         change the maximum.)
         </para>
        </listitem>
       </varlistentry>
@@ -2518,7 +2518,7 @@ include_dir 'conf.d'
         less than <varname>wal_writer_flush_after</> bytes of WAL have been
         produced since, WAL is only written to the OS, not flushed to disk.
         If <varname>wal_writer_flush_after</> is set to <literal>0</> WAL is
-        flushed everytime the WAL writer has written WAL.  The default is
+        flushed every time the WAL writer has written WAL.  The default is
         <literal>1MB</literal>. This parameter can only be set in the
         <filename>postgresql.conf</> file or on the server command line.
        </para>
@@ -3699,6 +3699,20 @@ include_dir 'conf.d'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-min-parallel-relation-size" xreflabel="min_parallel_relation_size">
+      <term><varname>min_parallel_relation_size</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>min_parallel_relation_size</> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Sets the minimum size of relations to be considered for parallel scan.
+        The default is 8 megabytes (<literal>8MB</>).
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-effective-cache-size" xreflabel="effective_cache_size">
       <term><varname>effective_cache_size</varname> (<type>integer</type>)
       <indexterm>
@@ -4453,7 +4467,7 @@ local0.*    /var/log/postgresql
          sequence number (such as <literal>[2]</literal>).  This circumvents
          the <quote>--- last message repeated N times ---</quote> suppression
          that many syslog implementations perform by default.  In more modern
-         syslog implementations, repeat message suppression can be configured
+         syslog implementations, repeated message suppression can be configured
          (for example, <literal>$RepeatedMsgReduction</literal>
          in <productname>rsyslog</productname>), so this might not be
          necessary.  Also, you could turn this off if you actually want to

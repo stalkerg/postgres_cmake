@@ -251,6 +251,8 @@ typedef struct PlannerInfo
 
 	List	   *placeholder_list;		/* list of PlaceHolderInfos */
 
+	List	   *fkey_list;		/* list of ForeignKeyOptInfos */
+
 	List	   *query_pathkeys; /* desired pathkeys for query_planner() */
 
 	List	   *group_pathkeys; /* groupClause pathkeys, if any */
@@ -516,13 +518,12 @@ typedef struct RelOptInfo
 	List	   *lateral_vars;	/* LATERAL Vars and PHVs referenced by rel */
 	Relids		lateral_referencers;	/* rels that reference me laterally */
 	List	   *indexlist;		/* list of IndexOptInfo */
-	List	   *fkeylist;			/* list of ForeignKeyOptInfo */
 	BlockNumber pages;			/* size estimates derived from pg_class */
 	double		tuples;
 	double		allvisfrac;
 	PlannerInfo *subroot;		/* if subquery */
 	List	   *subplan_params; /* if subquery */
-	int			rel_parallel_degree;	/* wanted number of parallel workers */
+	int			rel_parallel_workers;	/* wanted number of parallel workers */
 
 	/* Information about foreign tables and foreign joins */
 	Oid			serverid;		/* identifies server for the table or join */
@@ -627,23 +628,32 @@ typedef struct IndexOptInfo
  * ForeignKeyOptInfo
  *		Per-foreign-key information for planning/optimization
  *
- * Only includes columns from pg_constraint related to foreign keys.
- *
- * conkeys[], confkeys[] and conpfeqop[] each have nkeys entries.
+ * The per-FK-column arrays can be fixed-size because we allow at most
+ * INDEX_MAX_KEYS columns in a foreign key constraint.  Each array has
+ * nkeys valid entries.
  */
 typedef struct ForeignKeyOptInfo
 {
 	NodeTag		type;
 
-	Oid			conrelid;	/* relation constrained by the foreign key */
-	Oid			confrelid;	/* relation referenced by the foreign key */
+	/* Basic data about the foreign key (fetched from catalogs): */
+	Index		con_relid;		/* RT index of the referencing table */
+	Index		ref_relid;		/* RT index of the referenced table */
+	int			nkeys;			/* number of columns in the foreign key */
+	AttrNumber	conkey[INDEX_MAX_KEYS]; /* cols in referencing table */
+	AttrNumber	confkey[INDEX_MAX_KEYS];		/* cols in referenced table */
+	Oid			conpfeqop[INDEX_MAX_KEYS];		/* PK = FK operator OIDs */
 
-	int			nkeys;		/* number of columns in the foreign key */
-	int		   *conkeys;	/* attnums of columns in the constrained table */
-	int		   *confkeys;	/* attnums of columns in the referenced table */
-	Oid		   *conpfeqop;	/* OIDs of equality operators used by the FK */
-
+	/* Derived info about whether FK's equality conditions match the query: */
+	int			nmatched_ec;	/* # of FK cols matched by ECs */
+	int			nmatched_rcols; /* # of FK cols matched by non-EC rinfos */
+	int			nmatched_ri;	/* total # of non-EC rinfos matched to FK */
+	/* Pointer to eclass matching each column's condition, if there is one */
+	struct EquivalenceClass *eclass[INDEX_MAX_KEYS];
+	/* List of non-EC RestrictInfos matching each column's condition */
+	List	   *rinfos[INDEX_MAX_KEYS];
 } ForeignKeyOptInfo;
+
 
 /*
  * EquivalenceClasses
@@ -805,6 +815,10 @@ typedef struct PathTarget
 	int			width;			/* estimated avg width of result tuples */
 } PathTarget;
 
+/* Convenience macro to get a sort/group refno from a PathTarget */
+#define get_pathtarget_sortgroupref(target, colno) \
+	((target)->sortgrouprefs ? (target)->sortgrouprefs[colno] : (Index) 0)
+
 
 /*
  * ParamPathInfo
@@ -872,7 +886,8 @@ typedef struct Path
 
 	bool		parallel_aware; /* engage parallel-aware logic? */
 	bool		parallel_safe;	/* OK to use as part of parallel plan? */
-	int			parallel_degree;	/* desired parallel degree; 0 = not parallel */
+	int			parallel_workers;		/* desired # of workers; 0 = not
+										 * parallel */
 
 	/* estimated size/costs for path (see costsize.c for more info) */
 	double		rows;			/* estimated number of result tuples */
@@ -1259,15 +1274,22 @@ typedef struct HashPath
 /*
  * ProjectionPath represents a projection (that is, targetlist computation)
  *
- * This path node represents using a Result plan node to do a projection.
- * It's only needed atop a node that doesn't support projection (such as
- * Sort); otherwise we just jam the new desired PathTarget into the lower
- * path node, and adjust that node's estimated cost accordingly.
+ * Nominally, this path node represents using a Result plan node to do a
+ * projection step.  However, if the input plan node supports projection,
+ * we can just modify its output targetlist to do the required calculations
+ * directly, and not need a Result.  In some places in the planner we can just
+ * jam the desired PathTarget into the input path node (and adjust its cost
+ * accordingly), so we don't need a ProjectionPath.  But in other places
+ * it's necessary to not modify the input path node, so we need a separate
+ * ProjectionPath node, which is marked dummy to indicate that we intend to
+ * assign the work to the input plan node.  The estimated cost for the
+ * ProjectionPath node will account for whether a Result will be used or not.
  */
 typedef struct ProjectionPath
 {
 	Path		path;
 	Path	   *subpath;		/* path representing input source */
+	bool		dummypp;		/* true if no separate Result is needed */
 } ProjectionPath;
 
 /*

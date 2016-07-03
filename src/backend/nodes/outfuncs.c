@@ -30,6 +30,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
+#include "utils/rel.h"
 
 
 /*
@@ -1033,6 +1034,8 @@ _outAggref(StringInfo str, const Aggref *node)
 	WRITE_OID_FIELD(aggoutputtype);
 	WRITE_OID_FIELD(aggcollid);
 	WRITE_OID_FIELD(inputcollid);
+	WRITE_OID_FIELD(aggtranstype);
+	WRITE_NODE_FIELD(aggargtypes);
 	WRITE_NODE_FIELD(aggdirectargs);
 	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(aggorder);
@@ -1609,7 +1612,7 @@ _outPathInfo(StringInfo str, const Path *node)
 		_outBitmapset(str, NULL);
 	WRITE_BOOL_FIELD(parallel_aware);
 	WRITE_BOOL_FIELD(parallel_safe);
-	WRITE_INT_FIELD(parallel_degree);
+	WRITE_INT_FIELD(parallel_workers);
 	WRITE_FLOAT_FIELD(rows, "%.0f");
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
@@ -1806,6 +1809,7 @@ _outProjectionPath(StringInfo str, const ProjectionPath *node)
 	_outPathInfo(str, (const Path *) node);
 
 	WRITE_NODE_FIELD(subpath);
+	WRITE_BOOL_FIELD(dummypp);
 }
 
 static void
@@ -2048,6 +2052,7 @@ _outPlannerInfo(StringInfo str, const PlannerInfo *node)
 	WRITE_NODE_FIELD(append_rel_list);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(placeholder_list);
+	WRITE_NODE_FIELD(fkey_list);
 	WRITE_NODE_FIELD(query_pathkeys);
 	WRITE_NODE_FIELD(group_pathkeys);
 	WRITE_NODE_FIELD(window_pathkeys);
@@ -2140,11 +2145,32 @@ _outIndexOptInfo(StringInfo str, const IndexOptInfo *node)
 static void
 _outForeignKeyOptInfo(StringInfo str, const ForeignKeyOptInfo *node)
 {
+	int			i;
+
 	WRITE_NODE_TYPE("FOREIGNKEYOPTINFO");
 
-	WRITE_OID_FIELD(conrelid);
-	WRITE_OID_FIELD(confrelid);
+	WRITE_UINT_FIELD(con_relid);
+	WRITE_UINT_FIELD(ref_relid);
 	WRITE_INT_FIELD(nkeys);
+	appendStringInfoString(str, " :conkey");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", node->conkey[i]);
+	appendStringInfoString(str, " :confkey");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", node->confkey[i]);
+	appendStringInfoString(str, " :conpfeqop");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %u", node->conpfeqop[i]);
+	WRITE_INT_FIELD(nmatched_ec);
+	WRITE_INT_FIELD(nmatched_rcols);
+	WRITE_INT_FIELD(nmatched_ri);
+	/* for compactness, just print the number of matches per column: */
+	appendStringInfoString(str, " :eclass");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", (node->eclass[i] != NULL));
+	appendStringInfoString(str, " :rinfos");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", list_length(node->rinfos[i]));
 }
 
 static void
@@ -3217,6 +3243,27 @@ _outConstraint(StringInfo str, const Constraint *node)
 	}
 }
 
+static void
+_outForeignKeyCacheInfo(StringInfo str, const ForeignKeyCacheInfo *node)
+{
+	int			i;
+
+	WRITE_NODE_TYPE("FOREIGNKEYCACHEINFO");
+
+	WRITE_OID_FIELD(conrelid);
+	WRITE_OID_FIELD(confrelid);
+	WRITE_INT_FIELD(nkeys);
+	appendStringInfoString(str, " :conkey");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", node->conkey[i]);
+	appendStringInfoString(str, " :confkey");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %d", node->confkey[i]);
+	appendStringInfoString(str, " :conpfeqop");
+	for (i = 0; i < node->nkeys; i++)
+		appendStringInfo(str, " %u", node->conpfeqop[i]);
+}
+
 
 /*
  * outNode -
@@ -3795,6 +3842,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_XmlSerialize:
 				_outXmlSerialize(str, obj);
+				break;
+			case T_ForeignKeyCacheInfo:
+				_outForeignKeyCacheInfo(str, obj);
 				break;
 
 			default:
