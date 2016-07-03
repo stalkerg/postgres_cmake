@@ -314,15 +314,12 @@ create_plan(PlannerInfo *root, Path *best_path)
 
 	/*
 	 * Attach any initPlans created in this query level to the topmost plan
-	 * node.  (The initPlans could actually go in any plan node at or above
-	 * where they're referenced, but there seems no reason to put them any
-	 * lower than the topmost node for the query level.)
+	 * node.  (In principle the initplans could go in any plan node at or
+	 * above where they're referenced, but there seems no reason to put them
+	 * any lower than the topmost node for the query level.  Also, see
+	 * comments for SS_finalize_plan before you try to change this.)
 	 */
 	SS_attach_initplans(root, plan);
-
-	/* Update parallel safety information if needed. */
-	if (!best_path->parallel_safe)
-		root->glob->wholePlanParallelSafe = false;
 
 	/* Check we successfully assigned all NestLoopParams to plan nodes */
 	if (root->curOuterParams != NIL)
@@ -544,8 +541,13 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 		{
 			/* For index-only scan, the preferred tlist is the index's */
 			tlist = copyObject(((IndexPath *) best_path)->indexinfo->indextlist);
-			/* Transfer any sortgroupref data to the replacement tlist */
-			apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
+
+			/*
+			 * Transfer any sortgroupref data to the replacement tlist, unless
+			 * we don't care because the gating Result will handle it.
+			 */
+			if (!gating_clauses)
+				apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
 		}
 		else
 		{
@@ -557,8 +559,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 			}
 			else
 			{
-				/* Transfer any sortgroupref data to the replacement tlist */
-				apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
+				/* As above, transfer sortgroupref data to replacement tlist */
+				if (!gating_clauses)
+					apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
 			}
 		}
 	}
@@ -1304,9 +1307,7 @@ create_unique_plan(PlannerInfo *root, UniquePath *best_path, int flags)
 		plan = (Plan *) make_agg(build_path_tlist(root, &best_path->path),
 								 NIL,
 								 AGG_HASHED,
-								 false,
-								 true,
-								 false,
+								 AGGSPLIT_SIMPLE,
 								 numGroupCols,
 								 groupColIdx,
 								 groupOperators,
@@ -1610,9 +1611,7 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 
 	plan = make_agg(tlist, quals,
 					best_path->aggstrategy,
-					best_path->combineStates,
-					best_path->finalizeAggs,
-					best_path->serialStates,
+					best_path->aggsplit,
 					list_length(best_path->groupClause),
 					extract_grouping_cols(best_path->groupClause,
 										  subplan->targetlist),
@@ -1765,9 +1764,7 @@ create_groupingsets_plan(PlannerInfo *root, GroupingSetsPath *best_path)
 			agg_plan = (Plan *) make_agg(NIL,
 										 NIL,
 										 AGG_SORTED,
-										 false,
-										 true,
-										 false,
+										 AGGSPLIT_SIMPLE,
 									   list_length((List *) linitial(gsets)),
 										 new_grpColIdx,
 										 extract_grouping_ops(groupClause),
@@ -1802,9 +1799,7 @@ create_groupingsets_plan(PlannerInfo *root, GroupingSetsPath *best_path)
 		plan = make_agg(build_path_tlist(root, &best_path->path),
 						best_path->qual,
 						(numGroupCols > 0) ? AGG_SORTED : AGG_PLAIN,
-						false,
-						true,
-						false,
+						AGGSPLIT_SIMPLE,
 						numGroupCols,
 						top_grpColIdx,
 						extract_grouping_ops(groupClause),
@@ -5652,8 +5647,7 @@ materialize_finished_plan(Plan *subplan)
 
 Agg *
 make_agg(List *tlist, List *qual,
-		 AggStrategy aggstrategy,
-		 bool combineStates, bool finalizeAggs, bool serialStates,
+		 AggStrategy aggstrategy, AggSplit aggsplit,
 		 int numGroupCols, AttrNumber *grpColIdx, Oid *grpOperators,
 		 List *groupingSets, List *chain,
 		 double dNumGroups, Plan *lefttree)
@@ -5666,9 +5660,7 @@ make_agg(List *tlist, List *qual,
 	numGroups = (long) Min(dNumGroups, (double) LONG_MAX);
 
 	node->aggstrategy = aggstrategy;
-	node->combineStates = combineStates;
-	node->finalizeAggs = finalizeAggs;
-	node->serialStates = serialStates;
+	node->aggsplit = aggsplit;
 	node->numCols = numGroupCols;
 	node->grpColIdx = grpColIdx;
 	node->grpOperators = grpOperators;

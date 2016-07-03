@@ -50,12 +50,15 @@ typedef struct QualCost
  * Costing aggregate function execution requires these statistics about
  * the aggregates to be executed by a given Agg node.  Note that the costs
  * include the execution costs of the aggregates' argument expressions as
- * well as the aggregate functions themselves.
+ * well as the aggregate functions themselves.  Also, the fields must be
+ * defined so that initializing the struct to zeroes with memset is correct.
  */
 typedef struct AggClauseCosts
 {
 	int			numAggs;		/* total number of aggregate functions */
 	int			numOrderedAggs; /* number w/ DISTINCT/ORDER BY/WITHIN GROUP */
+	bool		hasNonPartial;	/* does any agg not support partial mode? */
+	bool		hasNonSerial;	/* is any partial agg non-serializable? */
 	QualCost	transCost;		/* total per-input-row execution costs */
 	Cost		finalCost;		/* total per-aggregated-row costs */
 	Size		transitionSpace;	/* space for pass-by-ref transition data */
@@ -123,8 +126,6 @@ typedef struct PlannerGlobal
 	bool		parallelModeOK; /* parallel mode potentially OK? */
 
 	bool		parallelModeNeeded;		/* parallel mode actually required? */
-
-	bool		wholePlanParallelSafe;	/* is the entire plan parallel safe? */
 
 	bool		hasForeignJoin; /* does have a pushed down foreign join */
 } PlannerGlobal;
@@ -652,7 +653,7 @@ typedef struct ForeignKeyOptInfo
 	struct EquivalenceClass *eclass[INDEX_MAX_KEYS];
 	/* List of non-EC RestrictInfos matching each column's condition */
 	List	   *rinfos[INDEX_MAX_KEYS];
-} ForeignKeyOptInfo;
+}	ForeignKeyOptInfo;
 
 
 /*
@@ -1347,12 +1348,10 @@ typedef struct AggPath
 	Path		path;
 	Path	   *subpath;		/* path representing input source */
 	AggStrategy aggstrategy;	/* basic strategy, see nodes.h */
+	AggSplit	aggsplit;		/* agg-splitting mode, see nodes.h */
 	double		numGroups;		/* estimated number of groups in input */
 	List	   *groupClause;	/* a list of SortGroupClause's */
 	List	   *qual;			/* quals (HAVING quals), if any */
-	bool		combineStates;	/* input is partially aggregated agg states */
-	bool		finalizeAggs;	/* should the executor call the finalfn? */
-	bool		serialStates;	/* should agg states be (de)serialized? */
 } AggPath;
 
 /*

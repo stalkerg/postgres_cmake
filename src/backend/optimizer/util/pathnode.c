@@ -2177,7 +2177,8 @@ create_projection_path(PlannerInfo *root,
 	pathnode->path.param_info = NULL;
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = rel->consider_parallel &&
-		subpath->parallel_safe;
+		subpath->parallel_safe &&
+		!has_parallel_hazard((Node *) target->exprs, false);
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	/* Projection does not change the sort order */
 	pathnode->path.pathkeys = subpath->pathkeys;
@@ -2303,6 +2304,16 @@ apply_projection_to_path(PlannerInfo *root,
 								   gpath->subpath->parent,
 								   gpath->subpath,
 								   target);
+	}
+	else if (path->parallel_safe &&
+			 has_parallel_hazard((Node *) target->exprs, false))
+	{
+		/*
+		 * We're inserting a parallel-restricted target list into a path
+		 * currently marked parallel-safe, so we have to mark it as no longer
+		 * safe.
+		 */
+		path->parallel_safe = false;
 	}
 
 	return path;
@@ -2466,12 +2477,11 @@ create_upper_unique_path(PlannerInfo *root,
  * 'subpath' is the path representing the source of data
  * 'target' is the PathTarget to be computed
  * 'aggstrategy' is the Agg node's basic implementation strategy
+ * 'aggsplit' is the Agg node's aggregate-splitting mode
  * 'groupClause' is a list of SortGroupClause's representing the grouping
  * 'qual' is the HAVING quals if any
  * 'aggcosts' contains cost info about the aggregate functions to be computed
  * 'numGroups' is the estimated number of groups (1 if not grouping)
- * 'combineStates' is set to true if the Agg node should combine agg states
- * 'finalizeAggs' is set to false if the Agg node should not call the finalfn
  */
 AggPath *
 create_agg_path(PlannerInfo *root,
@@ -2479,13 +2489,11 @@ create_agg_path(PlannerInfo *root,
 				Path *subpath,
 				PathTarget *target,
 				AggStrategy aggstrategy,
+				AggSplit aggsplit,
 				List *groupClause,
 				List *qual,
 				const AggClauseCosts *aggcosts,
-				double numGroups,
-				bool combineStates,
-				bool finalizeAggs,
-				bool serialStates)
+				double numGroups)
 {
 	AggPath    *pathnode = makeNode(AggPath);
 
@@ -2505,12 +2513,10 @@ create_agg_path(PlannerInfo *root,
 	pathnode->subpath = subpath;
 
 	pathnode->aggstrategy = aggstrategy;
+	pathnode->aggsplit = aggsplit;
 	pathnode->numGroups = numGroups;
 	pathnode->groupClause = groupClause;
 	pathnode->qual = qual;
-	pathnode->finalizeAggs = finalizeAggs;
-	pathnode->combineStates = combineStates;
-	pathnode->serialStates = serialStates;
 
 	cost_agg(&pathnode->path, root,
 			 aggstrategy, aggcosts,

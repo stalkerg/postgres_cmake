@@ -1210,7 +1210,6 @@ deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 
 		heap_close(rel, NoLock);
 	}
-	return;
 }
 
 /*
@@ -1600,9 +1599,9 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 
 		if (qualify_col)
 		{
-			appendStringInfoString(buf, "CASE WHEN ");
+			appendStringInfoString(buf, "CASE WHEN (");
 			ADD_REL_QUALIFIER(buf, varno);
-			appendStringInfo(buf, "* IS NOT NULL THEN %u END", fetchval);
+			appendStringInfo(buf, "*)::text IS NOT NULL THEN %u END", fetchval);
 		}
 		else
 			appendStringInfo(buf, "%u", fetchval);
@@ -1644,9 +1643,9 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 		 */
 		if (qualify_col)
 		{
-			appendStringInfoString(buf, "CASE WHEN ");
+			appendStringInfoString(buf, "CASE WHEN (");
 			ADD_REL_QUALIFIER(buf, varno);
-			appendStringInfo(buf, "* IS NOT NULL THEN ");
+			appendStringInfo(buf, "*)::text IS NOT NULL THEN ");
 		}
 
 		appendStringInfoString(buf, "ROW(");
