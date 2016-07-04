@@ -1,16 +1,16 @@
-#include_directories(
-#	"${PROJECT_SOURCE_DIR}/src/include/libpq"
-#	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
-#	"${PROJECT_SOURCE_DIR}/src/bin/pg_dump"
-#)
-
-if(NOT MSVC)
-	IF(ENABLE_SSE42)
-		SET(PG_CRC32C_OBJS pg_crc32c_sse42.c)
-	ELSE(ENABLE_SSE42)
-		SET(PG_CRC32C_OBJS pg_crc32c_sb8.c)
-	ENDIF(ENABLE_SSE42)
+if(USE_SSE42_CRC32C)
+	SET(PG_CRC32C_OBJS pg_crc32c_sse42.c)
+elseif(USE_SSE42_CRC32C_WITH_RUNTIME_CHECK)
+	SET(PG_CRC32C_OBJS
+		pg_crc32c_sse42.c
+		pg_crc32c_sb8.c
+		pg_crc32c_choose.c
+	)
+elseif(USE_SLICING_BY_8_CRC32C)
+	SET(PG_CRC32C_OBJS pg_crc32c_sb8.c)
 endif()
+
+set_source_files_properties(pg_crc32c_sse42.c PROPERTIES COMPILE_FLAGS ${CFLAGS_SSE42})
 
 set(port_SRCS
 	chklocale.c
@@ -73,9 +73,6 @@ if(MSVC)
 		win32setlocale.c
 		win32env.c
 		win32error.c
-		pg_crc32c_sse42.c
-		pg_crc32c_sb8.c
-		pg_crc32c_choose.c
 	)
 endif()
 
@@ -103,6 +100,7 @@ add_dependencies(port gen_errorcodes)
 
 # because port used in shared libraries
 set_property(TARGET port PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+
 
 target_compile_definitions(port PRIVATE -DFRONTEND)
 set_source_files_properties(thread.c PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})

@@ -268,7 +268,11 @@
 
 #cmakedefine HAVE__CPUID
 
-#cmakedefine USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
+#cmakedefine USE_SSE42_CRC32C_WITH_RUNTIME_CHECK 1
+
+#cmakedefine USE_SSE42_CRC32C 1
+
+#cmakedefine USE_SLICING_BY_8_CRC32C 1
 
 #cmakedefine HAVE_FUNCNAME__FUNC
 #cmakedefine HAVE_FUNCNAME__FUNCTION
