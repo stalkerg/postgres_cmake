@@ -318,6 +318,8 @@
 
 #cmakedefine HAVE_DECL_POSIX_FADVISE 1
 
+#cmakedefine HAVE_DECL_F_FULLFSYNC 1
+
 #cmakedefine HAVE_GETHOSTBYNAME_R 1
 
 #cmakedefine HAVE_MBARRIER_H 1

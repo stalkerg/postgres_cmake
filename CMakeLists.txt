@@ -412,6 +412,7 @@ check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
 
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
+check_symbol_exists(F_FULLFSYNC "fcntl.h" HAVE_DECL_F_FULLFSYNC)
 
 include(ReplacePython)
 include(CheckCpuID)
