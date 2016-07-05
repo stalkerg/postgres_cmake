@@ -75,7 +75,7 @@
 #	define gettimeofday(a,b) gettimeofday(a)
 #endif
 
-/* TODO:Define if you have the `append_history' function. */
+/* Define if you have the `append_history' function. */
 #cmakedefine HAVE_APPEND_HISTORY
 
 /* Define if you want to use atomics if available. */
@@ -84,13 +84,13 @@
 /* Define to 1 if you have the <atomic.h> header file. */
 #cmakedefine HAVE_ATOMIC_H 1
 
-/* TODO:Define if you have the `cbrt' function. */
-#cmakedefine HAVE_CBRT
+/* Define if you have the `cbrt' function. */
+#cmakedefine HAVE_CBRT 1
 
 /* Define to 1 if you have the `class' function. */
 #cmakedefine HAVE_CLASS 1
 
-/* TODO:Define to 1 if you have the <crtdefs.h> header file. */
+/* Define to 1 if you have the <crtdefs.h> header file. */
 #cmakedefine HAVE_CRTDEFS_H 1
 
 /* Define if you have the `crypt' function. */
@@ -99,7 +99,7 @@
 /* Define if you have the <crypt.h> header file. */
 #cmakedefine HAVE_CRYPT_H
 
-/* TODO:Define to 1 if you have the declaration of `fdatasync' */
+/* Define to 1 if you have the declaration of `fdatasync' */
 #cmakedefine HAVE_DECL_FDATASYNC 1
 
 /* Define to 1 if you have the declaration of `F_FULLFSYNC' */
@@ -120,9 +120,9 @@
    don't. */
 #define HAVE_DECL_STRLCPY @HAVE_DECL_STRLCPY@
 
-/* TODO:Define to 1 if you have the declaration of `sys_siglist', and to 0 if you
+/* Define to 1 if you have the declaration of `sys_siglist', and to 0 if you
    don't. */
-#cmakedefine HAVE_DECL_SYS_SIGLIST
+#cmakedefine HAVE_DECL_SYS_SIGLIST 1
 
 /* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
    don't. */
@@ -231,7 +231,7 @@
 /* Define to 1 if you have the <history.h> header file. */
 #cmakedefine HAVE_HISTORY_H 1
 
-/* TODO:Define to 1 if you have the `history_truncate_file' function. */
+/* Define to 1 if you have the `history_truncate_file' function. */
 #cmakedefine HAVE_HISTORY_TRUNCATE_FILE 1
 
 /* Define to 1 if you have the <ieeefp.h> header file. */
@@ -458,11 +458,11 @@
 /* TODO:Define to 1 if you have the `strerror_r' function. */
 #cmakedefine HAVE_STRERROR_R 1
 
-/* TODO:Define to 1 if you have the <strings.h> header file. */
+/* Define to 1 if you have the <strings.h> header file. */
 #cmakedefine HAVE_STRINGS_H 1
 
-/* TODO BUT DO NOT NEED:Define to 1 if you have the <string.h> header file. */
-/*#cmakedefine HAVE_STRING_H 1*/
+/* Define to 1 if you have the <string.h> header file. */
+#cmakedefine HAVE_STRING_H 1
 
 /* TODO BUT DO NOT NEED:Define to 1 if you have the `strlcat' function. */
 /*#cmakedefine HAVE_STRLCAT 1*/
@@ -600,8 +600,8 @@
 /* Define to 1 if the system has the type `union semun'. */
 #cmakedefine HAVE_UNION_SEMUN 1
 
-/* TODO BUT DO NOT NEED:Define to 1 if you have the <unistd.h> header file. */
-/*#cmakedefine HAVE_UNISTD_H 1*/
+/* Define to 1 if you have the <unistd.h> header file. */
+#cmakedefine HAVE_UNISTD_H 1
 
 /* Define to 1 if you have unix sockets. */
 #cmakedefine HAVE_UNIX_SOCKETS 1
