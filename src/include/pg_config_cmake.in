@@ -192,16 +192,16 @@
 /* Define to 1 if you have the `gethostbyname_r' function. */
 #cmakedefine HAVE_GETHOSTBYNAME_R 1
 
-/* TODO:Define to 1 if you have the `getifaddrs' function. */
+/* Define to 1 if you have the `getifaddrs' function. */
 #cmakedefine HAVE_GETIFADDRS 1
 
-/* TODO:Define to 1 if you have the `getopt' function. */
+/* Define to 1 if you have the `getopt' function. */
 #cmakedefine HAVE_GETOPT 1
 
-/* TODO:Define to 1 if you have the <getopt.h> header file. */
+/* Define to 1 if you have the <getopt.h> header file. */
 #cmakedefine HAVE_GETOPT_H 1
 
-/* TODO:Define to 1 if you have the `getopt_long' function. */
+/* Define to 1 if you have the `getopt_long' function. */
 #cmakedefine HAVE_GETOPT_LONG 1
 
 /* Define to 1 if you have the `getpeereid' function. */
@@ -237,7 +237,7 @@
 /* Define to 1 if you have the <ieeefp.h> header file. */
 #cmakedefine HAVE_IEEEFP_H @HAVE_IEEEFP_H@
 
-/* TODO:Define to 1 if you have the <ifaddrs.h> header file. */
+/* Define to 1 if you have the <ifaddrs.h> header file. */
 #cmakedefine HAVE_IFADDRS_H 1
 
 /* TODO:Define to 1 if you have the `inet_aton' function. */
@@ -488,7 +488,7 @@
 /* TODO:Define to 1 if the system has the type `struct cmsgcred'. */
 #cmakedefine HAVE_STRUCT_CMSGCRED 1
 
-/* TODO:Define to 1 if the system has the type `struct option'. */
+/* Define to 1 if the system has the type `struct option'. */
 #cmakedefine HAVE_STRUCT_OPTION 1
 
 /* Define to 1 if `sa_len' is a member of `struct sockaddr'. */

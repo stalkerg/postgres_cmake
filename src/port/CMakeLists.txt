@@ -55,6 +55,21 @@ if(NOT HAVE_MKDTEMP)
 	)
 endif()
 
+if(NOT HAVE_GETOPT)
+	set(port_SRCS
+		${port_SRCS}
+		getopt.c
+	)
+endif()
+
+if(NOT (HAVE_STRUCT_OPTION AND HAVE_GETOPT_LONG))
+	set(port_SRCS
+		${port_SRCS}
+		getopt_long.c
+	)
+endif()
+
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}
@@ -62,8 +77,6 @@ if(MSVC)
 		random.c
 		srandom.c
 		dirmod.c
-		getopt.c
-		getopt_long.c
 		kill.c
 		open.c
 		dirent.c

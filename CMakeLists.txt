@@ -300,6 +300,12 @@ check_function_exists(getrlimit HAVE_GETRLIMIT)
 check_function_exists(readlink HAVE_READLINK)
 check_function_exists(cbrt HAVE_CBRT)
 
+check_include_files(ifaddrs.h HAVE_IFADDRS_H)
+if(HAVE_IFADDRS_H)
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};ifaddrs.h")
+endif()
+check_function_exists(getifaddrs HAVE_GETIFADDRS)
+
 if(MSVC)
 	set(HAVE_MINIDUMP_TYPE 1)
 endif()
@@ -356,6 +362,18 @@ if(HAVE_STRING_H)
 	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};string.h")
 endif()
 check_function_exists(fls HAVE_FLS)
+
+check_include_files(getopt.h HAVE_GETOPT_H)
+if(HAVE_GETOPT_H)
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};getopt.h")
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};getopt.h")
+endif()
+
+check_type_size("struct option" HAVE_STRUCT_OPTION)
+check_function_exists(getopt HAVE_GETOPT)
+check_function_exists(getopt_long HAVE_GETOPT_LONG)
+
+
 set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/mman.h")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} -lrt")
@@ -809,7 +827,7 @@ check_type_size("union semun" HAVE_UNION_SEMUN)
 
 check_include_file("sys/stat.h" HAVE_SYS_STAT_H)
 
-CHECK_SYMBOL_EXISTS(fdatasync "unistd.h" HAVE_FDATASYNC)
+check_symbol_exists(fdatasync "unistd.h" HAVE_FDATASYNC)
 
 if(WIN32)
 	set(USE_WIN32_SEMAPHORES 1)
