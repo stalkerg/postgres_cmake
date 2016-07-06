@@ -7,6 +7,7 @@ include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckCSourceCompiles)
+include(CheckCSourceRuns)
 include(TestBigEndian)
 include(CheckStructHasMember)
 
@@ -265,14 +266,14 @@ if(NOT HAVE_IEEEFP_H)
 	set(HAVE_IEEEFP_H 0)
 else()
 	set(HAVE_IEEEFP_H 1)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};ieeefp.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};ieeefp.h")
 endif()
 
 check_include_files(fp_class.h HAVE_FP_CLASS_H)
 if (HAVE_FP_CLASS_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};fp_class.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};fp_class.h")
 endif()
-set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};float.h;math.h")
+set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};float.h;math.h")
 
 # Need for isinf implementation
 check_function_exists(fpclass HAVE_FPCLASS)
@@ -295,14 +296,14 @@ check_function_exists(wcstombs_l HAVE_WCSTOMBS_L)
 check_function_exists(mkdtemp HAVE_MKDTEMP)
 check_function_exists(mkstemp HAVE_MKSTEMP)
 check_function_exists(poll HAVE_POLL)
-check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
+
 check_function_exists(getrlimit HAVE_GETRLIMIT)
 check_function_exists(readlink HAVE_READLINK)
 check_function_exists(cbrt HAVE_CBRT)
 
 check_include_files(ifaddrs.h HAVE_IFADDRS_H)
 if(HAVE_IFADDRS_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};ifaddrs.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};ifaddrs.h")
 endif()
 check_function_exists(getifaddrs HAVE_GETIFADDRS)
 
@@ -311,7 +312,7 @@ if(MSVC)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};fcntl.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};fcntl.h")
 	check_function_exists(posix_fadvise HAVE_DECL_POSIX_FADVISE)
 endif()
 
@@ -321,13 +322,13 @@ if(CRYPT_LIB)
 endif()
 check_include_files(crypt.h HAVE_CRYPT_H)
 if(HAVE_CRYPT_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};crypt.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};crypt.h")
 endif()
 check_function_exists(crypt HAVE_CRYPT)
 
 check_include_files(unistd.h HAVE_UNISTD_H)
 if(HAVE_UNISTD_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_EXTRA_INCLUDE_FILES};unistd.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};unistd.h")
 endif()
 check_function_exists(fdatasync HAVE_DECL_FDATASYNC)
 check_function_exists(sys_siglist HAVE_DECL_FDATASYNC)
@@ -356,35 +357,50 @@ set(CMAKE_REQUIRED_LIBRARIES "")
 check_include_files(strings.h HAVE_STRINGS_H)
 check_include_files(string.h HAVE_STRING_H)
 if(HAVE_STRINGS_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};strings.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};strings.h")
 endif()
 if(HAVE_STRING_H)
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};string.h")
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};string.h")
 endif()
 check_function_exists(fls HAVE_FLS)
 
 check_include_files(getopt.h HAVE_GETOPT_H)
 if(HAVE_GETOPT_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};getopt.h")
-	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};getopt.h")
 endif()
 
 check_type_size("struct option" HAVE_STRUCT_OPTION)
 check_function_exists(getopt HAVE_GETOPT)
 check_function_exists(getopt_long HAVE_GETOPT_LONG)
+check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
+check_function_exists(getpwuid_r HAVE_GETPWUID_R)
+check_function_exists(strerror_r HAVE_STRERROR_R)
+check_function_exists(strerror HAVE_STRERROR)
+#I am not sure about this code.
+check_c_source_runs("
+#include <string.h>
+int main(void){
+#ifndef _AIX
+int strerror_r(int, char *, size_t);
+#else
+/* Older AIX has 'int' for the third argument so we don't test the args. */
+int strerror_r();
+#endif
+return 0;
+}
+" STRERROR_R_INT)
 
-
-set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/mman.h")
+set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/mman.h")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} -lrt")
 endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 check_function_exists(shm_open HAVE_SHM_OPEN)
-set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};sys/time.h;sys/resource.h")
+set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/time.h;sys/resource.h")
 check_function_exists(getrusage HAVE_GETRUSAGE)
 
 if(OPENSSL_FOUND)
 	set(USE_OPENSSL 1)
-	set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIR})
+	set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES};${OPENSSL_INCLUDE_DIR}")
 	set(CMAKE_REQUIRED_LIBRARIES ${OPENSSL_LIBRARIES})
 	check_function_exists(SSL_get_current_compression HAVE_SSL_GET_CURRENT_COMPRESSION)
 endif(OPENSSL_FOUND)
@@ -575,6 +591,7 @@ if(Threads_FOUND)
 	endif()
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${PTHREAD_CFLAGS}")
 endif()
+
 set(PORT_DIR "${PROJECT_SOURCE_DIR}/src/port")
 set(PQ_BACKEND_DIR "${PROJECT_SOURCE_DIR}/src/backend/libpq")
 set(MB_UTILS_BACKEND_DIR "${PROJECT_SOURCE_DIR}/src/backend/utils/mb")
@@ -880,7 +897,8 @@ else(CMAKE_C_COMPILER_ID STREQUAL "SunPro")
 endif(CMAKE_C_COMPILER_ID STREQUAL "SunPro")
 
 if(WIN32)
-	set(CMAKE_REQUIRED_INCLUDES
+	set(CMAKE_EXTRA_INCLUDE_FILES
+		${CMAKE_EXTRA_INCLUDE_FILES}
 		windows.h
 		string.h
 		dbghelp.h

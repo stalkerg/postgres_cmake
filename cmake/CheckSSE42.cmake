@@ -1,14 +1,14 @@
 foreach(FLAG ";-msse4.2")
 	unset(HAVE_SSE42_INTRINSICS CACHE)
 	set(CMAKE_REQUIRED_FLAGS ${FLAG})
-	check_c_source_compiles("
+	check_c_source_runs("
 		#include <nmmintrin.h>
 		int main(void) {
 			unsigned int crc = 0;
 			crc = _mm_crc32_u8(crc, 0);
 			crc = _mm_crc32_u32(crc, 0);
 			/* return computed value, to prevent the above being optimized away */
-			return crc == 0;
+			return !(crc == 0);
 		}
 	" HAVE_SSE42_INTRINSICS)
 	if (HAVE_SSE42_INTRINSICS)
