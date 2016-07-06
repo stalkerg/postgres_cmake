@@ -167,23 +167,23 @@
 /* Define to 1 if your compiler understands __FUNCTION__. */
 #cmakedefine HAVE_FUNCNAME__FUNCTION
 
-/* TODO:Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int). */
+/* Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int). */
 #cmakedefine HAVE_GCC__ATOMIC_INT32_CAS 1
 
-/* TODO:Define to 1 if you have __atomic_compare_exchange_n(int64 *, int *, int64).
+/* Define to 1 if you have __atomic_compare_exchange_n(int64 *, int *, int64).
    */
 #cmakedefine HAVE_GCC__ATOMIC_INT64_CAS 1
 
-/* TODO:Define to 1 if you have __sync_lock_test_and_set(char *) and friends. */
+/* Define to 1 if you have __sync_lock_test_and_set(char *) and friends. */
 #cmakedefine HAVE_GCC__SYNC_CHAR_TAS 1
 
-/* TODO:Define to 1 if you have __sync_compare_and_swap(int *, int, int). */
+/* Define to 1 if you have __sync_compare_and_swap(int *, int, int). */
 #cmakedefine HAVE_GCC__SYNC_INT32_CAS 1
 
-/* TODO:Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
+/* Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
 #cmakedefine HAVE_GCC__SYNC_INT32_TAS 1
 
-/* TODO:Define to 1 if you have __sync_compare_and_swap(int64 *, int64, int64). */
+/* Define to 1 if you have __sync_compare_and_swap(int64 *, int64, int64). */
 #cmakedefine HAVE_GCC__SYNC_INT64_CAS 1
 
 /* Define to 1 if you have the `getaddrinfo' function. */

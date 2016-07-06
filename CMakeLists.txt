@@ -631,6 +631,62 @@ endif()
 
 message(STATUS "XLOG_SEG_SIZE - ${XLOG_SEG_SIZE}")
 
+option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
+
+if(HAVE_ATOMICS)
+	check_c_source_compiles("
+		int main(void){
+			char lock = 0;
+			__sync_lock_test_and_set(&lock, 1);
+			__sync_lock_release(&lock);
+			return 0;
+		}
+	" HAVE_GCC__SYNC_CHAR_TAS)
+
+	check_c_source_compiles("
+		int main(void){
+			int lock = 0;
+			__sync_lock_test_and_set(&lock, 1);
+			__sync_lock_release(&lock);
+			return 0;
+		}
+	" HAVE_GCC__SYNC_INT32_TAS)
+
+	check_c_source_compiles("
+		int main(void){
+			int val = 0;
+			__sync_val_compare_and_swap(&val, 0, 37);
+			return 0;
+		}
+	" HAVE_GCC__SYNC_INT32_CAS)
+
+	check_c_source_compiles("
+		int main(void){
+			${PG_INT64_TYPE} lock = 0;
+			__sync_val_compare_and_swap(&lock, 0, (${PG_INT64_TYPE}) 37);
+			return 0;
+		}
+	" HAVE_GCC__SYNC_INT64_CAS)
+
+	check_c_source_compiles("
+		int main(void){
+			int val = 0;
+			int expect = 0;
+			__atomic_compare_exchange_n(&val, &expect, 37, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+			return 0;
+		}
+	" HAVE_GCC__ATOMIC_INT32_CAS)
+
+	check_c_source_compiles("
+		int main(void){
+			${PG_INT64_TYPE} val = 0;
+			${PG_INT64_TYPE} expect = 0;
+			__atomic_compare_exchange_n(&val, &expect, 37, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+			return 0;
+		}
+	" HAVE_GCC__ATOMIC_INT64_CAS)
+endif(HAVE_ATOMICS)
+
 if(NOT PGPORT)
 	set(PGPORT 5432)
 endif(NOT PGPORT)
@@ -780,7 +836,7 @@ else(WIN32)
 endif(WIN32)
 
 option(HAVE_SPINLOCKS "Define to ON if you have spinlocks." ON)
-option(HAVE_ATOMICS "Define to ON if you want to use atomics if available." ON)
+
 
 option(USE_INTEGER_DATETIMES "Define to ON if you want 64-bit integer timestamp and interval support." ON)
 
