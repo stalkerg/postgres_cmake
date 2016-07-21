@@ -76,6 +76,13 @@ if(NOT HAVE_GETTIMEOFDAY)
 	)
 endif()
 
+if(NOT HAVE_INET_ATON)
+	set(port_SRCS
+		${port_SRCS}
+		inet_aton.c
+	)
+endif()
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}
