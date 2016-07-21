@@ -219,7 +219,7 @@
 /* Define to 1 if you have the `getrusage' function. */
 #cmakedefine HAVE_GETRUSAGE 1
 
-/* TODO:Define to 1 if you have the `gettimeofday' function. */
+/* Define to 1 if you have the `gettimeofday' function. */
 #cmakedefine HAVE_GETTIMEOFDAY 1
 
 /* TODO:Define to 1 if you have the <gssapi/gssapi.h> header file. */

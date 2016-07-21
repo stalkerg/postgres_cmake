@@ -69,11 +69,16 @@ if(NOT (HAVE_STRUCT_OPTION AND HAVE_GETOPT_LONG))
 	)
 endif()
 
+if(NOT HAVE_GETTIMEOFDAY)
+	set(port_SRCS
+		${port_SRCS}
+		gettimeofday.c
+	)
+endif()
 
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}
-		gettimeofday.c
 		random.c
 		srandom.c
 		dirmod.c

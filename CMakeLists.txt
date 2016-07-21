@@ -397,6 +397,7 @@ endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 check_function_exists(shm_open HAVE_SHM_OPEN)
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/time.h;sys/resource.h")
 check_function_exists(getrusage HAVE_GETRUSAGE)
+check_function_exists(gettimeofday HAVE_GETTIMEOFDAY)
 
 if(OPENSSL_FOUND)
 	set(USE_OPENSSL 1)
