@@ -255,10 +255,10 @@
 /* TODO BUT DO NOT NEED:Define to 1 if you have the <inttypes.h> header file. */
 /*#cmakedefine HAVE_INTTYPES_H 1*/
 
-/* TODO:Define to 1 if you have the global variable 'int opterr'. */
+/* Define to 1 if you have the global variable 'int opterr'. */
 #cmakedefine HAVE_INT_OPTERR 1
 
-/* TODO:Define to 1 if you have the global variable 'int optreset'. */
+/* Define to 1 if you have the global variable 'int optreset'. */
 #cmakedefine HAVE_INT_OPTRESET 1
 
 /* Define to 1 if you have the global variable 'int timezone'. */
