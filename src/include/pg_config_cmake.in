@@ -367,16 +367,16 @@
 /* Define to 1 if you have the <poll.h> header file. */
 #cmakedefine HAVE_POLL_H 1
 
-/* TODO:Define to 1 if you have the `posix_fadvise' function. */
+/* Define to 1 if you have the `posix_fadvise' function. */
 #cmakedefine HAVE_POSIX_FADVISE 1
 
-/* TODO:Define to 1 if the assembler supports PPC's LWARX mutex hint bit. */
+/* Define to 1 if the assembler supports PPC's LWARX mutex hint bit. */
 #cmakedefine HAVE_PPC_LWARX_MUTEX_HINT 1
 
-/* TODO:Define to 1 if you have the `pstat' function. */
+/* Define to 1 if you have the `pstat' function. */
 #cmakedefine HAVE_PSTAT 1
 
-/* TODO:Define to 1 if the PS_STRINGS thing exists. */
+/* Define to 1 if the PS_STRINGS thing exists. */
 #cmakedefine HAVE_PS_STRINGS 1
 
 /* TODO BUT DO NOT NEED:Define if you have POSIX threads libraries and header files. */

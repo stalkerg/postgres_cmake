@@ -301,6 +301,9 @@ check_function_exists(getrlimit HAVE_GETRLIMIT)
 check_function_exists(readlink HAVE_READLINK)
 check_function_exists(cbrt HAVE_CBRT)
 
+#So strange
+check_function_exists(pstat HAVE_PSTAT)
+
 check_include_files(ifaddrs.h HAVE_IFADDRS_H)
 if(HAVE_IFADDRS_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};ifaddrs.h")
@@ -311,9 +314,12 @@ if(MSVC)
 	set(HAVE_MINIDUMP_TYPE 1)
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};fcntl.h")
 	check_function_exists(posix_fadvise HAVE_DECL_POSIX_FADVISE)
+	if(HAVE_DECL_POSIX_FADVISE)
+		set(HAVE_POSIX_FADVISE 1)
+	endif()
 endif()
 
 find_library(CRYPT_LIB crypt)
@@ -391,6 +397,24 @@ int strerror_r();
 return 0;
 }
 " STRERROR_R_INT)
+
+check_c_source_runs("
+int main(void){
+int a = 0; int *p = &a; int r;
+ __asm__ __volatile__ (\" lwarx %0,0,%1,1\n\" : \"=&r\"(r) : \"r\"(p));
+return 0;
+}
+" HAVE_PPC_LWARX_MUTEX_HINT)
+
+check_c_source_runs("
+#include <machine/vmparam.h>
+#include <sys/exec.h>
+int main(void){
+PS_STRINGS->ps_nargvstr = 1;
+PS_STRINGS->ps_argvstr = \"foo\";
+return 0;
+}
+" HAVE_PS_STRINGS)
 
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/mman.h")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
