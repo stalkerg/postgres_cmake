@@ -440,6 +440,12 @@ check_include_files(nbtool_config.h HAVE_NBTOOL_CONFIG_H)
 check_include_files(mbarrier.h HAVE_MBARRIER_H)
 check_include_files(atomic.h HAVE_ATOMIC_H)
 
+check_include_files(netinet/tcp.h HAVE_NETINET_TCP_H)
+check_include_files(net/if.h HAVE_NET_IF_H)
+
+check_include_files(pam/pam_appl.h HAVE_PAM_PAM_APPL_H)
+check_include_files(security/pam_appl.h HAVE_SECURITY_PAM_APPL_H)
+
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
 if(WITH_READLINE AND NOT MSVC)
