@@ -17,6 +17,8 @@ add_custom_command(
 
 add_custom_target(gen_errorcodes DEPENDS ${gen_errorcodes_output})
 
+set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${gen_errorcodes_output})
+
 set(PARSER_SCAN_FLEX_FLAGS, "-Cfe -p -p")
 bison_target(PARSER_GRAM
 	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.y
