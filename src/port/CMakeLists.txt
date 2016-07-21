@@ -10,7 +10,7 @@ elseif(USE_SLICING_BY_8_CRC32C)
 	SET(PG_CRC32C_OBJS pg_crc32c_sb8.c)
 endif()
 
-set_source_files_properties(pg_crc32c_sse42.c PROPERTIES COMPILE_FLAGS ${CFLAGS_SSE42})
+set_source_files_properties(pg_crc32c_sse42.c PROPERTIES COMPILE_FLAGS "${CFLAGS_SSE42}")
 
 set(port_SRCS
 	chklocale.c
