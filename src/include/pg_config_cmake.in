@@ -925,6 +925,6 @@
 
 #cmakedefine HAVE_NBTOOL_CONFIG_H 1
 
-#include "@pgos_include_SRCS@"
+/*#include "@pgos_include_SRCS@"*/
 
 #endif  // AUTO_CONFIG_H
