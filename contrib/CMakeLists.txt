@@ -1,3 +1,6 @@
+set(contrib_libs postgres)
+
+#TODO: need test under mingw or cygwin
 if(WIN32)
 	set(contrib_libs
 		port
