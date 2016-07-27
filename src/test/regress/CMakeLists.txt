@@ -21,7 +21,7 @@ target_compile_definitions(pg_regress PRIVATE
 	-DSHELLPROG="$ENV{SHELL}")
 
 
-add_library(regress SHARED regress.c)
+add_library(regress MODULE regress.c)
 target_link_libraries(regress
 	pq
 )

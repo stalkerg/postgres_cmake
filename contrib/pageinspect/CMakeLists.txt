@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name pageinspect)
 
-add_library(${extension_name} SHARED
+add_library(${extension_name} MODULE
 	rawpage.c
 	heapfuncs.c
 	btreefuncs.c

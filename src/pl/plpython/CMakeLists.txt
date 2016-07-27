@@ -24,7 +24,7 @@ set(plpython_SRCS
 )
 
 include_directories(${PYTHON_INCLUDE_DIRS})
-add_library(${plname} SHARED ${plpython_SRCS})
+add_library(${plname} MODULE ${plpython_SRCS})
 target_link_libraries(${plname} postgres ${PYTHON_LIBRARIES})
 if (MSVC)
 	gen_def(${plname})

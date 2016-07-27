@@ -88,7 +88,8 @@ if(NOT MANDIR)
 endif(NOT MANDIR)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	set(CMAKE_SHARED_LINKER_FLAGS "-undefined dynamic_lookup")
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -multiply_defined suppress -undefined dynamic_lookup")
+	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -multiply_defined suppress -undefined dynamic_lookup")
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD|NetBSD|OpenBSD")

@@ -10,7 +10,7 @@ set(modules_list
 )
 
 foreach(loop_var IN ITEMS ${modules_list})
-	add_library(${loop_var} SHARED ${loop_var}.c)
+	add_library(${loop_var} MODULE ${loop_var}.c)
 	target_compile_definitions(${loop_var} PRIVATE -DREFINT_VERBOSE)
 	target_link_libraries(${loop_var} ${contrib_libs})
 	set_target_properties(${loop_var} PROPERTIES PREFIX "")

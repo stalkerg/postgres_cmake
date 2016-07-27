@@ -3,7 +3,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 set(extension_name ltree)
 add_definitions(-DLOWER_NODE)
 
-add_library(${extension_name} SHARED
+add_library(${extension_name} MODULE
 	ltree_io.c
 	ltree_op.c
 	lquery_op.c

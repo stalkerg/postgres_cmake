@@ -17,7 +17,7 @@ set(plpgsql_SRCS
 	${BISON_PLPGSQL_PARSER_OUTPUT_SOURCE}
 )
 
-add_library(plpgsql SHARED ${plpgsql_SRCS})
+add_library(plpgsql MODULE ${plpgsql_SRCS})
 target_link_libraries(plpgsql postgres)
 if (MSVC)
 	gen_def(plpgsql)

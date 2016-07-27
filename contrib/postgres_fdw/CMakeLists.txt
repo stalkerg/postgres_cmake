@@ -5,7 +5,7 @@ include_directories(
 
 set(extension_name postgres_fdw)
 
-add_library(${extension_name} SHARED
+add_library(${extension_name} MODULE
 	${extension_name}.c
 	option.c
 	deparse.c

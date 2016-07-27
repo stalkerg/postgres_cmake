@@ -50,7 +50,7 @@ set(plperl_SRCS
 )
 
 include_directories(${PERL_INCLUDE_PATH})
-add_library(${plname} SHARED ${plperl_SRCS})
+add_library(${plname} MODULE ${plperl_SRCS})
 target_link_libraries(${plname} postgres ${PERL_LIBRARY} ${PERL_LDFLAGS})
 if (MSVC)
 	gen_def(${plname})

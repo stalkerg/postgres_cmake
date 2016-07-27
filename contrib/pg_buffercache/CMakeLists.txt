@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name pg_buffercache)
 
-add_library(${extension_name} SHARED ${extension_name}_pages.c)
+add_library(${extension_name} MODULE ${extension_name}_pages.c)
 target_link_libraries(${extension_name} ${contrib_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)

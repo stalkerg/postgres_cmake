@@ -9,7 +9,7 @@ endif()
 
 set(extension_name bloom)
 
-add_library(${extension_name} SHARED
+add_library(${extension_name} MODULE
 	blcost.c
 	blinsert.c
 	blscan.c

@@ -5,7 +5,7 @@ include_directories(
 
 set(extension_name sslinfo)
 
-add_library(${extension_name} SHARED ${extension_name}.c)
+add_library(${extension_name} MODULE ${extension_name}.c)
 target_link_libraries(${extension_name} ${contrib_libs} ${OPENSSL_LIBRARIES})
 if(CRYPT_LIB)
 	target_link_libraries(${extension_name} ${CRYPT_LIB})

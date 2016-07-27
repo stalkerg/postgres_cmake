@@ -94,7 +94,7 @@ set(snowball_SRCS
 	libstemmer/stem_UTF_8_turkish.c
 )
 
-add_library(dict_snowball SHARED ${snowball_SRCS})
+add_library(dict_snowball MODULE ${snowball_SRCS})
 target_link_libraries(dict_snowball postgres)
 if (MSVC)
 	gen_def(dict_snowball)
