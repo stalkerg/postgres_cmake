@@ -781,7 +781,7 @@
 /* Define to 1 to build with assertion checks. (--enable-cassert) */
 #cmakedefine USE_ASSERT_CHECKING 1
 
-/* TODO:Define to 1 to build with Bonjour support. (--with-bonjour) */
+/* Define to 1 to build with Bonjour support. (--with-bonjour) */
 #cmakedefine USE_BONJOUR 1
 
 /* TODO:Define to 1 to build with BSD Authentication support. (--with-bsd-auth) */

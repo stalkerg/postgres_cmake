@@ -193,6 +193,13 @@ else()
 endif()
 
 option(USE_ASSERT_CHECKING "Define to build with assertion checks." OFF)
+option(USE_BONJOUR "Define to build with Bonjour support." OFF)
+if(USE_BONJOUR)
+	check_include_files(dns_sd.h HAVE_DNS_SD_H)
+	if(NOT HAVE_DNS_SD_H)
+		message(ERROR "header file <dns_sd.h> is required for Bonjour")
+	endif()
+endif()
 
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
