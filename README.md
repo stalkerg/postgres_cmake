@@ -2,6 +2,7 @@
 
 CMake build and test howto
 =================
+```bash
 git clone https://github.com/stalkerg/postgres_cmake.git
 cd ./postgres_cmake
 #build dir is optional but best way for CMake
@@ -24,6 +25,7 @@ make plpython_check
 
 make install
 make installcheck
+```
 
 
 PostgreSQL Database Management System
