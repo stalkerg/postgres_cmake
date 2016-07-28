@@ -419,16 +419,16 @@
 /* Define to 1 if you have the `rl_filename_completion_function' function. */
 #cmakedefine HAVE_RL_FILENAME_COMPLETION_FUNCTION 1
 
-/* TODO:Define to 1 if you have the `rl_reset_screen_size' function. */
+/* Define to 1 if you have the `rl_reset_screen_size' function. */
 #cmakedefine HAVE_RL_RESET_SCREEN_SIZE 1
 
 /* Define to 1 if you have the <security/pam_appl.h> header file. */
 #cmakedefine HAVE_SECURITY_PAM_APPL_H 1
 
-/* TODO:Define to 1 if you have the `setproctitle' function. */
+/* Define to 1 if you have the `setproctitle' function. */
 #cmakedefine HAVE_SETPROCTITLE 1
 
-/* TODO:Define to 1 if you have the `setsid' function. */
+/* Define to 1 if you have the `setsid' function. */
 #cmakedefine HAVE_SETSID 1
 
 /* Define to 1 if you have the `shm_open' function. */
@@ -470,22 +470,22 @@
 /* TODO BUT DO NOT NEED:Define to 1 if you have the `strlcpy' function. */
 /*#cmakedefine HAVE_STRLCPY 1*/
 
-/* TODO:Define to 1 if you have the `strtoll' function. */
+/* Define to 1 if you have the `strtoll' function. */
 #cmakedefine HAVE_STRTOLL 1
 
-/* TODO:Define to 1 if you have the `strtoq' function. */
+/* Define to 1 if you have the `strtoq' function. */
 #cmakedefine HAVE_STRTOQ 1
 
-/* TODO:Define to 1 if you have the `strtoull' function. */
+/* Define to 1 if you have the `strtoull' function. */
 #cmakedefine HAVE_STRTOULL 1
 
-/* TODO:Define to 1 if you have the `strtouq' function. */
+/* Define to 1 if you have the `strtouq' function. */
 #cmakedefine HAVE_STRTOUQ 1
 
 /* Define to 1 if the system has the type `struct addrinfo'. */
 #cmakedefine HAVE_STRUCT_ADDRINFO 1
 
-/* TODO:Define to 1 if the system has the type `struct cmsgcred'. */
+/* Define to 1 if the system has the type `struct cmsgcred'. */
 #cmakedefine HAVE_STRUCT_CMSGCRED 1
 
 /* Define to 1 if the system has the type `struct option'. */
@@ -684,7 +684,7 @@
 /* Define to the appropriate snprintf length modifier for 64-bit ints. */
 #define INT64_MODIFIER "@LONG_LONG_INT_MODIFIER@"
 
-/* TODO:Define to 1 if `locale_t' requires <xlocale.h>. */
+/* Define to 1 if `locale_t' requires <xlocale.h>. */
 #cmakedefine LOCALE_T_IN_XLOCALE 1
 
 /* Define as the maximum alignment requirement of any C data type. */
@@ -708,7 +708,7 @@
 /* TODO BUT DO NOT NEED:Define to the home page for this package. */
 /*#define PACKAGE_URL "@PACKAGE_URL@"*/
 
-/* TODO:Define to the version of this package. */
+/* TODO BUT DO NOT NEED:Define to the version of this package. */
 /*#define PACKAGE_VERSION "@PACKAGE_VERSION@"*/
 
 /* Define to the name of a signed 128-bit integer type. */
@@ -733,10 +733,10 @@
 /* PostgreSQL version as a number */
 #define PG_VERSION_NUM @PG_VERSION_NUM@
 
-/* TODO:A string containing the version number, platform, and C compiler */
-#define PG_VERSION_STR "PostgreSQL @PG_VERSION@ on $host, compiled by $cc_string, cool-bit"
+/* A string containing the version number, platform, and C compiler */
+#define PG_VERSION_STR "PostgreSQL @PG_VERSION@ on @CMAKE_SYSTEM_NAME@, compiled by @CMAKE_C_COMPILER_ID@, @VOID_POINTER_SIZE_BIT@-bit"
 
-/* TODO:Define to 1 to allow profiling output to be saved separately for each
+/* Define to 1 to allow profiling output to be saved separately for each
    process. */
 #cmakedefine PROFILE_PID_DIR 1
 
