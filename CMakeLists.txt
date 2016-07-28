@@ -840,6 +840,13 @@ check_c_source_runs("
 	}
 " HAVE__BUILTIN_UNREACHABLE)
 
+check_c_source_runs("
+	int main(void){
+		{ _Static_assert(1, \"foo\"); }
+		return 0;
+	}
+" HAVE__STATIC_ASSERT)
+
 if(NOT PGPORT)
 	set(PGPORT 5432)
 endif(NOT PGPORT)
