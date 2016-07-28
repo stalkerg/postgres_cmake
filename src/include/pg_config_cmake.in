@@ -46,7 +46,7 @@
 /* Define to the default TCP port number as a string constant. */
 #define DEF_PGPORT_STR "@PGPORT@"
 
-/* TODO:Define to build with GSSAPI support. (--with-gssapi) */
+/* Define to build with GSSAPI support. (--with-gssapi) */
 #cmakedefine ENABLE_GSS
 
 #cmakedefine ENABLE_NLS
@@ -222,10 +222,10 @@
 /* Define to 1 if you have the `gettimeofday' function. */
 #cmakedefine HAVE_GETTIMEOFDAY 1
 
-/* TODO:Define to 1 if you have the <gssapi/gssapi.h> header file. */
+/* Define to 1 if you have the <gssapi/gssapi.h> header file. */
 #cmakedefine HAVE_GSSAPI_GSSAPI_H 1
 
-/* TODO:Define to 1 if you have the <gssapi.h> header file. */
+/* Define to 1 if you have the <gssapi.h> header file. */
 #cmakedefine HAVE_GSSAPI_H 1
 
 /* Define to 1 if you have the <history.h> header file. */
@@ -844,7 +844,7 @@
 /* TODO BUT DO NOT NEED:Define to select Win32-style shared memory. */
 /*#cmakedefine USE_WIN32_SHARED_MEMORY*/
 
-/* TODO:Define to 1 if `wcstombs_l' requires <xlocale.h>. */
+/* Define to 1 if `wcstombs_l' requires <xlocale.h>. */
 #cmakedefine WCSTOMBS_L_IN_XLOCALE 1
 
 /* NOT NEED:Define WORDS_BIGENDIAN to 1 if your processor stores words with the most

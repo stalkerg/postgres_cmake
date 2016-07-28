@@ -1013,6 +1013,7 @@ target_link_libraries(postgres
 	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
 	${LIB_M}
+	${GSS_LIBS}
 )
 
 if(LIBXML2_FOUND)
@@ -1024,6 +1025,9 @@ add_dependencies(postgres gen_errorcodes generate_parser_gram_h)
 if(UNIX AND NOT APPLE)
 	target_link_libraries(postgres rt)
 endif()
+
+
+target_compile_definitions(postgres PRIVATE -DPG_KRB_SRVTAB="${PG_KRB_SRVTAB}")
 
 if(WIN32)
 	target_compile_definitions(postgres PRIVATE -DBUILDING_DLL -DEXEC_BACKEND)

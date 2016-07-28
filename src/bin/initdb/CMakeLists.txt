@@ -15,6 +15,7 @@ target_link_libraries(initdb
 	pgcommon
 	port
 	pq
+	${GSS_LIBS}
 )
 
 if(UNIX AND NOT APPLE)

@@ -64,6 +64,7 @@ target_link_libraries(pq
 	${OPENSSL_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT}
 	${LIBSOCKET_LIBRARIES}
+	${GSS_LIBS}
 )
 if (MSVC)
 	gen_def(pq)
