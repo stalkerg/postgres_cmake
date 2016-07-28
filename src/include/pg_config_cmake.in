@@ -409,7 +409,7 @@
 /* Define to 1 if you have the `rint' function. */
 #cmakedefine HAVE_RINT 1
 
-/* TODO:Define to 1 if you have the global variable
+/* Define to 1 if you have the global variable
    'rl_completion_append_character'. */
 #cmakedefine HAVE_RL_COMPLETION_APPEND_CHARACTER 1
 
