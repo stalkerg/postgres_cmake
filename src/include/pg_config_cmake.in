@@ -391,7 +391,7 @@
 /* Define to 1 if you have the <pwd.h> header file. */
 #cmakedefine HAVE_PWD_H 1
 
-/* TODO:Define to 1 if you have the `random' function. */
+/* Define to 1 if you have the `random' function. */
 #cmakedefine HAVE_RANDOM 1
 
 /* Define to 1 if you have the <readline.h> header file. */

@@ -83,11 +83,23 @@ if(NOT HAVE_INET_ATON)
 	)
 endif()
 
-if(MSVC)
+if(NOT HAVE_RANDOM)
 	set(port_SRCS
 		${port_SRCS}
 		random.c
+	)
+endif()
+
+if(NOT HAVE_SRANDOM)
+	set(port_SRCS
+		${port_SRCS}
 		srandom.c
+	)
+endif()
+
+if(MSVC)
+	set(port_SRCS
+		${port_SRCS}
 		dirmod.c
 		kill.c
 		open.c

@@ -306,6 +306,7 @@ check_function_exists(getrlimit HAVE_GETRLIMIT)
 check_function_exists(readlink HAVE_READLINK)
 check_function_exists(cbrt HAVE_CBRT)
 check_function_exists(pthread_is_threaded_np HAVE_PTHREAD_IS_THREADED_NP)
+check_function_exists(random HAVE_RANDOM)
 
 #So strange
 check_function_exists(pstat HAVE_PSTAT)
