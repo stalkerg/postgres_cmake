@@ -12,10 +12,9 @@ add_library(${extension_name} MODULE
 	connection.c
 	shippable.c
 )
-target_link_libraries(${extension_name} ${contrib_libs})
+target_link_libraries(${extension_name} ${contrib_libs} pq)
 if(MSVC)
 	gen_def(${extension_name})
-	target_link_libraries(${extension_name} pq)
 endif()
 if(NOT PGXS)
 	CMAKE_SET_TARGET_FOLDER(${extension_name} contrib)
