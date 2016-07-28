@@ -557,7 +557,7 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #cmakedefine HAVE_SYS_STAT_H 1
 
-/* TODO:Define to 1 if you have the <sys/tas.h> header file. */
+/* Define to 1 if you have the <sys/tas.h> header file. */
 #cmakedefine HAVE_SYS_TAS_H 1
 
 /* Define to 1 if you have the <sys/time.h> header file. */
@@ -572,7 +572,7 @@
 /* Define to 1 if you have the <sys/un.h> header file. */
 #cmakedefine HAVE_SYS_UN_H 1
 
-/* TODO:Define to 1 if you have the <termios.h> header file. */
+/* Define to 1 if you have the <termios.h> header file. */
 #cmakedefine HAVE_TERMIOS_H 1
 
 /* Define to 1 if your `struct tm' has `tm_zone'. Deprecated, use
@@ -591,7 +591,7 @@
 /* Define to 1 if the system has the type `uint64'. */
 #cmakedefine HAVE_UINT64 1
 
-/* TODO:Define to 1 if the system has the type `uint8'. */
+/* Define to 1 if the system has the type `uint8'. */
 #cmakedefine HAVE_UINT8 1
 
 /* TODO BUT DO NOT NEED:Define to 1 if the system has the type `uintptr_t'. */
@@ -612,13 +612,13 @@
 /* TODO BUT DO NOT NEED:Define to 1 if the system has the type `unsigned long long int'. */
 /*#cmakedefine HAVE_UNSIGNED_LONG_LONG_INT 1*/
 
-/* TODO:Define to 1 if you have the `utime' function. */
+/* Define to 1 if you have the `utime' function. */
 #cmakedefine HAVE_UTIME 1
 
-/* TODO:Define to 1 if you have the `utimes' function. */
+/* Define to 1 if you have the `utimes' function. */
 #cmakedefine HAVE_UTIMES 1
 
-/* TODO:Define to 1 if you have the <utime.h> header file. */
+/* Define to 1 if you have the <utime.h> header file. */
 #cmakedefine HAVE_UTIME_H 1
 
 /* Define to 1 if you have BSD UUID support. */
@@ -654,19 +654,19 @@
 /* Define to 1 if you have the <winldap.h> header file. */
 #cmakedefine HAVE_WINLDAP_H 1
 
-/* TODO:Define to 1 if your compiler understands __builtin_bswap32. */
+/* Define to 1 if your compiler understands __builtin_bswap32. */
 #cmakedefine HAVE__BUILTIN_BSWAP32 1
 
-/* TODO:Define to 1 if your compiler understands __builtin_bswap64. */
+/* Define to 1 if your compiler understands __builtin_bswap64. */
 #cmakedefine HAVE__BUILTIN_BSWAP64 1
 
-/* TODO:Define to 1 if your compiler understands __builtin_constant_p. */
+/* Define to 1 if your compiler understands __builtin_constant_p. */
 #cmakedefine HAVE__BUILTIN_CONSTANT_P 1
 
-/* TODO:Define to 1 if your compiler understands __builtin_types_compatible_p. */
+/* Define to 1 if your compiler understands __builtin_types_compatible_p. */
 #cmakedefine HAVE__BUILTIN_TYPES_COMPATIBLE_P 1
 
-/* TODO:Define to 1 if your compiler understands __builtin_unreachable. */
+/* Define to 1 if your compiler understands __builtin_unreachable. */
 #cmakedefine HAVE__BUILTIN_UNREACHABLE 1
 
 /* Define to 1 if you have __cpuid. */

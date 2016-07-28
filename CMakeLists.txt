@@ -447,6 +447,13 @@ endif()
 check_function_exists(getrusage HAVE_GETRUSAGE)
 check_function_exists(gettimeofday HAVE_GETTIMEOFDAY)
 
+check_include_files(utime.h HAVE_UTIME_H)
+if(HAVE_UTIME_H)
+	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};utime.h")
+endif()
+check_function_exists(utime HAVE_UTIME)
+check_function_exists(utimes HAVE_UTIMES)
+
 set(OLD_INCLUDES "${CMAKE_EXTRA_INCLUDE_FILES}")
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};netinet/in.h;arpa/inet.h")
 check_function_exists(inet_aton HAVE_INET_ATON)
@@ -495,6 +502,8 @@ check_include_files(pam/pam_appl.h HAVE_PAM_PAM_APPL_H)
 check_include_files(security/pam_appl.h HAVE_SECURITY_PAM_APPL_H)
 
 check_include_files(syslog.h HAVE_SYSLOG)
+check_include_files(termios.h HAVE_TERMIOS_H)
+
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
@@ -574,6 +583,7 @@ check_type_alignment(short ALIGNOF_SHORT)
 check_type_size(int64 HAVE_INT64)
 check_type_size(uint64 HAVE_UINT64)
 check_type_size(int8 HAVE_INT8)
+check_type_size(uint8 HAVE_UINT8)
 check_type_size("void *" VOID_POINTER_SIZE)
 check_type_size("long int" LONG_INT_SIZE)
 check_type_size("long long int" HAVE_LONG_LONG_INT)
@@ -794,6 +804,41 @@ if(HAVE_ATOMICS)
 		}
 	" HAVE_GCC__ATOMIC_INT64_CAS)
 endif(HAVE_ATOMICS)
+
+check_c_source_runs("
+	int main(void){
+		static unsigned long int x = __builtin_bswap32(0xaabbccdd);
+		return 0;
+	}
+" HAVE__BUILTIN_BSWAP32)
+
+check_c_source_runs("
+	int main(void){
+		static unsigned long int x = __builtin_bswap64(0xaabbccddeeff0011);
+		return 0;
+	}
+" HAVE__BUILTIN_BSWAP64)
+
+check_c_source_runs("
+	int main(void){
+		static int x; static int y[__builtin_constant_p(x) ? x : 1];
+		return 0;
+	}
+" HAVE__BUILTIN_CONSTANT_P)
+
+check_c_source_runs("
+	int main(void){
+		int x; static int y[__builtin_types_compatible_p(__typeof__(x), int)];
+		return 0;
+	}
+" HAVE__BUILTIN_TYPES_COMPATIBLE_P)
+
+check_c_source_runs("
+	int main(void){
+		__builtin_unreachable();
+		return 0;
+	}
+" HAVE__BUILTIN_UNREACHABLE)
 
 if(NOT PGPORT)
 	set(PGPORT 5432)
