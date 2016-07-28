@@ -475,7 +475,8 @@ sub backup
 	my $name        = $self->name;
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
-	TestLib::system_or_bail("pg_basebackup -D $backup_path -p $port -x");
+	TestLib::system_or_bail('pg_basebackup', '-D', $backup_path,
+							'-p', $port, '-x');
 	print "# Backup finished\n";
 }
 
@@ -763,7 +764,7 @@ sub enable_restoring
 	my $copy_command =
 	  $TestLib::windows_os
 	  ? qq{copy "$path\\\\%f" "%p"}
-	  : qq{cp $path/%f %p};
+	  : qq{cp "$path/%f" "%p"};
 
 	$self->append_conf(
 		'recovery.conf', qq(
@@ -791,7 +792,7 @@ sub enable_archiving
 	my $copy_command =
 	  $TestLib::windows_os
 	  ? qq{copy "%p" "$path\\\\%f"}
-	  : qq{cp %p $path/%f};
+	  : qq{cp "%p" "$path/%f"};
 
 	# Enable archive_mode and archive_command on node
 	$self->append_conf(
@@ -1191,7 +1192,7 @@ sub poll_query_until
 {
 	my ($self, $dbname, $query) = @_;
 
-	my $max_attempts = 90;
+	my $max_attempts = 180;
 	my $attempts     = 0;
 	my ($stdout, $stderr);
 

@@ -1390,6 +1390,8 @@ _readPlannedStmt(void)
 	READ_BOOL_FIELD(hasModifyingCTE);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
+	READ_BOOL_FIELD(dependsOnRole);
+	READ_BOOL_FIELD(parallelModeNeeded);
 	READ_NODE_FIELD(planTree);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(resultRelations);
@@ -1400,9 +1402,6 @@ _readPlannedStmt(void)
 	READ_NODE_FIELD(relationOids);
 	READ_NODE_FIELD(invalItems);
 	READ_INT_FIELD(nParamExec);
-	READ_BOOL_FIELD(hasRowSecurity);
-	READ_BOOL_FIELD(parallelModeNeeded);
-	READ_BOOL_FIELD(hasForeignJoin);
 
 	READ_DONE();
 }
@@ -2229,7 +2228,7 @@ _readExtensibleNode(void)
 
 	READ_TEMP_LOCALS();
 
-	token = pg_strtok(&length); /* skip: extnodename */
+	token = pg_strtok(&length); /* skip :extnodename */
 	token = pg_strtok(&length); /* get extnodename */
 
 	extnodename = nullable_string(token, length);

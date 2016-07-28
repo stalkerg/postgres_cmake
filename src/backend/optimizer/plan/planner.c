@@ -219,8 +219,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->lastRowMarkId = 0;
 	glob->lastPlanNodeId = 0;
 	glob->transientPlan = false;
-	glob->hasRowSecurity = false;
-	glob->hasForeignJoin = false;
+	glob->dependsOnRole = false;
 
 	/*
 	 * Assess whether it's feasible to use parallel mode for this query. We
@@ -343,7 +342,22 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		gather->num_workers = 1;
 		gather->single_copy = true;
 		gather->invisible = (force_parallel_mode == FORCE_PARALLEL_REGRESS);
+
+		/*
+		 * Ideally we'd use cost_gather here, but setting up dummy path data
+		 * to satisfy it doesn't seem much cleaner than knowing what it does.
+		 */
+		gather->plan.startup_cost = top_plan->startup_cost +
+			parallel_setup_cost;
+		gather->plan.total_cost = top_plan->total_cost +
+			parallel_setup_cost + parallel_tuple_cost * top_plan->plan_rows;
+		gather->plan.plan_rows = top_plan->plan_rows;
+		gather->plan.plan_width = top_plan->plan_width;
+		gather->plan.parallel_aware = false;
+
+		/* use parallel mode for parallel plans. */
 		root->glob->parallelModeNeeded = true;
+
 		top_plan = &gather->plan;
 	}
 
@@ -390,6 +404,8 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->hasModifyingCTE = parse->hasModifyingCTE;
 	result->canSetTag = parse->canSetTag;
 	result->transientPlan = glob->transientPlan;
+	result->dependsOnRole = glob->dependsOnRole;
+	result->parallelModeNeeded = glob->parallelModeNeeded;
 	result->planTree = top_plan;
 	result->rtable = glob->finalrtable;
 	result->resultRelations = glob->resultRelations;
@@ -400,9 +416,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->relationOids = glob->relationOids;
 	result->invalItems = glob->invalItems;
 	result->nParamExec = glob->nParamExec;
-	result->hasRowSecurity = glob->hasRowSecurity;
-	result->parallelModeNeeded = glob->parallelModeNeeded;
-	result->hasForeignJoin = glob->hasForeignJoin;
 
 	return result;
 }
@@ -1613,8 +1626,6 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * This may add new security barrier subquery RTEs to the rangetable.
 		 */
 		expand_security_quals(root, tlist);
-		if (parse->hasRowSecurity)
-			root->glob->hasRowSecurity = true;
 
 		/*
 		 * We are now done hacking up the query's targetlist.  Most of the
@@ -1945,7 +1956,8 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	 * If the current_rel belongs to a single FDW, so does the final_rel.
 	 */
 	final_rel->serverid = current_rel->serverid;
-	final_rel->umid = current_rel->umid;
+	final_rel->userid = current_rel->userid;
+	final_rel->useridiscurrent = current_rel->useridiscurrent;
 	final_rel->fdwroutine = current_rel->fdwroutine;
 
 	/*
@@ -3322,7 +3334,8 @@ create_grouping_paths(PlannerInfo *root,
 	 * If the input rel belongs to a single FDW, so does the grouped rel.
 	 */
 	grouped_rel->serverid = input_rel->serverid;
-	grouped_rel->umid = input_rel->umid;
+	grouped_rel->userid = input_rel->userid;
+	grouped_rel->useridiscurrent = input_rel->useridiscurrent;
 	grouped_rel->fdwroutine = input_rel->fdwroutine;
 
 	/*
@@ -3876,7 +3889,8 @@ create_window_paths(PlannerInfo *root,
 	 * If the input rel belongs to a single FDW, so does the window rel.
 	 */
 	window_rel->serverid = input_rel->serverid;
-	window_rel->umid = input_rel->umid;
+	window_rel->userid = input_rel->userid;
+	window_rel->useridiscurrent = input_rel->useridiscurrent;
 	window_rel->fdwroutine = input_rel->fdwroutine;
 
 	/*
@@ -4056,7 +4070,8 @@ create_distinct_paths(PlannerInfo *root,
 	 * If the input rel belongs to a single FDW, so does the distinct_rel.
 	 */
 	distinct_rel->serverid = input_rel->serverid;
-	distinct_rel->umid = input_rel->umid;
+	distinct_rel->userid = input_rel->userid;
+	distinct_rel->useridiscurrent = input_rel->useridiscurrent;
 	distinct_rel->fdwroutine = input_rel->fdwroutine;
 
 	/* Estimate number of distinct rows there will be */
@@ -4264,7 +4279,8 @@ create_ordered_paths(PlannerInfo *root,
 	 * If the input rel belongs to a single FDW, so does the ordered_rel.
 	 */
 	ordered_rel->serverid = input_rel->serverid;
-	ordered_rel->umid = input_rel->umid;
+	ordered_rel->userid = input_rel->userid;
+	ordered_rel->useridiscurrent = input_rel->useridiscurrent;
 	ordered_rel->fdwroutine = input_rel->fdwroutine;
 
 	foreach(lc, input_rel->pathlist)
@@ -5177,6 +5193,10 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 	Path		seqScanAndSortPath;
 	IndexPath  *indexScanPath;
 	ListCell   *lc;
+
+	/* We can short-circuit the cost comparison if indexscans are disabled */
+	if (!enable_indexscan)
+		return true;			/* use sort */
 
 	/* Set up mostly-dummy planner state */
 	query = makeNode(Query);

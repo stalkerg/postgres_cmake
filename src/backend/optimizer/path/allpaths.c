@@ -165,8 +165,8 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	set_base_rel_consider_startup(root);
 
 	/*
-	 * Generate access paths for the base rels.  set_base_rel_sizes also sets
-	 * the consider_parallel flag for each baserel, if appropriate.
+	 * Compute size estimates and consider_parallel flags for each base rel,
+	 * then generate access paths.
 	 */
 	set_base_rel_sizes(root);
 	set_base_rel_pathlists(root);
@@ -234,7 +234,7 @@ set_base_rel_consider_startup(PlannerInfo *root)
  *
  * We do this in a separate pass over the base rels so that rowcount
  * estimates are available for parameterized path generation, and also so
- * that the consider_parallel flag is set correctly before we begin to
+ * that each rel's consider_parallel flag is set correctly before we begin to
  * generate paths.
  */
 static void
@@ -262,9 +262,10 @@ set_base_rel_sizes(PlannerInfo *root)
 		/*
 		 * If parallelism is allowable for this query in general, see whether
 		 * it's allowable for this rel in particular.  We have to do this
-		 * before set_rel_size, because that if this is an inheritance parent,
-		 * set_append_rel_size will pass the consider_parallel flag down to
-		 * inheritance children.
+		 * before set_rel_size(), because (a) if this rel is an inheritance
+		 * parent, set_append_rel_size() will use and perhaps change the rel's
+		 * consider_parallel flag, and (b) for some RTE types, set_rel_size()
+		 * goes ahead and makes paths immediately.
 		 */
 		if (root->glob->parallelModeOK)
 			set_rel_consider_parallel(root, rel, rte);
@@ -494,18 +495,24 @@ set_plain_rel_size(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 /*
  * If this relation could possibly be scanned from within a worker, then set
- * the consider_parallel flag.  The flag has previously been initialized to
- * false, so we just bail out if it becomes clear that we can't safely set it.
+ * its consider_parallel flag.
  */
 static void
 set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 						  RangeTblEntry *rte)
 {
+	/*
+	 * The flag has previously been initialized to false, so we can just
+	 * return if it becomes clear that we can't safely set it.
+	 */
+	Assert(!rel->consider_parallel);
+
 	/* Don't call this if parallelism is disallowed for the entire query. */
 	Assert(root->glob->parallelModeOK);
 
-	/* Don't call this for non-baserels. */
-	Assert(rel->reloptkind == RELOPT_BASEREL);
+	/* This should only be called for baserels and appendrel children. */
+	Assert(rel->reloptkind == RELOPT_BASEREL ||
+		   rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 
 	/* Assorted checks based on rtekind. */
 	switch (rte->rtekind)
@@ -538,7 +545,6 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 				if (has_parallel_hazard((Node *) rte->tablesample->args,
 										false))
 					return;
-				return;
 			}
 
 			/*
@@ -557,20 +563,31 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 				if (!rel->fdwroutine->IsForeignScanParallelSafe(root, rel, rte))
 					return;
 			}
+
+			/*
+			 * There are additional considerations for appendrels, which we'll
+			 * deal with in set_append_rel_size and set_append_rel_pathlist.
+			 * For now, just set consider_parallel based on the rel's own
+			 * quals and targetlist.
+			 */
 			break;
 
 		case RTE_SUBQUERY:
 
 			/*
-			 * Subplans currently aren't passed to workers.  Even if they
-			 * were, the subplan might be using parallelism internally, and we
-			 * can't support nested Gather nodes at present.  Finally, we
-			 * don't have a good way of knowing whether the subplan involves
-			 * any parallel-restricted operations.  It would be nice to relax
-			 * this restriction some day, but it's going to take a fair amount
-			 * of work.
+			 * There's no intrinsic problem with scanning a subquery-in-FROM
+			 * (as distinct from a SubPlan or InitPlan) in a parallel worker.
+			 * If the subquery doesn't happen to have any parallel-safe paths,
+			 * then flagging it as consider_parallel won't change anything,
+			 * but that's true for plain tables, too.  We must set
+			 * consider_parallel based on the rel's own quals and targetlist,
+			 * so that if a subquery path is parallel-safe but the quals and
+			 * projection we're sticking onto it are not, we correctly mark
+			 * the SubqueryScanPath as not parallel-safe.  (Note that
+			 * set_subquery_pathlist() might push some of these quals down
+			 * into the subquery itself, but that doesn't change anything.)
 			 */
-			return;
+			break;
 
 		case RTE_JOIN:
 			/* Shouldn't happen; we're only considering baserels here. */
@@ -608,8 +625,9 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 	 * give up on parallelizing access to this relation.  We could consider
 	 * instead postponing application of the restricted quals until we're
 	 * above all the parallelism in the plan tree, but it's not clear that
-	 * this would be a win in very many cases, and it might be tricky to make
-	 * outer join clauses work correctly.
+	 * that would be a win in very many cases, and it might be tricky to make
+	 * outer join clauses work correctly.  It would likely break equivalence
+	 * classes, too.
 	 */
 	if (has_parallel_hazard((Node *) rel->baserestrictinfo, false))
 		return;
@@ -966,9 +984,6 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 			continue;
 		}
 
-		/* Copy consider_parallel flag from parent. */
-		childrel->consider_parallel = rel->consider_parallel;
-
 		/*
 		 * CE failed, so finish copying/modifying targetlist and join quals.
 		 *
@@ -1009,6 +1024,16 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 		 */
 
 		/*
+		 * If parallelism is allowable for this query in general, see whether
+		 * it's allowable for this childrel in particular.  But if we've
+		 * already decided the appendrel is not parallel-safe as a whole,
+		 * there's no point in considering parallelism for this child.  For
+		 * consistency, do this before calling set_rel_size() for the child.
+		 */
+		if (root->glob->parallelModeOK && rel->consider_parallel)
+			set_rel_consider_parallel(root, childrel, childRTE);
+
+		/*
 		 * Compute the child's size.
 		 */
 		set_rel_size(root, childrel, childRTindex, childRTE);
@@ -1023,6 +1048,18 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 
 		/* We have at least one live child. */
 		has_live_children = true;
+
+		/*
+		 * If any live child is not parallel-safe, treat the whole appendrel
+		 * as not parallel-safe.  In future we might be able to generate plans
+		 * in which some children are farmed out to workers while others are
+		 * not; but we don't have that today, so it's a waste to consider
+		 * partial paths anywhere in the appendrel unless it's all safe.
+		 * (Child rels visited before this one will be unmarked in
+		 * set_append_rel_pathlist().)
+		 */
+		if (!childrel->consider_parallel)
+			rel->consider_parallel = false;
 
 		/*
 		 * Accumulate size information from each live child.
@@ -1141,6 +1178,15 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		childrel = root->simple_rel_array[childRTindex];
 
 		/*
+		 * If set_append_rel_size() decided the parent appendrel was
+		 * parallel-unsafe at some point after visiting this child rel, we
+		 * need to propagate the unsafety marking down to the child, so that
+		 * we don't generate useless partial paths for it.
+		 */
+		if (!rel->consider_parallel)
+			childrel->consider_parallel = false;
+
+		/*
 		 * Compute the child's access paths.
 		 */
 		set_rel_pathlist(root, childrel, childRTindex, childRTE);
@@ -1257,7 +1303,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		int			parallel_workers = 0;
 
 		/*
-		 * Decide on the numebr of workers to request for this append path.
+		 * Decide on the number of workers to request for this append path.
 		 * For now, we just use the maximum value from among the members.  It
 		 * might be useful to use a higher number if the Append node were
 		 * smart enough to spread out the workers, but it currently isn't.
