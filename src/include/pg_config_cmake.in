@@ -515,7 +515,7 @@
 /* Define to 1 if you have the `symlink' function. */
 #cmakedefine HAVE_SYMLINK 1
 
-/* TODO:Define to 1 if you have the `sync_file_range' function. */
+/* Define to 1 if you have the `sync_file_range' function. */
 #cmakedefine HAVE_SYNC_FILE_RANGE 1
 
 /* TODO:Define to 1 if you have the syslog interface. */
