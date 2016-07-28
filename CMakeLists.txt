@@ -520,6 +520,10 @@ if(WITH_READLINE AND NOT MSVC)
 	endif(READLINE_FOUND)
 endif()
 
+if(NOT READLINE_LIBRARY)
+	set(READLINE_LIBRARY "")
+endif()
+
 check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
 check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
 check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
