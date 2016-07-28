@@ -1,7 +1,10 @@
+[![Build Status](https://travis-ci.org/stalkerg/postgres_cmake.svg?branch=cmake)](https://travis-ci.org/stalkerg/postgres_cmake)
+
 CMake build and test howto
 =================
 git clone https://github.com/stalkerg/postgres_cmake.git
 cd ./postgres_cmake
+#build dir is optional but best way for CMake
 mkdir build
 cd build
 CFLAGS="-s -O2" cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
@@ -14,8 +17,8 @@ make contrib_check
 #Optional:
 make plperl_check
 make pltcl_check
-#Now working tests only for 2.7 python.
-#Setup python2.7:
+
+#For example setup for python2.7:
 #-DPython_ADDITIONAL_VERSIONS=2.7 -DPYTHON_EXECUTABLE=/usr/bin/python2.7
 make plpython_check
 
