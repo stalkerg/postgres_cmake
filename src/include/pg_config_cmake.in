@@ -382,7 +382,7 @@
 /* TODO BUT DO NOT NEED:Define if you have POSIX threads libraries and header files. */
 /*#cmakedefine HAVE_PTHREAD 1*/
 
-/* TODO:Define to 1 if you have the `pthread_is_threaded_np' function. */
+/* Define to 1 if you have the `pthread_is_threaded_np' function. */
 #cmakedefine HAVE_PTHREAD_IS_THREADED_NP 1
 
 /* TODO BUT DO NOT NEED:Have PTHREAD_PRIO_INHERIT. */
