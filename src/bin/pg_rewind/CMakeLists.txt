@@ -24,6 +24,8 @@ target_link_libraries(pg_rewind
 	pq
 )
 
+target_compile_definitions(pg_rewind PRIVATE -DFRONTEND)
+
 CMAKE_SET_TARGET_FOLDER(pg_rewind bin)
 
 install(TARGETS pg_rewind

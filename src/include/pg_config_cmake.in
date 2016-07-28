@@ -46,7 +46,7 @@
 /* Define to the default TCP port number as a string constant. */
 #define DEF_PGPORT_STR "@PGPORT@"
 
-/* Define to build with GSSAPI support. (--with-gssapi) */
+/* Define to build with GSSAPI support. */
 #cmakedefine ENABLE_GSS
 
 #cmakedefine ENABLE_NLS
@@ -778,7 +778,7 @@
 /* TODO BUT DO NOT NEED:Define to 1 if your <sys/time.h> declares `struct tm'. */
 /*#cmakedefine TM_IN_SYS_TIME 1*/
 
-/* TODO:Define to 1 to build with assertion checks. (--enable-cassert) */
+/* Define to 1 to build with assertion checks. (--enable-cassert) */
 #cmakedefine USE_ASSERT_CHECKING 1
 
 /* TODO:Define to 1 to build with Bonjour support. (--with-bonjour) */

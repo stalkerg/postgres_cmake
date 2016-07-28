@@ -192,6 +192,8 @@ else()
 	set(GSS_LIBS "")
 endif()
 
+option(USE_ASSERT_CHECKING "Define to build with assertion checks." OFF)
+
 if(NOT MSVC)
 	find_library(DL_LIBRARIES NAMES dl)
 	find_library(M_LIB m)
