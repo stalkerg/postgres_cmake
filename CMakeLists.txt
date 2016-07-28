@@ -522,9 +522,10 @@ if(WITH_READLINE AND NOT MSVC)
 endif()
 
 if(READLINE_FOUND)
-	set(HAVE_LIBREADLINE 1)
+	set(HAVE_LIBREADLINE TRUE)
 else()
 	set(READLINE_LIBRARY "")
+	set(HAVE_LIBREADLINE FALSE)
 endif()
 
 check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
