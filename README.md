@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/stalkerg/postgres_cmake.svg?branch=cmake)](https://travis-ci.org/stalkerg/postgres_cmake)
 
 CMake build and test howto
-=================
+==========================
 ```bash
 git clone https://github.com/stalkerg/postgres_cmake.git
 cd ./postgres_cmake
@@ -26,6 +26,45 @@ make plpython_check
 make install
 make installcheck
 ```
+
+CMake build options
+===================
+**-DWITH_PERL** default ON, optional
+
+**-DWITH_OPENSSL** default ON, optional
+
+**-DWITH_PYTHON** default ON, optional
+
+**-DWITH_LIBXML** default ON, optional
+
+**-DWITH_TCL** default ON, optional
+
+**-DENABLE_NLS** default OFF
+
+**-DENABLE_GSS** default OFF
+
+**-DUSE_ASSERT_CHECKING** default OFF
+
+**-DUSE_BONJOUR** default OFF
+
+**-DPROFILE_PID_DIR** default OFF, only for GCC, enable to allow profiling output to be saved separately for each process
+
+**-DUSE_FLOAT4_BYVAL** default ON
+
+**-DUSE_FLOAT8_BYVAL** default ON for 64bit system
+
+**-DHAVE_ATOMICS** default ON
+
+**-DHAVE_SPINLOCKS** default ON
+
+**-DUSE_INTEGER_DATETIMES** default ON, 64-bit integer timestamp and interval support
+
+**-DHAVE_SYMLINK** only for WIN32, default ON
+
+**-DPG_KRB_SRVNAM** default "postgres", the name of the default PostgreSQL service principal in Kerberos (GSSAPI)
+
+**-DCMAKE_USE_FOLDERS** default ON, folder grouping of projects in IDEs, actual for MSVC
+
 
 
 PostgreSQL Database Management System
