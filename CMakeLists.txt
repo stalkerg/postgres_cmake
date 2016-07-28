@@ -465,6 +465,7 @@ check_include_files(ucred.h HAVE_UCRED_H)
 check_include_files(sys/ucred.h HAVE_SYS_UCRED_H)
 check_include_files(sys/types.h HAVE_SYS_TYPES_H)
 check_include_files(sys/socket.h HAVE_SYS_SOCKET_H)
+check_include_files(sys/sockio.h HAVE_SYS_SOCKIO_H)
 check_include_files(stdint.h HAVE_STDINT_H)
 
 check_include_files(sys/select.h HAVE_SYS_SELECT_H)
@@ -491,6 +492,8 @@ check_include_files(net/if.h HAVE_NET_IF_H)
 
 check_include_files(pam/pam_appl.h HAVE_PAM_PAM_APPL_H)
 check_include_files(security/pam_appl.h HAVE_SECURITY_PAM_APPL_H)
+
+check_include_files(syslog.h HAVE_SYSLOG)
 
 #Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
@@ -535,6 +538,7 @@ endif()
 check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
 check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
 check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
+check_include_files("sys/ioctl.h" HAVE_SYS_IOCTL_H)
 
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)

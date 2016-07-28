@@ -518,13 +518,13 @@
 /* Define to 1 if you have the `sync_file_range' function. */
 #cmakedefine HAVE_SYNC_FILE_RANGE 1
 
-/* TODO:Define to 1 if you have the syslog interface. */
+/* Define to 1 if you have the syslog interface. */
 #cmakedefine HAVE_SYSLOG 1
 
 /* Define to 1 if you have the <sys/epoll.h> header file. */
 #cmakedefine HAVE_SYS_EPOLL_H 1
 
-/* TODO:Define to 1 if you have the <sys/ioctl.h> header file. */
+/* Define to 1 if you have the <sys/ioctl.h> header file. */
 #cmakedefine HAVE_SYS_IOCTL_H 1
 
 /* Define to 1 if you have the <sys/ipc.h> header file. */
@@ -551,7 +551,7 @@
 /* Define to 1 if you have the <sys/socket.h> header file. */
 #cmakedefine HAVE_SYS_SOCKET_H 1
 
-/* TODO:Define to 1 if you have the <sys/sockio.h> header file. */
+/* Define to 1 if you have the <sys/sockio.h> header file. */
 #cmakedefine HAVE_SYS_SOCKIO_H 1
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
