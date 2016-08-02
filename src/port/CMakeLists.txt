@@ -97,6 +97,13 @@ if(NOT HAVE_SRANDOM)
 	)
 endif()
 
+if(USE_REPL_SNPRINTF)
+	set(port_SRCS
+		${port_SRCS}
+		snprintf.c
+	)
+endif()
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}

@@ -814,7 +814,7 @@
 /* TODO:Define to 1 to build with PAM support. (--with-pam) */
 #cmakedefine USE_PAM 1
 
-/* TODO:Use replacement snprintf() functions. */
+/* Use replacement snprintf() functions. */
 #cmakedefine USE_REPL_SNPRINTF 1
 
 /* Define to 1 to use Intel SSE 4.2 CRC instructions with a runtime check. */

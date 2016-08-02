@@ -149,6 +149,12 @@ if(WITH_TCL)
 endif()
 find_package(LibSocket)
 
+if(WIN32)
+	set(NEED_REPL_SNPRINTF ON)
+else()
+	set(NEED_REPL_SNPRINTF OFF)
+endif()
+
 option(ENABLE_NLS "Define if you want National Language Support" OFF)
 if(ENABLE_NLS)
 	include(MakeNLS)
@@ -159,6 +165,27 @@ if(ENABLE_NLS)
 	endif(NOT GETTEXT_XGETTEXT_EXECUTABLE)
 	if(NOT NLS_LANGUAGES)
 		set(NLS_LANGUAGES "ko;cs;pt_BR;zh_CN;ru;fr;de;es;it;tr;ja;pl;zh_TW")
+	endif()
+
+	if(NOT NEED_REPL_SNPRINTF)
+		check_c_source_runs("
+			#include <stdio.h>
+			#include <string.h>
+
+			int main()
+			{
+			  char buf[100];
+
+			  /* can it swap arguments? */
+			  snprintf(buf, 100, \"%2\$d %1\$d\", 3, 4);
+			  if (strcmp(buf, \"4 3\") != 0)
+				return 1;
+			  return 0;
+			}
+		" SNPRINTF_ARG_CONTROL)
+		if(NOT SNPRINTF_ARG_CONTROL)
+			set(NEED_REPL_SNPRINTF ON)
+		endif()
 	endif()
 endif()
 
@@ -709,10 +736,15 @@ endif(NOT MAXIMUM_ALIGNOF)
 message(STATUS "MAXIMUM_ALIGNOF ${MAXIMUM_ALIGNOF}")
 
 if(HAVE_LONG_LONG_INT_64)
-	include(CheckSnprintfLongLongIntModifier)
-	if(NOT LONG_LONG_INT_MODIFIER)
+	if(NOT NEED_REPL_SNPRINTF)
+		include(CheckSnprintfLongLongIntModifier)
+		if(NOT LONG_LONG_INT_MODIFIER)
+			set(LONG_LONG_INT_MODIFIER "ll")
+			set(NEED_REPL_SNPRINTF ON)
+		endif(NOT LONG_LONG_INT_MODIFIER)
+	else(NOT NEED_REPL_SNPRINTF)
 		set(LONG_LONG_INT_MODIFIER "ll")
-	endif(NOT LONG_LONG_INT_MODIFIER)
+	endif(NOT NEED_REPL_SNPRINTF)
 else(HAVE_LONG_LONG_INT_64)
 	set(LONG_LONG_INT_MODIFIER "l")
 endif(HAVE_LONG_LONG_INT_64)
@@ -1121,6 +1153,10 @@ endif(WIN32)
 set(WIN32_STACK_RLIMIT 4194304)
 if(WIN32)
 	add_definitions(-DWIN32_STACK_RLIMIT=${WIN32_STACK_RLIMIT})
+endif()
+
+if(NEED_REPL_SNPRINTF)
+	option(USE_REPL_SNPRINTF "Use replacement snprintf() functions." ON)
 endif()
 
 include(GenDef)

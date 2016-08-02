@@ -37,6 +37,10 @@ set(pq_SRCS
 	${pq_ssl_SRCS}
 )
 
+if(USE_REPL_SNPRINTF)
+	set(pq_SRCS ${pq_SRCS} ${PORT_DIR}/snprintf.c)
+endif()
+
 set(RES_FILES "")
 if(WIN32)
 	set(pq_SRCS ${pq_SRCS}
