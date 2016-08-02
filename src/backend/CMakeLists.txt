@@ -1020,6 +1020,10 @@ if(LIBXML2_FOUND)
 	target_link_libraries(postgres ${LIBXML2_LIBRARIES})
 endif()
 
+if(USE_PAM)
+	target_link_libraries(postgres ${PAM_LIB})
+endif()
+
 add_dependencies(postgres gen_errorcodes generate_parser_gram_h)
 
 if(UNIX AND NOT APPLE)

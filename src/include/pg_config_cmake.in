@@ -811,7 +811,7 @@
 /* Define to build with OpenSSL support. (--with-openssl) */
 #cmakedefine USE_OPENSSL 1
 
-/* TODO:Define to 1 to build with PAM support. (--with-pam) */
+/* Define to 1 to build with PAM support. (--with-pam) */
 #cmakedefine USE_PAM 1
 
 /* Use replacement snprintf() functions. */

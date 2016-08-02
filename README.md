@@ -43,6 +43,8 @@ CMake build options
 
 **-DENABLE_GSS** default OFF
 
+**-DUSE_PAM** default OFF
+
 **-DUSE_ASSERT_CHECKING** default OFF
 
 **-DUSE_BONJOUR** default OFF
@@ -64,6 +66,8 @@ CMake build options
 **-DPG_KRB_SRVNAM** default "postgres", the name of the default PostgreSQL service principal in Kerberos (GSSAPI)
 
 **-DCMAKE_USE_FOLDERS** default ON, folder grouping of projects in IDEs, actual for MSVC
+
+**-DUSE_REPL_SNPRINTF** default not use but if ON you can switch OFF
 
 
 
