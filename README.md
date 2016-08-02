@@ -53,6 +53,8 @@ CMake build options
 
 **-DUSE_BSD_AUTH** default OFF
 
+**-DUSE_LDAP** default OFF
+
 **-DPROFILE_PID_DIR** default OFF, only for GCC, enable to allow profiling output to be saved separately for each process
 
 **-DUSE_FLOAT4_BYVAL** default ON

@@ -161,6 +161,11 @@ if(USE_PAM)
 	endif()
 endif()
 
+option(USE_LDAP "build with LDAP support" OFF)
+if(USE_LDAP)
+	find_package(LDAP REQUIRED)
+endif()
+
 if(WIN32)
 	set(NEED_REPL_SNPRINTF ON)
 else()

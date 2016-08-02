@@ -1024,6 +1024,10 @@ if(USE_PAM)
 	target_link_libraries(postgres ${PAM_LIB})
 endif()
 
+if(LDAP_FOUND)
+	target_link_libraries(postgres ${LBER_LIBRARIES})
+endif()
+
 add_dependencies(postgres gen_errorcodes generate_parser_gram_h)
 
 if(UNIX AND NOT APPLE)

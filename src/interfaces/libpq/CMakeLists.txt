@@ -84,9 +84,15 @@ if(WIN32)
 	)
 endif()
 
+if(LDAP_FOUND)
+	target_link_libraries(pq ${LDAP_LIBRARIES})
+endif()
+
 if(USE_OPENSSL)
 	target_include_directories(pq PUBLIC ${OPENSSL_INCLUDE_DIR})
 endif()
+
+
 target_compile_definitions(pq PRIVATE -DFRONTEND -DUNSAFE_STAT_OK)
 install(TARGETS pq
 		RUNTIME DESTINATION ${PGBINDIR}

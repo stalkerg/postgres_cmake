@@ -796,7 +796,7 @@
 /* Define to 1 if you want 64-bit integer timestamp and interval support. */
 #cmakedefine USE_INTEGER_DATETIMES 1
 
-/* TODO:Define to 1 to build with LDAP support. (--with-ldap) */
+/* Define to 1 to build with LDAP support. (--with-ldap) */
 #cmakedefine USE_LDAP 1
 
 /* Define to 1 to build with XML support. (-DWITH_LIBXML) */
