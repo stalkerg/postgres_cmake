@@ -826,7 +826,7 @@
 /* Define to 1 to use Intel SSSE 4.2 CRC instructions with a runtime check. */
 #cmakedefine USE_SSE42_CRC32C_WITH_RUNTIME_CHECK 1
 
-/* TODO:Define to build with systemd support. (--with-systemd) */
+/* Define to build with systemd support. (--with-systemd) */
 #cmakedefine USE_SYSTEMD
 
 /* Define to select SysV-style semaphores. */

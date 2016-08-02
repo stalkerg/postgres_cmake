@@ -231,6 +231,7 @@ else()
 	set(GSS_LIBS "")
 endif()
 
+option(USE_SYSTEMD "Define to build with systemd support" OFF)
 option(USE_ASSERT_CHECKING "Define to build with assertion checks." OFF)
 option(USE_BONJOUR "Define to build with Bonjour support." OFF)
 if(USE_BONJOUR)
@@ -593,6 +594,13 @@ endif()
 
 check_include_files(syslog.h HAVE_SYSLOG)
 check_include_files(termios.h HAVE_TERMIOS_H)
+
+if(USE_SYSTEMD)
+	check_include_files(systemd/sd-daemon.h HAVE_SYSTEMD_SD_DAEMON_H)
+	if(NOT HAVE_SYSTEMD_SD_DAEMON_H)
+		message(ERROR "header file <systemd/sd-daemon.h> is required for systemd support")
+	endif()
+endif()
 
 
 #Check ReadLine includes
