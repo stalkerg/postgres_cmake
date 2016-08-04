@@ -1,8 +1,6 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.4)
 
 project(Postgres C)
-
-set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 
 include(CheckTypeSize)
 include(CheckSymbolExists)
