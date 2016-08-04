@@ -166,7 +166,7 @@ if(USE_LDAP)
 	find_package(LDAP REQUIRED)
 endif()
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(NEED_REPL_SNPRINTF ON)
 else()
 	set(NEED_REPL_SNPRINTF OFF)
@@ -339,7 +339,7 @@ check_symbol_exists(srandom "stdlib.h" HAVE_SRANDOM)
 # Test math functions
 check_symbol_exists(rint "math.h" HAVE_RINT)
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(LIB_M "")
 else()
 	set(LIB_M m)
@@ -1079,7 +1079,7 @@ if(NOT MEMSET_LOOP_LIMIT)
 	set(MEMSET_LOOP_LIMIT 1024)
 endif(NOT MEMSET_LOOP_LIMIT)
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;winsock2.h")
 else()
 	set(CMAKE_EXTRA_INCLUDE_FILES "sys/types.h;sys/socket.h;netdb.h")
@@ -1123,10 +1123,10 @@ check_include_file("sys/stat.h" HAVE_SYS_STAT_H)
 
 check_symbol_exists(fdatasync "unistd.h" HAVE_FDATASYNC)
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(USE_WIN32_SEMAPHORES 1)
 	set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_sema.c")
-else(WIN32)
+else(WIN32 AND NOT MSYS)
 	if(USE_NAMED_POSIX_SEMAPHORES)
 		set(USE_NAMED_POSIX_SEMAPHORES 1)
 		set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/posix_sema.c")
@@ -1137,15 +1137,15 @@ else(WIN32)
 		set(USE_SYSV_SEMAPHORES 1)
 		set(SEMA_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_sema.c")
 	endif(USE_NAMED_POSIX_SEMAPHORES)
-endif(WIN32)
+endif(WIN32 AND NOT MSYS)
 
 #Realy bad name for win32
 set(USE_SYSV_SHARED_MEMORY 1)
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/win32_shmem.c")
-else(WIN32)
+else(WIN32 AND NOT MSYS)
 	set(SHMEM_IMPLEMENTATION "${PROJECT_SOURCE_DIR}/src/backend/port/sysv_shmem.c")
-endif(WIN32)
+endif(WIN32 AND NOT MSYS)
 
 option(HAVE_SPINLOCKS "Define to ON if you have spinlocks." ON)
 
@@ -1173,7 +1173,7 @@ else(CMAKE_C_COMPILER_ID STREQUAL "SunPro")
 	set(TAS dummy.s)
 endif(CMAKE_C_COMPILER_ID STREQUAL "SunPro")
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(CMAKE_EXTRA_INCLUDE_FILES
 		${CMAKE_EXTRA_INCLUDE_FILES}
 		windows.h
@@ -1182,7 +1182,7 @@ if(WIN32)
 	)
 	set(CMAKE_REQUIRED_DEFINITIONS "WIN32_LEAN_AND_MEAN")
 	check_type_size(MINIDUMP_TYPE NAVE_MINIDUMP_TYPE)
-endif(WIN32)
+endif(WIN32 AND NOT MSYS)
 
 set(WIN32_STACK_RLIMIT 4194304)
 if(WIN32)
@@ -1201,7 +1201,7 @@ include(GenDef)
 include(RegressCheck)
 
 # Need add sco and unixware?
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/win32.h)
 elseif(APPLE)
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/darwin.h)
@@ -1219,9 +1219,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/solaris.h)
 elseif(CYGWIN OR MSYS)
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/cygwin.h)
-else(WIN32)
+else(WIN32 AND NOT MSYS)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
-endif(WIN32)
+endif(WIN32 AND NOT MSYS)
 
 set(WITH_UUID "OFF" CACHE STRING "type of uuid lib [bsd, e2fs, ossp]")
 if(WITH_UUID)
@@ -1250,7 +1250,7 @@ endif()
 file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
 	INPUT ${pgos_include_SRCS})
 
-if(WIN32)
+if(WIN32 AND NOT MSYS)
 	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32")
 endif()
 
