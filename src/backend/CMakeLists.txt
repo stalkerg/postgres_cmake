@@ -1012,11 +1012,14 @@ target_link_libraries(postgres
 	pq
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
-	${OPENSSL_LIBRARIES}
 	${DL_LIBRARIES}
 	${LIB_M}
 	${GSS_LIBS}
 )
+
+if(OPENSSL_FOUND)
+	target_link_libraries(postgres ${OPENSSL_LIBRARIES})
+endif()
 
 if(LIBXML2_FOUND)
 	target_link_libraries(postgres ${LIBXML2_LIBRARIES})

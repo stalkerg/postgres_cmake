@@ -65,11 +65,13 @@ endif()
 
 add_library(pq SHARED ${pq_SRCS} ${RES_FILES})
 target_link_libraries(pq
-	${OPENSSL_LIBRARIES}
 	${CMAKE_THREAD_LIBS_INIT}
 	${LIBSOCKET_LIBRARIES}
 	${GSS_LIBS}
 )
+if(USE_OPENSSL)
+	target_link_libraries(pq ${OPENSSL_LIBRARIES})
+endif()
 if (MSVC)
 	gen_def(pq)
 endif()

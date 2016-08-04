@@ -96,8 +96,10 @@ endif()
 add_library(${extension_name} MODULE ${pgcrypto_src})
 target_link_libraries(${extension_name}
 	${contrib_libs}
-	${OPENSSL_LIBRARIES}
 )
+if(OPENSSL_FOUND)
+	target_link_libraries(${extension_name} ${OPENSSL_LIBRARIES})
+endif()
 if(CRYPT_LIB)
 	target_link_libraries(${extension_name} ${CRYPT_LIB})
 endif()

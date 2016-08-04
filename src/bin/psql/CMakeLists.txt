@@ -49,9 +49,11 @@ target_link_libraries(psql
 	pq
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}
-	${OPENSSL_LIBRARIES}
 )
 
+if(OPENSSL_FOUND)
+	target_link_libraries(psql ${OPENSSL_LIBRARIES})
+endif()
 if(NOT MSVC)
 	target_link_libraries(psql m)
 endif()
