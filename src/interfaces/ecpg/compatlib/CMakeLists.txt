@@ -2,6 +2,7 @@ include_directories(BEFORE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"${PROJECT_SOURCE_DIR}/src/port"
 	"${PROJECT_SOURCE_DIR}/src/interfaces/ecpg/include"
+	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
 )
 set(ecpg_compat_SRC
 	informix.c
