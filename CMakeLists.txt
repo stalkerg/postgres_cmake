@@ -1250,7 +1250,7 @@ endif()
 file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
 	INPUT ${pgos_include_SRCS})
 
-if(WIN32 OR CYGWIN OR MSYS)
+if(WIN32)
 	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32")
 endif()
 
