@@ -44,9 +44,11 @@ flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils
 set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
 
 if(WIN32)
-	#TODO: maybe need test CYGWIN also
 	set(dynloader_SRCS port/dynloader/win32.c)
 	set(dynloader_H port/dynloader/win32.h)
+elseif(CYGWIN)
+	set(dynloader_SRCS port/dynloader/cygwin.c)
+	set(dynloader_H port/dynloader/cygwin.h)
 elseif(APPLE)
 	set(dynloader_SRCS port/dynloader/darwin.c)
 	set(dynloader_H port/dynloader/darwin.h)
@@ -799,7 +801,7 @@ set(postmaster_SRCS
 	postmaster/walwriter.c
 )
 
-if(WIN32)
+if(WIN32 AND CYGWIN)
 	set(backend_port_win32_SRC
 		port/win32/timer.c
 		port/win32/socket.c

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(Postgres C)
 
+set(CMAKE_LEGACY_CYGWIN_WIN32 0)
+
 include(CheckTypeSize)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
@@ -1217,6 +1219,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/newtbsd.h)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/solaris.h)
+elseif(CYGWIN)
+	set(pgos_include_SRCS ${PROJECT_SOURCE_DIR}/src/include/port/cygwin.h)
 else(WIN32)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
 endif(WIN32)
@@ -1248,7 +1252,7 @@ endif()
 file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
 	INPUT ${pgos_include_SRCS})
 
-if(WIN32)
+if(WIN32 OR CYGWIN)
 	include_directories("${PROJECT_SOURCE_DIR}/src/include/port/win32")
 endif()
 
