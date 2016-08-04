@@ -54,7 +54,7 @@ if(WIN32)
 else()
 	set(ecpg_SRC
 		${ecpg_SRC}
-		thread.c
+		${PROJECT_SOURCE_DIR}/src/port/thread.c
 	)
 endif()
 
