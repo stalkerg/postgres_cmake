@@ -815,7 +815,7 @@ if(WIN32 AND CYGWIN)
 			port/win32/crashdump.c
 		)
 	endif(NAVE_MINIDUMP_TYPE)
-endif(WIN32)
+endif()
 
 if(APPLE)
 	set(backend_port_darwin_SRC
