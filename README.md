@@ -33,6 +33,8 @@ CMake build options
 
 **-DWITH_OPENSSL** default ON, optional
 
+**-DOPENSSL_ROOT_DIR** Set this variable to the root installation of OpenSSL
+
 **-DWITH_PYTHON** default ON, optional
 
 **-DWITH_LIBXML** default ON, optional

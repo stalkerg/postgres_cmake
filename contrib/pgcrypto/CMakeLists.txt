@@ -1,6 +1,5 @@
 include_directories(
 	"${PROJECT_SOURCE_DIR}/src/include"
-	${OPENSSL_INCLUDE_DIR}
 )
 if(ZLIB_FOUND)
 	include_directories(BEFORE ${ZLIB_INCLUDE_DIRS})
@@ -54,6 +53,7 @@ set(regress_files
 )
 
 if(OPENSSL_FOUND)
+	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
 	set(pgcrypto_src ${pgcrypto_src} openssl.c pgp-mpi-openssl.c)
 	set(regress_files ${regress_files}
 		sha2
