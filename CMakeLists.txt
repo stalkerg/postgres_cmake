@@ -1274,6 +1274,11 @@ configure_file(
 )
 
 configure_file(
+	"${PROJECT_SOURCE_DIR}/src/interfaces/ecpg/include/ecpg_config_cmake.in"
+	"${PROJECT_SOURCE_DIR}/src/interfaces/ecpg/include/ecpg_config.h"
+)
+
+configure_file(
 	"${PROJECT_SOURCE_DIR}/PGXS.cmake.in"
 	"${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/PGXS.cmake"
 	@ONLY

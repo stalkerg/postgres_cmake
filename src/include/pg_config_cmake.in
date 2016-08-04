@@ -51,7 +51,7 @@
 
 #cmakedefine ENABLE_NLS
 
-#cmakedefine ENABLE_THREAD_SAFETY
+#cmakedefine ENABLE_THREAD_SAFETY 1
 
 /* Define to nothing if C supports flexible array members, and to 1 if it does
    not. That way, with a declaration like `struct s { int n; double

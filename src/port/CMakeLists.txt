@@ -104,6 +104,13 @@ if(USE_REPL_SNPRINTF)
 	)
 endif()
 
+if(NOT HAVE_RINT)
+	set(port_SRCS
+		${port_SRCS}
+		rint.c
+	)
+endif()
+
 if(MSVC)
 	set(port_SRCS
 		${port_SRCS}
