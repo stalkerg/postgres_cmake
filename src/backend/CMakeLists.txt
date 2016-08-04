@@ -46,7 +46,7 @@ set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GU
 if(WIN32)
 	set(dynloader_SRCS port/dynloader/win32.c)
 	set(dynloader_H port/dynloader/win32.h)
-elseif(CYGWIN)
+elseif(CYGWIN OR MSYS)
 	set(dynloader_SRCS port/dynloader/cygwin.c)
 	set(dynloader_H port/dynloader/cygwin.h)
 elseif(APPLE)
@@ -801,7 +801,7 @@ set(postmaster_SRCS
 	postmaster/walwriter.c
 )
 
-if(WIN32 AND CYGWIN)
+if(WIN32 OR CYGWIN OR MSYS)
 	set(backend_port_win32_SRC
 		port/win32/timer.c
 		port/win32/socket.c
