@@ -14,7 +14,7 @@ set(ecpg_SRC
 	memory.c
 	connect.c
 	misc.c
-	path.c
+	${PROJECT_SOURCE_DIR}/src/port/path.c
 	${PROJECT_SOURCE_DIR}/src/port/pgstrcasecmp.c
 )
 
