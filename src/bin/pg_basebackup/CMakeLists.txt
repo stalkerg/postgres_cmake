@@ -16,6 +16,7 @@ add_library(common_basebackup STATIC
 
 target_link_libraries(common_basebackup
 	port
+	pq
 )
 
 set(basebackup_list 

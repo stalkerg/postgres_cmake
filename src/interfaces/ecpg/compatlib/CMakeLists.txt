@@ -15,7 +15,7 @@ if(USE_REPL_SNPRINTF)
 endif()
 
 add_library(ecpg_compat SHARED ${ecpg_compat_SRC})
-target_link_libraries(ecpg_compat ${LIB_M} -lpq)
+target_link_libraries(ecpg_compat ${LIB_M} pgtypes pq ecpg)
 target_compile_definitions(ecpg_compat PRIVATE -DFRONTEND)
 set_target_properties(ecpg_compat PROPERTIES VERSION "3.8")
 

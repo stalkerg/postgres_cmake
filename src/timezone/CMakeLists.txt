@@ -62,9 +62,15 @@ function(JOIN VALUES GLUE OUTPUT)
   set (${OUTPUT} "${_TMP_STR}" PARENT_SCOPE)
 endfunction()
 
+if(MINGW)
+	string(SUBSTRING ${PGSHAREDIR} 2 -1 PGSHAREDIR_ZIC)
+else()
+	set(PGSHAREDIR_ZIC ${PGSHAREDIR})
+endif()
+
 JOIN("${tzdata}" " " tzdata_string)
 install(
-	CODE "message('zic \$ENV{DESTDIR}${PGSHAREDIR}/timezone')"
-	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"\$ENV{DESTDIR}${PGSHAREDIR}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
+	CODE "message('${CMAKE_CURRENT_BINARY_DIR}/zic${CMAKE_EXECUTABLE_SUFFIX} \$ENV{DESTDIR}${PGSHAREDIR_ZIC}/timezone -p US/Eastern ${tzdata_string}')"
+	CODE "execute_process(COMMAND ${CMAKE_CURRENT_BINARY_DIR}/zic${CMAKE_EXECUTABLE_SUFFIX} -d \"\$ENV{DESTDIR}${PGSHAREDIR_ZIC}/timezone\" -p \"US/Eastern\" ${tzdata_string})"
 )
 

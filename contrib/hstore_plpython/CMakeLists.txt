@@ -5,6 +5,13 @@ include_directories(
 	${PYTHON_INCLUDE_DIRS}
 )
 
+if(MINGW)
+	link_directories(
+		"${PROJECT_BINARY_DIR}/contrib/hstore"
+		"${PROJECT_BINARY_DIR}/src/pl/plpython"
+	)
+endif()
+
 set(extension_name hstore_plpython)
 
 add_library(${extension_name}${PYTHON_VERSION_MAJOR} MODULE ${extension_name}.c)
@@ -13,6 +20,9 @@ set_target_properties(${extension_name}${PYTHON_VERSION_MAJOR} PROPERTIES PREFIX
 add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres)
 if (MSVC)
 	gen_def(${extension_name})
+endif()
+if(MINGW)
+	target_link_libraries(${extension_name}${PYTHON_VERSION_MAJOR} minhstore minplpython${PYTHON_VERSION_MAJOR})
 endif()
 if(NOT PGXS)
 	CMAKE_SET_TARGET_FOLDER(${extension_name}${PYTHON_VERSION_MAJOR} contrib)

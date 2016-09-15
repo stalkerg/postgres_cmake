@@ -8,7 +8,7 @@ if(WIN32)
 	)
 endif()
 
-if(MSVC)
+if(MSVC OR MINGW)
 	set(contrib_libs
 		port
 		postgres

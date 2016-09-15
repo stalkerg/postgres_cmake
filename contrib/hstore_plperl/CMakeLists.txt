@@ -5,6 +5,9 @@ include_directories(
 	${PERL_INCLUDE_PATH}
 )
 
+if(MINGW)
+	link_directories("${PROJECT_BINARY_DIR}/contrib/hstore")
+endif()
 set(extension_name hstore_plperl)
 
 add_library(${extension_name} MODULE ${extension_name}.c)
@@ -13,6 +16,10 @@ set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 if (MSVC)
 	gen_def(${extension_name})
+endif()
+if(MINGW)
+	target_link_libraries(${extension_name} minhstore)
+	target_compile_definitions(${extension_name} PRIVATE -DPLPERL_HAVE_UID_GID)
 endif()
 if(NOT PGXS)
 	CMAKE_SET_TARGET_FOLDER(${extension_name} contrib)

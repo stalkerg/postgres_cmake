@@ -11,9 +11,9 @@ add_executable(pg_regress
 )
 
 target_link_libraries(pg_regress
-	port
 	pq
 	pgcommon
+	port
 )
 
 target_compile_definitions(pg_regress PRIVATE
@@ -27,8 +27,12 @@ target_link_libraries(regress
 )
 if (MSVC)
 	gen_def(regress)
-	target_link_libraries(regress postgres pgcommon port)
 endif()
+
+if(MSVC OR MINGW)
+	target_link_libraries(regress postgres port pgcommon)
+endif()
+
 set_target_properties(regress PROPERTIES PREFIX "")
 add_dependencies(regress postgres)
 

@@ -38,7 +38,7 @@ else()
 	endif()
 endif()
 
-if(MSVC OR CMAKE_GENERATOR STREQUAL Xcode)
+if(MSVC OR MSYS OR MINGW OR CMAKE_GENERATOR STREQUAL Xcode)
 	#Need rewrite
 	set(pre_pg_regress_check
 		${PGBINDIR}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}

@@ -43,10 +43,10 @@ add_custom_command(
 flex_target(GUC_SCANNER utils/misc/guc-file.l  ${CMAKE_CURRENT_SOURCE_DIR}/utils/misc/guc-file.c)
 set_source_files_properties(utils/misc/guc.c PROPERTIES OBJECT_DEPENDS ${FLEX_GUC_SCANNER_OUTPUTS})
 
-if(WIN32)
+if(WIN32 OR MINGW)
 	set(dynloader_SRCS port/dynloader/win32.c)
 	set(dynloader_H port/dynloader/win32.h)
-elseif(CYGWIN OR MSYS)
+elseif(CYGWIN)
 	set(dynloader_SRCS port/dynloader/cygwin.c)
 	set(dynloader_H port/dynloader/cygwin.h)
 elseif(APPLE)
@@ -71,9 +71,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 	set(dynloader_SRCS port/dynloader/solaris.c)
 	set(dynloader_H port/dynloader/solaris.h)
-else(WIN32)
+else(WIN32 OR MINGW)
 	message(WARNING "${CMAKE_SYSTEM_NAME}")
-endif(WIN32)
+endif(WIN32 OR MINGW)
 
 add_custom_command(
 	MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/${dynloader_H}"
@@ -801,12 +801,13 @@ set(postmaster_SRCS
 	postmaster/walwriter.c
 )
 
-if(WIN32 OR CYGWIN OR MSYS)
+if(WIN32 OR CYGWIN OR MINGW)
 	set(backend_port_win32_SRC
 		port/win32/timer.c
 		port/win32/socket.c
 		port/win32/signal.c
-		port/win32/mingwcompat.c
+		# I hope it is not necessary for modern MinGW
+		#port/win32/mingwcompat.c
 		port/win32/crashdump.c
 	)
 	if(NAVE_MINIDUMP_TYPE)
@@ -1002,6 +1003,10 @@ if(MSVC)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${WIN32_STACK_RLIMIT}")
 endif()
 
+if(MINGW OR CYGWIN)
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,${WIN32_STACK_RLIMIT} -Wl,--export-all-symbols")
+endif()
+
 add_executable(postgres
 	${postgres_SRCS}
 )
@@ -1046,6 +1051,10 @@ if(WIN32)
 	target_compile_definitions(postgres PRIVATE -DBUILDING_DLL -DEXEC_BACKEND)
 endif()
 
+if(MINGW)
+	set_target_properties(postgres PROPERTIES LINK_FLAGS -Wl,--out-implib=libpostgres.dll.a)
+endif()
+
 set_target_properties(postgres PROPERTIES ENABLE_EXPORTS 1)
 set_target_properties(postgres PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 #Realy need?
@@ -1063,6 +1072,11 @@ target_link_libraries(pqwalreceiver pq)
 if (MSVC)
 	gen_def(pqwalreceiver)
 	gen_def(postgres)
+	target_link_libraries(pqwalreceiver postgres)
+endif()
+
+if(WIN32)
+	target_compile_definitions(pqwalreceiver PRIVATE -DBUILDING_DLL)
 	target_link_libraries(pqwalreceiver postgres)
 endif()
 

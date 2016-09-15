@@ -12,9 +12,9 @@ add_executable(pg_isolation_regress
 )
 
 target_link_libraries(pg_isolation_regress
-	port
 	pq
 	pgcommon
+	port
 )
 
 target_compile_definitions(pg_isolation_regress PRIVATE
@@ -33,9 +33,9 @@ add_executable(isolationtester
 )
 
 target_link_libraries(isolationtester
+	pgcommon
 	port
 	pq
-	pgcommon
 )
 
 add_custom_target(isolation_check

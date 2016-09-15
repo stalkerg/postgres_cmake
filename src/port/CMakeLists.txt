@@ -111,19 +111,25 @@ if(NOT HAVE_RINT)
 	)
 endif()
 
-if(MSVC)
+if(MSVC OR MINGW)
 	set(port_SRCS
 		${port_SRCS}
 		dirmod.c
 		kill.c
 		open.c
-		dirent.c
 		getrusage.c
 		system.c
 		win32security.c
-		win32setlocale.c
 		win32env.c
 		win32error.c
+		win32setlocale.c
+	)
+endif()
+
+if(MSVC)
+	set(port_SRCS
+		${port_SRCS}
+		dirent.c
 	)
 endif()
 
