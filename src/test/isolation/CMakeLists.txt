@@ -18,7 +18,7 @@ target_link_libraries(pg_isolation_regress
 )
 
 target_compile_definitions(pg_isolation_regress PRIVATE
-	-DHOST_TUPLE="${CMAKE_HOST_SYSTEM}"
+	-DHOST_TUPLE="${HOST_TUPLE}"
 	-DSHELLPROG="$ENV{SHELL}"
 )
 
