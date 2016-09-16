@@ -27,9 +27,14 @@ if(NOT HAVE_RINT)
 endif()
 
 add_library(pgtypes SHARED ${pgtypes_SRC})
+if (MSVC)
+	gen_def(pgtypes)
+endif()
+
 target_link_libraries(pgtypes ${LIB_M})
 target_compile_definitions(pgtypes PRIVATE -DFRONTEND)
 set_target_properties(pgtypes PROPERTIES VERSION "3.7")
+
 
 install(TARGETS pgtypes
 		RUNTIME DESTINATION ${PGBINDIR}
