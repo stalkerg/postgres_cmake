@@ -78,7 +78,6 @@
 /* Static variables representing various special snapshot semantics */
 SnapshotData SnapshotSelfData = {HeapTupleSatisfiesSelf};
 SnapshotData SnapshotAnyData = {HeapTupleSatisfiesAny};
-SnapshotData SnapshotToastData = {HeapTupleSatisfiesToast};
 
 /* local functions */
 static bool XidInMVCCSnapshot(TransactionId xid, Snapshot snapshot);
@@ -419,8 +418,8 @@ HeapTupleSatisfiesToast(HeapTuple htup, Snapshot snapshot,
 
 		/*
 		 * An invalid Xmin can be left behind by a speculative insertion that
-		 * is canceled by super-deleting the tuple.  We shouldn't see any of
-		 * those in TOAST tables, but better safe than sorry.
+		 * is canceled by super-deleting the tuple.  This also applies to
+		 * TOAST tuples created during speculative insertion.
 		 */
 		else if (!TransactionIdIsValid(HeapTupleHeaderGetXmin(tuple)))
 			return false;

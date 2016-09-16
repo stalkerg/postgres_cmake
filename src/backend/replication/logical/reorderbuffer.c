@@ -232,9 +232,7 @@ ReorderBufferAllocate(void)
 	/* allocate memory in own context, to have better accountability */
 	new_ctx = AllocSetContextCreate(CurrentMemoryContext,
 									"ReorderBuffer",
-									ALLOCSET_DEFAULT_MINSIZE,
-									ALLOCSET_DEFAULT_INITSIZE,
-									ALLOCSET_DEFAULT_MAXSIZE);
+									ALLOCSET_DEFAULT_SIZES);
 
 	buffer =
 		(ReorderBuffer *) MemoryContextAlloc(new_ctx, sizeof(ReorderBuffer));
@@ -807,13 +805,14 @@ ReorderBufferCommitChild(ReorderBuffer *rb, TransactionId xid,
 		elog(ERROR, "subxact logged without previous toplevel record");
 
 	/*
-	 * Pass the our base snapshot to the parent transaction if it doesn't have
+	 * Pass our base snapshot to the parent transaction if it doesn't have
 	 * one, or ours is older. That can happen if there are no changes in the
 	 * toplevel transaction but in one of the child transactions. This allows
-	 * the parent to simply use it's base snapshot initially.
+	 * the parent to simply use its base snapshot initially.
 	 */
-	if (txn->base_snapshot == NULL ||
-		txn->base_snapshot_lsn > subtxn->base_snapshot_lsn)
+	if (subtxn->base_snapshot != NULL &&
+		(txn->base_snapshot == NULL ||
+		 txn->base_snapshot_lsn > subtxn->base_snapshot_lsn))
 	{
 		txn->base_snapshot = subtxn->base_snapshot;
 		txn->base_snapshot_lsn = subtxn->base_snapshot_lsn;
@@ -1159,17 +1158,15 @@ ReorderBufferCleanupTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		txn->base_snapshot_lsn = InvalidXLogRecPtr;
 	}
 
-	/* delete from list of known subxacts */
-	if (txn->is_known_as_subxact)
-	{
-		/* NB: nsubxacts count of parent will be too high now */
-		dlist_delete(&txn->node);
-	}
-	/* delete from LSN ordered list of toplevel TXNs */
-	else
-	{
-		dlist_delete(&txn->node);
-	}
+	/*
+	 * Remove TXN from its containing list.
+	 *
+	 * Note: if txn->is_known_as_subxact, we are deleting the TXN from its
+	 * parent's list of known subxacts; this leaves the parent's nsubxacts
+	 * count too high, but we don't care.  Otherwise, we are deleting the TXN
+	 * from the LSN-ordered list of toplevel TXNs.
+	 */
+	dlist_delete(&txn->node);
 
 	/* now remove reference from buffer */
 	hash_search(rb->by_txn,
@@ -2316,7 +2313,10 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	if (write(fd, rb->outbuf, ondisk->size) != ondisk->size)
 	{
+		int			save_errno = errno;
+
 		CloseTransientFile(fd);
+		errno = save_errno;
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to data file for XID %u: %m",
@@ -3069,7 +3069,8 @@ ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
 	fd = OpenTransientFile(path, O_RDONLY | PG_BINARY, 0);
 	if (fd < 0)
 		ereport(ERROR,
-				(errmsg("could not open file \"%s\": %m", path)));
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", path)));
 
 	while (true)
 	{

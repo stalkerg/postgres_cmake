@@ -34,7 +34,9 @@
 #include "parser/parse_type.h"
 #include "parser/parse_agg.h"
 #include "utils/builtins.h"
+#include "utils/date.h"
 #include "utils/lsyscache.h"
+#include "utils/timestamp.h"
 #include "utils/xml.h"
 
 
@@ -107,6 +109,8 @@ static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 static Node *transformRowExpr(ParseState *pstate, RowExpr *r);
 static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
 static Node *transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m);
+static Node *transformSQLValueFunction(ParseState *pstate,
+						  SQLValueFunction *svf);
 static Node *transformXmlExpr(ParseState *pstate, XmlExpr *x);
 static Node *transformXmlSerialize(ParseState *pstate, XmlSerialize *xs);
 static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
@@ -124,6 +128,8 @@ static Node *make_row_distinct_op(ParseState *pstate, List *opname,
 					 RowExpr *lrow, RowExpr *rrow, int location);
 static Expr *make_distinct_op(ParseState *pstate, List *opname,
 				 Node *ltree, Node *rtree, int location);
+static Node *make_nulltest_from_distinct(ParseState *pstate,
+							A_Expr *distincta, Node *arg);
 static int	operator_precedence_group(Node *node, const char **nodename);
 static void emit_precedence_warnings(ParseState *pstate,
 						 int opgroup, const char *opname,
@@ -224,6 +230,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 						result = transformAExprOpAll(pstate, a);
 						break;
 					case AEXPR_DISTINCT:
+					case AEXPR_NOT_DISTINCT:
 						result = transformAExprDistinct(pstate, a);
 						break;
 					case AEXPR_NULLIF:
@@ -301,6 +308,11 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_MinMaxExpr:
 			result = transformMinMaxExpr(pstate, (MinMaxExpr *) expr);
+			break;
+
+		case T_SQLValueFunction:
+			result = transformSQLValueFunction(pstate,
+											   (SQLValueFunction *) expr);
 			break;
 
 		case T_XmlExpr:
@@ -991,11 +1003,22 @@ transformAExprDistinct(ParseState *pstate, A_Expr *a)
 {
 	Node	   *lexpr = a->lexpr;
 	Node	   *rexpr = a->rexpr;
+	Node	   *result;
 
 	if (operator_precedence_warning)
 		emit_precedence_warnings(pstate, PREC_GROUP_INFIX_IS, "IS",
 								 lexpr, rexpr,
 								 a->location);
+
+	/*
+	 * If either input is an undecorated NULL literal, transform to a NullTest
+	 * on the other input. That's simpler to process than a full DistinctExpr,
+	 * and it avoids needing to require that the datatype have an = operator.
+	 */
+	if (exprIsNullConstant(rexpr))
+		return make_nulltest_from_distinct(pstate, a, lexpr);
+	if (exprIsNullConstant(lexpr))
+		return make_nulltest_from_distinct(pstate, a, rexpr);
 
 	lexpr = transformExprRecurse(pstate, lexpr);
 	rexpr = transformExprRecurse(pstate, rexpr);
@@ -1004,20 +1027,31 @@ transformAExprDistinct(ParseState *pstate, A_Expr *a)
 		rexpr && IsA(rexpr, RowExpr))
 	{
 		/* ROW() op ROW() is handled specially */
-		return make_row_distinct_op(pstate, a->name,
-									(RowExpr *) lexpr,
-									(RowExpr *) rexpr,
-									a->location);
+		result = make_row_distinct_op(pstate, a->name,
+									  (RowExpr *) lexpr,
+									  (RowExpr *) rexpr,
+									  a->location);
 	}
 	else
 	{
 		/* Ordinary scalar operator */
-		return (Node *) make_distinct_op(pstate,
-										 a->name,
-										 lexpr,
-										 rexpr,
-										 a->location);
+		result = (Node *) make_distinct_op(pstate,
+										   a->name,
+										   lexpr,
+										   rexpr,
+										   a->location);
 	}
+
+	/*
+	 * If it's NOT DISTINCT, we first build a DistinctExpr and then stick a
+	 * NOT on top.
+	 */
+	if (a->kind == AEXPR_NOT_DISTINCT)
+		result = (Node *) makeBoolExpr(NOT_EXPR,
+									   list_make1(result),
+									   a->location);
+
+	return result;
 }
 
 static Node *
@@ -2154,6 +2188,59 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 }
 
 static Node *
+transformSQLValueFunction(ParseState *pstate, SQLValueFunction *svf)
+{
+	/*
+	 * All we need to do is insert the correct result type and (where needed)
+	 * validate the typmod, so we just modify the node in-place.
+	 */
+	switch (svf->op)
+	{
+		case SVFOP_CURRENT_DATE:
+			svf->type = DATEOID;
+			break;
+		case SVFOP_CURRENT_TIME:
+			svf->type = TIMETZOID;
+			break;
+		case SVFOP_CURRENT_TIME_N:
+			svf->type = TIMETZOID;
+			svf->typmod = anytime_typmod_check(true, svf->typmod);
+			break;
+		case SVFOP_CURRENT_TIMESTAMP:
+			svf->type = TIMESTAMPTZOID;
+			break;
+		case SVFOP_CURRENT_TIMESTAMP_N:
+			svf->type = TIMESTAMPTZOID;
+			svf->typmod = anytimestamp_typmod_check(true, svf->typmod);
+			break;
+		case SVFOP_LOCALTIME:
+			svf->type = TIMEOID;
+			break;
+		case SVFOP_LOCALTIME_N:
+			svf->type = TIMEOID;
+			svf->typmod = anytime_typmod_check(false, svf->typmod);
+			break;
+		case SVFOP_LOCALTIMESTAMP:
+			svf->type = TIMESTAMPOID;
+			break;
+		case SVFOP_LOCALTIMESTAMP_N:
+			svf->type = TIMESTAMPOID;
+			svf->typmod = anytimestamp_typmod_check(false, svf->typmod);
+			break;
+		case SVFOP_CURRENT_ROLE:
+		case SVFOP_CURRENT_USER:
+		case SVFOP_USER:
+		case SVFOP_SESSION_USER:
+		case SVFOP_CURRENT_CATALOG:
+		case SVFOP_CURRENT_SCHEMA:
+			svf->type = NAMEOID;
+			break;
+	}
+
+	return (Node *) svf;
+}
+
+static Node *
 transformXmlExpr(ParseState *pstate, XmlExpr *x)
 {
 	XmlExpr    *newx;
@@ -2870,6 +2957,28 @@ make_distinct_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 }
 
 /*
+ * Produce a NullTest node from an IS [NOT] DISTINCT FROM NULL construct
+ *
+ * "arg" is the untransformed other argument
+ */
+static Node *
+make_nulltest_from_distinct(ParseState *pstate, A_Expr *distincta, Node *arg)
+{
+	NullTest   *nt = makeNode(NullTest);
+
+	nt->arg = (Expr *) transformExprRecurse(pstate, arg);
+	/* the argument can be any type, so don't coerce it */
+	if (distincta->kind == AEXPR_NOT_DISTINCT)
+		nt->nulltesttype = IS_NULL;
+	else
+		nt->nulltesttype = IS_NOT_NULL;
+	/* argisrow = false is correct whether or not arg is composite */
+	nt->argisrow = false;
+	nt->location = distincta->location;
+	return (Node *) nt;
+}
+
+/*
  * Identify node's group for operator precedence warnings
  *
  * For items in nonzero groups, also return a suitable node name into *nodename
@@ -2971,7 +3080,8 @@ operator_precedence_group(Node *node, const char **nodename)
 			*nodename = strVal(llast(aexpr->name));
 			group = PREC_GROUP_POSTFIX_OP;
 		}
-		else if (aexpr->kind == AEXPR_DISTINCT)
+		else if (aexpr->kind == AEXPR_DISTINCT ||
+				 aexpr->kind == AEXPR_NOT_DISTINCT)
 		{
 			*nodename = "IS";
 			group = PREC_GROUP_INFIX_IS;

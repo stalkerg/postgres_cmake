@@ -20,6 +20,7 @@
 #include "lib/pairingheap.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
+#include "utils/hsearch.h"
 #include "utils/reltrigger.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
@@ -1611,7 +1612,8 @@ struct CustomExecMethods;
 typedef struct CustomScanState
 {
 	ScanState	ss;
-	uint32		flags;			/* mask of CUSTOMPATH_* flags, see relation.h */
+	uint32		flags;			/* mask of CUSTOMPATH_* flags, see
+								 * nodes/extensible.h */
 	List	   *custom_ps;		/* list of child PlanState nodes, if any */
 	Size		pscan_len;		/* size of parallel coordination information */
 	const struct CustomExecMethods *methods;
@@ -1790,7 +1792,7 @@ typedef struct SortState
 
 /* ---------------------
  *	GroupState information
- * -------------------------
+ * ---------------------
  */
 typedef struct GroupState
 {
@@ -1809,7 +1811,7 @@ typedef struct GroupState
  *	input group during evaluation of an Agg node's output tuple(s).  We
  *	create a second ExprContext, tmpcontext, in which to evaluate input
  *	expressions and run the aggregate transition functions.
- * -------------------------
+ * ---------------------
  */
 /* these structs are private in nodeAgg.c: */
 typedef struct AggStatePerAggData *AggStatePerAgg;

@@ -484,7 +484,7 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	fpinfo = (PgFdwRelationInfo *) palloc0(sizeof(PgFdwRelationInfo));
 	baserel->fdw_private = (void *) fpinfo;
 
-	/* Base foreign tables need to be push down always. */
+	/* Base foreign tables need to be pushed down always. */
 	fpinfo->pushdown_safe = true;
 
 	/* Look up foreign-table catalog info. */
@@ -1315,14 +1315,10 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											   "postgres_fdw tuple data",
-											   ALLOCSET_DEFAULT_MINSIZE,
-											   ALLOCSET_DEFAULT_INITSIZE,
-											   ALLOCSET_DEFAULT_MAXSIZE);
+											   ALLOCSET_DEFAULT_SIZES);
 	fsstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "postgres_fdw temporary data",
-											  ALLOCSET_SMALL_MINSIZE,
-											  ALLOCSET_SMALL_INITSIZE,
-											  ALLOCSET_SMALL_MAXSIZE);
+											  ALLOCSET_SMALL_SIZES);
 
 	/*
 	 * Get info we'll need for converting data fetched from the foreign server
@@ -1695,9 +1691,7 @@ postgresBeginForeignModify(ModifyTableState *mtstate,
 	/* Create context for per-tuple temp workspace. */
 	fmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "postgres_fdw temporary data",
-											  ALLOCSET_SMALL_MINSIZE,
-											  ALLOCSET_SMALL_INITSIZE,
-											  ALLOCSET_SMALL_MAXSIZE);
+											  ALLOCSET_SMALL_SIZES);
 
 	/* Prepare for input conversion of RETURNING results. */
 	if (fmstate->has_returning)
@@ -2294,9 +2288,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	/* Create context for per-tuple temp workspace. */
 	dmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "postgres_fdw temporary data",
-											  ALLOCSET_SMALL_MINSIZE,
-											  ALLOCSET_SMALL_INITSIZE,
-											  ALLOCSET_SMALL_MAXSIZE);
+											  ALLOCSET_SMALL_SIZES);
 
 	/* Prepare for input conversion of RETURNING results. */
 	if (dmstate->has_returning)
@@ -2637,7 +2629,9 @@ estimate_path_cost_size(PlannerInfo *root,
 			 * rows.
 			 */
 
-			/* Calculate the cost of clauses pushed down the foreign server */
+			/*
+			 * Calculate the cost of clauses pushed down to the foreign server
+			 */
 			cost_qual_eval(&remote_conds_cost, fpinfo->remote_conds, root);
 			/* Calculate the cost of applying join clauses */
 			cost_qual_eval(&join_cost, fpinfo->joinclauses, root);
@@ -3479,9 +3473,7 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	astate.anl_cxt = CurrentMemoryContext;
 	astate.temp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 											"postgres_fdw temporary data",
-											ALLOCSET_SMALL_MINSIZE,
-											ALLOCSET_SMALL_INITSIZE,
-											ALLOCSET_SMALL_MAXSIZE);
+											ALLOCSET_SMALL_SIZES);
 
 	/*
 	 * Get the connection to use.  We do the remote access as the table's
@@ -4372,6 +4364,7 @@ make_tuple_from_result_row(PGresult *res,
 	Datum	   *values;
 	bool	   *nulls;
 	ItemPointer ctid = NULL;
+	Oid			oid = InvalidOid;
 	ConversionLocation errpos;
 	ErrorContextCallback errcallback;
 	MemoryContext oldcontext;
@@ -4429,7 +4422,11 @@ make_tuple_from_result_row(PGresult *res,
 		else
 			valstr = PQgetvalue(res, row, j);
 
-		/* convert value to internal representation */
+		/*
+		 * convert value to internal representation
+		 *
+		 * Note: we ignore system columns other than ctid and oid in result
+		 */
 		errpos.cur_attno = i;
 		if (i > 0)
 		{
@@ -4444,13 +4441,24 @@ make_tuple_from_result_row(PGresult *res,
 		}
 		else if (i == SelfItemPointerAttributeNumber)
 		{
-			/* ctid --- note we ignore any other system column in result */
+			/* ctid */
 			if (valstr != NULL)
 			{
 				Datum		datum;
 
 				datum = DirectFunctionCall1(tidin, CStringGetDatum(valstr));
 				ctid = (ItemPointer) DatumGetPointer(datum);
+			}
+		}
+		else if (i == ObjectIdAttributeNumber)
+		{
+			/* oid */
+			if (valstr != NULL)
+			{
+				Datum		datum;
+
+				datum = DirectFunctionCall1(oidin, CStringGetDatum(valstr));
+				oid = DatumGetObjectId(datum);
 			}
 		}
 		errpos.cur_attno = 0;
@@ -4496,6 +4504,12 @@ make_tuple_from_result_row(PGresult *res,
 	HeapTupleHeaderSetXmin(tuple->t_data, InvalidTransactionId);
 	HeapTupleHeaderSetCmin(tuple->t_data, InvalidTransactionId);
 
+	/*
+	 * If we have an OID to return, install it.
+	 */
+	if (OidIsValid(oid))
+		HeapTupleSetOid(tuple, oid);
+
 	/* Clean up */
 	MemoryContextReset(temp_context);
 
@@ -4523,6 +4537,8 @@ conversion_error_callback(void *arg)
 			attname = NameStr(tupdesc->attrs[errpos->cur_attno - 1]->attname);
 		else if (errpos->cur_attno == SelfItemPointerAttributeNumber)
 			attname = "ctid";
+		else if (errpos->cur_attno == ObjectIdAttributeNumber)
+			attname = "oid";
 
 		relname = RelationGetRelationName(errpos->rel);
 	}

@@ -1210,7 +1210,11 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Enables updating of the process title every time a new SQL command is received by the server.")
 		},
 		&update_process_title,
+#ifdef WIN32
+		false,
+#else
 		true,
+#endif
 		NULL, NULL, NULL
 	},
 
@@ -2246,7 +2250,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&CheckPointTimeout,
-		300, 30, 3600,
+		300, 30, 86400,
 		NULL, NULL, NULL
 	},
 
@@ -2469,7 +2473,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL,
 		},
 		&max_worker_processes,
-		8, 1, MAX_BACKENDS,
+		8, 0, MAX_BACKENDS,
 		check_max_worker_processes, NULL, NULL
 	},
 

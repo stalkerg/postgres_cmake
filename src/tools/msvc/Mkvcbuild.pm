@@ -50,7 +50,7 @@ my @contrib_excludes = (
 
 # Set of variables for frontend modules
 my $frontend_defines = { 'initdb' => 'FRONTEND' };
-my @frontend_uselibpq = ('pg_ctl', 'pg_upgrade', 'pgbench', 'psql');
+my @frontend_uselibpq = ('pg_ctl', 'pg_upgrade', 'pgbench', 'psql', 'initdb');
 my @frontend_uselibpgport = (
 	'pg_archivecleanup', 'pg_test_fsync',
 	'pg_test_timing',    'pg_upgrade',
@@ -110,8 +110,8 @@ sub mkvcbuild
 	}
 
 	our @pgcommonallfiles = qw(
-	  config_info.c controldata_utils.c exec.c keywords.c
-	  pg_lzcompress.c pgfnames.c psprintf.c relpath.c rmtree.c
+	  config_info.c controldata_utils.c exec.c ip.c keywords.c
+	  md5.c pg_lzcompress.c pgfnames.c psprintf.c relpath.c rmtree.c
 	  string.c username.c wait_error.c);
 
 	our @pgcommonfrontendfiles = (
@@ -269,9 +269,6 @@ sub mkvcbuild
 	$ecpg->AddIncludeDir('src/interfaces/libpq');
 	$ecpg->AddPrefixInclude('src/interfaces/ecpg/preproc');
 	$ecpg->AddFiles('src/interfaces/ecpg/preproc', 'pgc.l', 'preproc.y');
-	$ecpg->AddDefine('MAJOR_VERSION=4');
-	$ecpg->AddDefine('MINOR_VERSION=12');
-	$ecpg->AddDefine('PATCHLEVEL=0');
 	$ecpg->AddDefine('ECPG_COMPILE');
 	$ecpg->AddReference($libpgcommon, $libpgport);
 
@@ -384,18 +381,7 @@ sub mkvcbuild
 	$zic->AddDirResourceFile('src/timezone');
 	$zic->AddReference($libpgcommon, $libpgport);
 
-	if ($solution->{options}->{xml})
-	{
-		$contrib_extraincludes->{'pgxml'} = [
-			$solution->{options}->{xml} . '/include',
-			$solution->{options}->{xslt} . '/include',
-			$solution->{options}->{iconv} . '/include' ];
-
-		$contrib_extralibs->{'pgxml'} = [
-			$solution->{options}->{xml} . '/lib/libxml2.lib',
-			$solution->{options}->{xslt} . '/lib/libxslt.lib' ];
-	}
-	else
+	if (!$solution->{options}->{xml})
 	{
 		push @contrib_excludes, 'xml2';
 	}
@@ -405,14 +391,7 @@ sub mkvcbuild
 		push @contrib_excludes, 'sslinfo';
 	}
 
-	if ($solution->{options}->{uuid})
-	{
-		$contrib_extraincludes->{'uuid-ossp'} =
-		  [ $solution->{options}->{uuid} . '/include' ];
-		$contrib_extralibs->{'uuid-ossp'} =
-		  [ $solution->{options}->{uuid} . '/lib/uuid.lib' ];
-	}
-	else
+	if (!$solution->{options}->{uuid})
 	{
 		push @contrib_excludes, 'uuid-ossp';
 	}

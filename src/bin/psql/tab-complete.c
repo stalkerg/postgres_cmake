@@ -599,8 +599,10 @@ static const SchemaQuery Query_for_list_of_matviews = {
 "        OR '\"' || nspname || '\"' ='%s') "
 
 #define Query_for_list_of_template_databases \
-"SELECT pg_catalog.quote_ident(datname) FROM pg_catalog.pg_database "\
-" WHERE substring(pg_catalog.quote_ident(datname),1,%d)='%s' AND datistemplate"
+"SELECT pg_catalog.quote_ident(d.datname) "\
+"  FROM pg_catalog.pg_database d "\
+" WHERE substring(pg_catalog.quote_ident(d.datname),1,%d)='%s' "\
+"   AND (d.datistemplate OR pg_catalog.pg_has_role(d.datdba, 'USAGE'))"
 
 #define Query_for_list_of_databases \
 "SELECT pg_catalog.quote_ident(datname) FROM pg_catalog.pg_database "\
@@ -816,6 +818,13 @@ static const SchemaQuery Query_for_list_of_matviews = {
 /* the silly-looking length condition is just to eat up the current word */
 #define Query_for_list_of_available_extension_versions \
 " SELECT pg_catalog.quote_ident(version) "\
+"   FROM pg_catalog.pg_available_extension_versions "\
+"  WHERE (%d = pg_catalog.length('%s'))"\
+"    AND pg_catalog.quote_ident(name)='%s'"
+
+/* the silly-looking length condition is just to eat up the current word */
+#define Query_for_list_of_available_extension_versions_with_TO \
+" SELECT 'TO ' || pg_catalog.quote_ident(version) "\
 "   FROM pg_catalog.pg_available_extension_versions "\
 "  WHERE (%d = pg_catalog.length('%s'))"\
 "    AND pg_catalog.quote_ident(name)='%s'"
@@ -1414,6 +1423,20 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches3("ALTER", "EXTENSION", MatchAny))
 		COMPLETE_WITH_LIST4("ADD", "DROP", "UPDATE", "SET SCHEMA");
 
+	/* ALTER EXTENSION <name> UPDATE */
+	else if (Matches4("ALTER", "EXTENSION", MatchAny, "UPDATE"))
+	{
+		completion_info_charp = prev2_wd;
+		COMPLETE_WITH_QUERY(Query_for_list_of_available_extension_versions_with_TO);
+	}
+
+	/* ALTER EXTENSION <name> UPDATE TO */
+	else if (Matches5("ALTER", "EXTENSION", MatchAny, "UPDATE", "TO"))
+	{
+		completion_info_charp = prev3_wd;
+		COMPLETE_WITH_QUERY(Query_for_list_of_available_extension_versions);
+	}
+
 	/* ALTER FOREIGN */
 	else if (Matches2("ALTER", "FOREIGN"))
 		COMPLETE_WITH_LIST2("DATA WRAPPER", "TABLE");
@@ -1873,8 +1896,11 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches5("ALTER", "GROUP", MatchAny, "ADD|DROP", "USER"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
-/* BEGIN, END, ABORT */
-	else if (Matches1("BEGIN|END|ABORT"))
+/* BEGIN */
+	else if (Matches1("BEGIN"))
+		COMPLETE_WITH_LIST6("WORK", "TRANSACTION", "ISOLATION LEVEL", "READ", "DEFERRABLE", "NOT DEFERRABLE");
+/* END, ABORT */
+	else if (Matches1("END|ABORT"))
 		COMPLETE_WITH_LIST2("WORK", "TRANSACTION");
 /* COMMIT */
 	else if (Matches1("COMMIT"))
@@ -2741,20 +2767,36 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches1("SHOW"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_show_vars);
 	/* Complete "SET TRANSACTION" */
-	else if (Matches2("SET|BEGIN|START", "TRANSACTION") ||
+	else if (Matches2("SET", "TRANSACTION"))
+		COMPLETE_WITH_LIST5("SNAPSHOT", "ISOLATION LEVEL", "READ", "DEFERRABLE", "NOT DEFERRABLE");
+	else if (Matches2("BEGIN|START", "TRANSACTION") ||
 			 Matches2("BEGIN", "WORK") ||
+			 Matches1("BEGIN") ||
 		  Matches5("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION"))
-		COMPLETE_WITH_LIST2("ISOLATION LEVEL", "READ");
+		COMPLETE_WITH_LIST4("ISOLATION LEVEL", "READ", "DEFERRABLE", "NOT DEFERRABLE");
+	else if (Matches3("SET|BEGIN|START", "TRANSACTION|WORK", "NOT") ||
+			 Matches2("BEGIN", "NOT") ||
+			 Matches6("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "NOT"))
+		COMPLETE_WITH_CONST("DEFERRABLE");
 	else if (Matches3("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION") ||
+			 Matches2("BEGIN", "ISOLATION") ||
 			 Matches6("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "ISOLATION"))
 		COMPLETE_WITH_CONST("LEVEL");
-	else if (Matches4("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL"))
+	else if (Matches4("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL") ||
+			 Matches3("BEGIN", "ISOLATION", "LEVEL") ||
+			 Matches7("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "ISOLATION", "LEVEL"))
 		COMPLETE_WITH_LIST3("READ", "REPEATABLE READ", "SERIALIZABLE");
-	else if (Matches5("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL", "READ"))
+	else if (Matches5("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL", "READ") ||
+			 Matches4("BEGIN", "ISOLATION", "LEVEL", "READ") ||
+			 Matches8("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "ISOLATION", "LEVEL", "READ"))
 		COMPLETE_WITH_LIST2("UNCOMMITTED", "COMMITTED");
-	else if (Matches5("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL", "REPEATABLE"))
+	else if (Matches5("SET|BEGIN|START", "TRANSACTION|WORK", "ISOLATION", "LEVEL", "REPEATABLE") ||
+			 Matches4("BEGIN", "ISOLATION", "LEVEL", "REPEATABLE") ||
+			 Matches8("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "ISOLATION", "LEVEL", "REPEATABLE"))
 		COMPLETE_WITH_CONST("READ");
-	else if (Matches3("SET|BEGIN|START", "TRANSACTION|WORK", "READ"))
+	else if (Matches3("SET|BEGIN|START", "TRANSACTION|WORK", "READ") ||
+			 Matches2("BEGIN", "READ") ||
+			 Matches6("SET", "SESSION", "CHARACTERISTICS", "AS", "TRANSACTION", "READ"))
 		COMPLETE_WITH_LIST2("ONLY", "WRITE");
 	/* SET CONSTRAINTS */
 	else if (Matches2("SET", "CONSTRAINTS"))
@@ -3012,6 +3054,8 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_QUERY(Query_for_list_of_encodings);
 	else if (TailMatchesCS1("\\h") || TailMatchesCS1("\\help"))
 		COMPLETE_WITH_LIST(sql_commands);
+	else if (TailMatchesCS1("\\l*") && !TailMatchesCS1("\\lo*"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_databases);
 	else if (TailMatchesCS1("\\password"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	else if (TailMatchesCS1("\\pset"))

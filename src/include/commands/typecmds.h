@@ -21,12 +21,12 @@
 
 #define DEFAULT_TYPDELIM		','
 
-extern ObjectAddress DefineType(List *names, List *parameters);
+extern ObjectAddress DefineType(ParseState *pstate, List *names, List *parameters);
 extern void RemoveTypeById(Oid typeOid);
 extern ObjectAddress DefineDomain(CreateDomainStmt *stmt);
 extern ObjectAddress DefineEnum(CreateEnumStmt *stmt);
 extern ObjectAddress DefineRange(CreateRangeStmt *stmt);
-extern ObjectAddress AlterEnum(AlterEnumStmt *stmt, bool isTopLevel);
+extern ObjectAddress AlterEnum(AlterEnumStmt *stmt);
 extern ObjectAddress DefineCompositeType(RangeVar *typevar, List *coldeflist);
 extern Oid	AssignTypeArrayOid(void);
 

@@ -53,8 +53,10 @@
 #include "pgstat.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/date.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
@@ -147,6 +149,9 @@ static Datum ExecEvalCoalesce(CoalesceExprState *coalesceExpr,
 static Datum ExecEvalMinMax(MinMaxExprState *minmaxExpr,
 			   ExprContext *econtext,
 			   bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalSQLValueFunction(ExprState *svfExpr,
+						 ExprContext *econtext,
+						 bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalXml(XmlExprState *xmlExpr, ExprContext *econtext,
 			bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalNullIf(FuncExprState *nullIfExpr,
@@ -2970,19 +2975,30 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 
 	/*
 	 * If there's a test expression, we have to evaluate it and save the value
-	 * where the CaseTestExpr placeholders can find it. We must save and
+	 * where the CaseTestExpr placeholders can find it.  We must save and
 	 * restore prior setting of econtext's caseValue fields, in case this node
-	 * is itself within a larger CASE.
+	 * is itself within a larger CASE.  Furthermore, don't assign to the
+	 * econtext fields until after returning from evaluation of the test
+	 * expression.  We used to pass &econtext->caseValue_isNull to the
+	 * recursive call, but that leads to aliasing that variable within said
+	 * call, which can (and did) produce bugs when the test expression itself
+	 * contains a CASE.
+	 *
+	 * If there's no test expression, we don't actually need to save and
+	 * restore these fields; but it's less code to just do so unconditionally.
 	 */
 	save_datum = econtext->caseValue_datum;
 	save_isNull = econtext->caseValue_isNull;
 
 	if (caseExpr->arg)
 	{
+		bool		arg_isNull;
+
 		econtext->caseValue_datum = ExecEvalExpr(caseExpr->arg,
 												 econtext,
-												 &econtext->caseValue_isNull,
+												 &arg_isNull,
 												 NULL);
+		econtext->caseValue_isNull = arg_isNull;
 	}
 
 	/*
@@ -2994,10 +3010,11 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 	{
 		CaseWhenState *wclause = lfirst(clause);
 		Datum		clause_value;
+		bool		clause_isNull;
 
 		clause_value = ExecEvalExpr(wclause->expr,
 									econtext,
-									isNull,
+									&clause_isNull,
 									NULL);
 
 		/*
@@ -3005,7 +3022,7 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 		 * statement is satisfied.  A NULL result from the test is not
 		 * considered true.
 		 */
-		if (DatumGetBool(clause_value) && !*isNull)
+		if (DatumGetBool(clause_value) && !clause_isNull)
 		{
 			econtext->caseValue_datum = save_datum;
 			econtext->caseValue_isNull = save_isNull;
@@ -3513,6 +3530,75 @@ ExecEvalMinMax(MinMaxExprState *minmaxExpr, ExprContext *econtext,
 			else if (cmpresult < 0 && op == IS_GREATEST)
 				result = value;
 		}
+	}
+
+	return result;
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalSQLValueFunction
+ * ----------------------------------------------------------------
+ */
+static Datum
+ExecEvalSQLValueFunction(ExprState *svfExpr,
+						 ExprContext *econtext,
+						 bool *isNull, ExprDoneCond *isDone)
+{
+	Datum		result = (Datum) 0;
+	SQLValueFunction *svf = (SQLValueFunction *) svfExpr->expr;
+	FunctionCallInfoData fcinfo;
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+	*isNull = false;
+
+	/*
+	 * Note: current_schema() can return NULL.  current_user() etc currently
+	 * cannot, but might as well code those cases the same way for safety.
+	 */
+	switch (svf->op)
+	{
+		case SVFOP_CURRENT_DATE:
+			result = DateADTGetDatum(GetSQLCurrentDate());
+			break;
+		case SVFOP_CURRENT_TIME:
+		case SVFOP_CURRENT_TIME_N:
+			result = TimeTzADTPGetDatum(GetSQLCurrentTime(svf->typmod));
+			break;
+		case SVFOP_CURRENT_TIMESTAMP:
+		case SVFOP_CURRENT_TIMESTAMP_N:
+			result = TimestampTzGetDatum(GetSQLCurrentTimestamp(svf->typmod));
+			break;
+		case SVFOP_LOCALTIME:
+		case SVFOP_LOCALTIME_N:
+			result = TimeADTGetDatum(GetSQLLocalTime(svf->typmod));
+			break;
+		case SVFOP_LOCALTIMESTAMP:
+		case SVFOP_LOCALTIMESTAMP_N:
+			result = TimestampGetDatum(GetSQLLocalTimestamp(svf->typmod));
+			break;
+		case SVFOP_CURRENT_ROLE:
+		case SVFOP_CURRENT_USER:
+		case SVFOP_USER:
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			result = current_user(&fcinfo);
+			*isNull = fcinfo.isnull;
+			break;
+		case SVFOP_SESSION_USER:
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			result = session_user(&fcinfo);
+			*isNull = fcinfo.isnull;
+			break;
+		case SVFOP_CURRENT_CATALOG:
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			result = current_database(&fcinfo);
+			*isNull = fcinfo.isnull;
+			break;
+		case SVFOP_CURRENT_SCHEMA:
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			result = current_schema(&fcinfo);
+			*isNull = fcinfo.isnull;
+			break;
 	}
 
 	return result;
@@ -5073,6 +5159,10 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				fmgr_info(typentry->cmp_proc, &(mstate->cfunc));
 				state = (ExprState *) mstate;
 			}
+			break;
+		case T_SQLValueFunction:
+			state = (ExprState *) makeNode(ExprState);
+			state->evalfunc = ExecEvalSQLValueFunction;
 			break;
 		case T_XmlExpr:
 			{

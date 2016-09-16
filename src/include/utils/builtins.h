@@ -108,6 +108,11 @@ extern Datum pg_has_role_id_id(PG_FUNCTION_ARGS);
 extern Datum pg_has_role_name(PG_FUNCTION_ARGS);
 extern Datum pg_has_role_id(PG_FUNCTION_ARGS);
 
+/* amutils.c */
+extern Datum pg_indexam_has_property(PG_FUNCTION_ARGS);
+extern Datum pg_index_has_property(PG_FUNCTION_ARGS);
+extern Datum pg_index_column_has_property(PG_FUNCTION_ARGS);
+
 /* bool.c */
 extern Datum boolin(PG_FUNCTION_ARGS);
 extern Datum boolout(PG_FUNCTION_ARGS);
@@ -623,6 +628,8 @@ extern Datum textregexsubstr(PG_FUNCTION_ARGS);
 extern Datum textregexreplace_noopt(PG_FUNCTION_ARGS);
 extern Datum textregexreplace(PG_FUNCTION_ARGS);
 extern Datum similar_escape(PG_FUNCTION_ARGS);
+extern Datum regexp_match(PG_FUNCTION_ARGS);
+extern Datum regexp_match_no_flags(PG_FUNCTION_ARGS);
 extern Datum regexp_matches(PG_FUNCTION_ARGS);
 extern Datum regexp_matches_no_flags(PG_FUNCTION_ARGS);
 extern Datum regexp_split_to_table(PG_FUNCTION_ARGS);
@@ -1214,6 +1221,7 @@ extern Datum txid_snapshot_out(PG_FUNCTION_ARGS);
 extern Datum txid_snapshot_recv(PG_FUNCTION_ARGS);
 extern Datum txid_snapshot_send(PG_FUNCTION_ARGS);
 extern Datum txid_current(PG_FUNCTION_ARGS);
+extern Datum txid_current_if_assigned(PG_FUNCTION_ARGS);
 extern Datum txid_current_snapshot(PG_FUNCTION_ARGS);
 extern Datum txid_snapshot_xmin(PG_FUNCTION_ARGS);
 extern Datum txid_snapshot_xmax(PG_FUNCTION_ARGS);

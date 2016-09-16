@@ -1309,9 +1309,7 @@ exec_replication_command(const char *cmd_string)
 
 	cmd_context = AllocSetContextCreate(CurrentMemoryContext,
 										"Replication command context",
-										ALLOCSET_DEFAULT_MINSIZE,
-										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+										ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(cmd_context);
 
 	replication_scanner_init(cmd_string);
@@ -1807,6 +1805,9 @@ WalSndLoop(WalSndSendDataCallback send_data)
 	 */
 	last_reply_timestamp = GetCurrentTimestamp();
 	waiting_for_ping_response = false;
+
+	/* Report to pgstat that this process is a WAL sender */
+	pgstat_report_activity(STATE_RUNNING, "walsender");
 
 	/*
 	 * Loop until we reach the end of this timeline or the client requests to

@@ -91,8 +91,9 @@ typedef struct
 
 typedef struct
 {
-	bool		allow_restricted;
-} has_parallel_hazard_arg;
+	char		max_hazard;		/* worst proparallel hazard found so far */
+	char		max_interesting;	/* worst proparallel hazard of interest */
+} max_parallel_hazard_context;
 
 static bool contain_agg_clause_walker(Node *node, void *context);
 static bool get_agg_clause_costs_walker(Node *node,
@@ -103,9 +104,11 @@ static bool contain_subplans_walker(Node *node, void *context);
 static bool contain_mutable_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_not_nextval_walker(Node *node, void *context);
-static bool has_parallel_hazard_walker(Node *node,
-						   has_parallel_hazard_arg *context);
+static bool max_parallel_hazard_walker(Node *node,
+						   max_parallel_hazard_context *context);
 static bool contain_nonstrict_functions_walker(Node *node, void *context);
+static bool contain_context_dependent_node(Node *clause);
+static bool contain_context_dependent_node_walker(Node *node, int *flags);
 static bool contain_leaked_vars_walker(Node *node, void *context);
 static Relids find_nonnullable_rels_walker(Node *node, bool top_level);
 static List *find_nonnullable_vars_walker(Node *node, bool top_level);
@@ -960,6 +963,12 @@ contain_mutable_functions_walker(Node *node, void *context)
 								context))
 		return true;
 
+	if (IsA(node, SQLValueFunction))
+	{
+		/* all variants of SQLValueFunction are stable */
+		return true;
+	}
+
 	/*
 	 * It should be safe to treat MinMaxExpr as immutable, because it will
 	 * depend on a non-cross-type btree comparison function, and those should
@@ -1029,7 +1038,8 @@ contain_volatile_functions_walker(Node *node, void *context)
 
 	/*
 	 * See notes in contain_mutable_functions_walker about why we treat
-	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable.
+	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable, while
+	 * SQLValueFunction is stable.  Hence, none of them are of interest here.
 	 */
 
 	/* Recurse to check arguments */
@@ -1074,7 +1084,8 @@ contain_volatile_functions_not_nextval_walker(Node *node, void *context)
 
 	/*
 	 * See notes in contain_mutable_functions_walker about why we treat
-	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable.
+	 * MinMaxExpr, XmlExpr, and CoerceToDomain as immutable, while
+	 * SQLValueFunction is stable.  Hence, none of them are of interest here.
 	 */
 
 	/* Recurse to check arguments */
@@ -1090,46 +1101,98 @@ contain_volatile_functions_not_nextval_walker(Node *node, void *context)
 								  context);
 }
 
+
 /*****************************************************************************
  *		Check queries for parallel unsafe and/or restricted constructs
  *****************************************************************************/
 
 /*
- * Check whether a node tree contains parallel hazards.  This is used both on
- * the entire query tree, to see whether the query can be parallelized at all
- * (with allow_restricted = true), and also to evaluate whether a particular
- * expression is safe to run within a parallel worker (with allow_restricted =
- * false).  We could separate these concerns into two different functions, but
- * there's enough overlap that it doesn't seem worthwhile.
+ * max_parallel_hazard
+ *		Find the worst parallel-hazard level in the given query
+ *
+ * Returns the worst function hazard property (the earliest in this list:
+ * PROPARALLEL_UNSAFE, PROPARALLEL_RESTRICTED, PROPARALLEL_SAFE) that can
+ * be found in the given parsetree.  We use this to find out whether the query
+ * can be parallelized at all.  The caller will also save the result in
+ * PlannerGlobal so as to short-circuit checks of portions of the querytree
+ * later, in the common case where everything is SAFE.
+ */
+char
+max_parallel_hazard(Query *parse)
+{
+	max_parallel_hazard_context context;
+
+	context.max_hazard = PROPARALLEL_SAFE;
+	context.max_interesting = PROPARALLEL_UNSAFE;
+	(void) max_parallel_hazard_walker((Node *) parse, &context);
+	return context.max_hazard;
+}
+
+/*
+ * is_parallel_safe
+ *		Detect whether the given expr contains only parallel-safe functions
+ *
+ * root->glob->maxParallelHazard must previously have been set to the
+ * result of max_parallel_hazard() on the whole query.
  */
 bool
-has_parallel_hazard(Node *node, bool allow_restricted)
+is_parallel_safe(PlannerInfo *root, Node *node)
 {
-	has_parallel_hazard_arg context;
+	max_parallel_hazard_context context;
 
-	context.allow_restricted = allow_restricted;
-	return has_parallel_hazard_walker(node, &context);
+	/* If max_parallel_hazard found nothing unsafe, we don't need to look */
+	if (root->glob->maxParallelHazard == PROPARALLEL_SAFE)
+		return true;
+	/* Else use max_parallel_hazard's search logic, but stop on RESTRICTED */
+	context.max_hazard = PROPARALLEL_SAFE;
+	context.max_interesting = PROPARALLEL_RESTRICTED;
+	return !max_parallel_hazard_walker(node, &context);
+}
+
+/* core logic for all parallel-hazard checks */
+static bool
+max_parallel_hazard_test(char proparallel, max_parallel_hazard_context *context)
+{
+	switch (proparallel)
+	{
+		case PROPARALLEL_SAFE:
+			/* nothing to see here, move along */
+			break;
+		case PROPARALLEL_RESTRICTED:
+			/* increase max_hazard to RESTRICTED */
+			Assert(context->max_hazard != PROPARALLEL_UNSAFE);
+			context->max_hazard = proparallel;
+			/* done if we are not expecting any unsafe functions */
+			if (context->max_interesting == proparallel)
+				return true;
+			break;
+		case PROPARALLEL_UNSAFE:
+			context->max_hazard = proparallel;
+			/* we're always done at the first unsafe construct */
+			return true;
+		default:
+			elog(ERROR, "unrecognized proparallel value \"%c\"", proparallel);
+			break;
+	}
+	return false;
+}
+
+/* check_functions_in_node callback */
+static bool
+max_parallel_hazard_checker(Oid func_id, void *context)
+{
+	return max_parallel_hazard_test(func_parallel(func_id),
+									(max_parallel_hazard_context *) context);
 }
 
 static bool
-has_parallel_hazard_checker(Oid func_id, void *context)
-{
-	char		proparallel = func_parallel(func_id);
-
-	if (((has_parallel_hazard_arg *) context)->allow_restricted)
-		return (proparallel == PROPARALLEL_UNSAFE);
-	else
-		return (proparallel != PROPARALLEL_SAFE);
-}
-
-static bool
-has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
+max_parallel_hazard_walker(Node *node, max_parallel_hazard_context *context)
 {
 	if (node == NULL)
 		return false;
 
 	/* Check for hazardous functions in node itself */
-	if (check_functions_in_node(node, has_parallel_hazard_checker,
+	if (check_functions_in_node(node, max_parallel_hazard_checker,
 								context))
 		return true;
 
@@ -1141,11 +1204,12 @@ has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
 	 * (Note: in principle that's wrong because a domain constraint could
 	 * contain a parallel-unsafe function; but useful constraints probably
 	 * never would have such, and assuming they do would cripple use of
-	 * parallel query in the presence of domain types.)
+	 * parallel query in the presence of domain types.)  SQLValueFunction
+	 * should be safe in all cases.
 	 */
 	if (IsA(node, CoerceToDomain))
 	{
-		if (!context->allow_restricted)
+		if (max_parallel_hazard_test(PROPARALLEL_RESTRICTED, context))
 			return true;
 	}
 
@@ -1156,7 +1220,7 @@ has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) node;
 
-		return has_parallel_hazard_walker((Node *) rinfo->clause, context);
+		return max_parallel_hazard_walker((Node *) rinfo->clause, context);
 	}
 
 	/*
@@ -1165,13 +1229,13 @@ has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
 	 * not worry about examining their contents; if they are unsafe, we would
 	 * have found that out while examining the whole tree before reduction of
 	 * sublinks to subplans.  (Really we should not see SubLink during a
-	 * not-allow_restricted scan, but if we do, return true.)
+	 * max_interesting == restricted scan, but if we do, return true.)
 	 */
 	else if (IsA(node, SubLink) ||
 			 IsA(node, SubPlan) ||
 			 IsA(node, AlternativeSubPlan))
 	{
-		if (!context->allow_restricted)
+		if (max_parallel_hazard_test(PROPARALLEL_RESTRICTED, context))
 			return true;
 	}
 
@@ -1181,7 +1245,7 @@ has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
 	 */
 	else if (IsA(node, Param))
 	{
-		if (!context->allow_restricted)
+		if (max_parallel_hazard_test(PROPARALLEL_RESTRICTED, context))
 			return true;
 	}
 
@@ -1196,19 +1260,23 @@ has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
 
 		/* SELECT FOR UPDATE/SHARE must be treated as unsafe */
 		if (query->rowMarks != NULL)
+		{
+			context->max_hazard = PROPARALLEL_UNSAFE;
 			return true;
+		}
 
 		/* Recurse into subselects */
 		return query_tree_walker(query,
-								 has_parallel_hazard_walker,
+								 max_parallel_hazard_walker,
 								 context, 0);
 	}
 
 	/* Recurse to check arguments */
 	return expression_tree_walker(node,
-								  has_parallel_hazard_walker,
+								  max_parallel_hazard_walker,
 								  context);
 }
+
 
 /*****************************************************************************
  *		Check clauses for nonstrict functions
@@ -1335,6 +1403,76 @@ contain_nonstrict_functions_walker(Node *node, void *context)
 }
 
 /*****************************************************************************
+ *		Check clauses for context-dependent nodes
+ *****************************************************************************/
+
+/*
+ * contain_context_dependent_node
+ *	  Recursively search for context-dependent nodes within a clause.
+ *
+ * CaseTestExpr nodes must appear directly within the corresponding CaseExpr,
+ * not nested within another one, or they'll see the wrong test value.  If one
+ * appears "bare" in the arguments of a SQL function, then we can't inline the
+ * SQL function for fear of creating such a situation.
+ *
+ * CoerceToDomainValue would have the same issue if domain CHECK expressions
+ * could get inlined into larger expressions, but presently that's impossible.
+ * Still, it might be allowed in future, or other node types with similar
+ * issues might get invented.  So give this function a generic name, and set
+ * up the recursion state to allow multiple flag bits.
+ */
+static bool
+contain_context_dependent_node(Node *clause)
+{
+	int			flags = 0;
+
+	return contain_context_dependent_node_walker(clause, &flags);
+}
+
+#define CCDN_IN_CASEEXPR	0x0001		/* CaseTestExpr okay here? */
+
+static bool
+contain_context_dependent_node_walker(Node *node, int *flags)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, CaseTestExpr))
+		return !(*flags & CCDN_IN_CASEEXPR);
+	if (IsA(node, CaseExpr))
+	{
+		CaseExpr   *caseexpr = (CaseExpr *) node;
+
+		/*
+		 * If this CASE doesn't have a test expression, then it doesn't create
+		 * a context in which CaseTestExprs should appear, so just fall
+		 * through and treat it as a generic expression node.
+		 */
+		if (caseexpr->arg)
+		{
+			int			save_flags = *flags;
+			bool		res;
+
+			/*
+			 * Note: in principle, we could distinguish the various sub-parts
+			 * of a CASE construct and set the flag bit only for some of them,
+			 * since we are only expecting CaseTestExprs to appear in the
+			 * "expr" subtree of the CaseWhen nodes.  But it doesn't really
+			 * seem worth any extra code.  If there are any bare CaseTestExprs
+			 * elsewhere in the CASE, something's wrong already.
+			 */
+			*flags |= CCDN_IN_CASEEXPR;
+			res = expression_tree_walker(node,
+									   contain_context_dependent_node_walker,
+										 (void *) flags);
+			*flags = save_flags;
+			return res;
+		}
+	}
+	return expression_tree_walker(node, contain_context_dependent_node_walker,
+								  (void *) flags);
+}
+
+/*****************************************************************************
  *		  Check clauses for Vars passed to non-leakproof functions
  *****************************************************************************/
 
@@ -1386,6 +1524,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 		case T_CaseTestExpr:
 		case T_RowExpr:
 		case T_MinMaxExpr:
+		case T_SQLValueFunction:
 		case T_NullTest:
 		case T_BooleanTest:
 		case T_List:
@@ -4178,6 +4317,8 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
  * doesn't work in the general case because it discards information such
  * as OUT-parameter declarations.
  *
+ * Also, context-dependent expression nodes in the argument list are trouble.
+ *
  * Returns a simplified expression if successful, or NULL if cannot
  * simplify the function.
  */
@@ -4237,9 +4378,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	 */
 	mycxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "inline_function",
-								  ALLOCSET_DEFAULT_MINSIZE,
-								  ALLOCSET_DEFAULT_INITSIZE,
-								  ALLOCSET_DEFAULT_MAXSIZE);
+								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);
 
 	/* Fetch the function body */
@@ -4310,6 +4449,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 		querytree->utilityStmt ||
 		querytree->hasAggs ||
 		querytree->hasWindowFuncs ||
+		querytree->hasTargetSRFs ||
 		querytree->hasSubLinks ||
 		querytree->cteList ||
 		querytree->rtable ||
@@ -4350,17 +4490,13 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	Assert(!modifyTargetList);
 
 	/*
-	 * Additional validity checks on the expression.  It mustn't return a set,
-	 * and it mustn't be more volatile than the surrounding function (this is
-	 * to avoid breaking hacks that involve pretending a function is immutable
-	 * when it really ain't).  If the surrounding function is declared strict,
-	 * then the expression must contain only strict constructs and must use
-	 * all of the function parameters (this is overkill, but an exact analysis
-	 * is hard).
+	 * Additional validity checks on the expression.  It mustn't be more
+	 * volatile than the surrounding function (this is to avoid breaking hacks
+	 * that involve pretending a function is immutable when it really ain't).
+	 * If the surrounding function is declared strict, then the expression
+	 * must contain only strict constructs and must use all of the function
+	 * parameters (this is overkill, but an exact analysis is hard).
 	 */
-	if (expression_returns_set(newexpr))
-		goto fail;
-
 	if (funcform->provolatile == PROVOLATILE_IMMUTABLE &&
 		contain_mutable_functions(newexpr))
 		goto fail;
@@ -4370,6 +4506,13 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 
 	if (funcform->proisstrict &&
 		contain_nonstrict_functions(newexpr))
+		goto fail;
+
+	/*
+	 * If any parameter expression contains a context-dependent node, we can't
+	 * inline, for fear of putting such a node into the wrong context.
+	 */
+	if (contain_context_dependent_node((Node *) args))
 		goto fail;
 
 	/*
@@ -4748,9 +4891,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	 */
 	mycxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "inline_set_returning_function",
-								  ALLOCSET_DEFAULT_MINSIZE,
-								  ALLOCSET_DEFAULT_INITSIZE,
-								  ALLOCSET_DEFAULT_MAXSIZE);
+								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);
 
 	/*

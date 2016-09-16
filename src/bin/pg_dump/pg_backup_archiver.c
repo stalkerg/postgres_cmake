@@ -771,9 +771,16 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 		/* If we created a DB, connect to it... */
 		if (strcmp(te->desc, "DATABASE") == 0)
 		{
+			PQExpBufferData connstr;
+
+			initPQExpBuffer(&connstr);
+			appendPQExpBufferStr(&connstr, "dbname=");
+			appendConnStrVal(&connstr, te->tag);
+			/* Abandon struct, but keep its buffer until process exit. */
+
 			ahlog(AH, 1, "connecting to new database \"%s\"\n", te->tag);
 			_reconnectToDB(AH, te->tag);
-			ropt->dbname = pg_strdup(te->tag);
+			ropt->dbname = connstr.data;
 		}
 	}
 
@@ -2984,12 +2991,17 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 		ReconnectToServer(AH, dbname, NULL);
 	else
 	{
-		PQExpBuffer qry = createPQExpBuffer();
+		if (dbname)
+		{
+			PQExpBufferData connectbuf;
 
-		appendPQExpBuffer(qry, "\\connect %s\n\n",
-						  dbname ? fmtId(dbname) : "-");
-		ahprintf(AH, "%s", qry->data);
-		destroyPQExpBuffer(qry);
+			initPQExpBuffer(&connectbuf);
+			appendPsqlMetaConnect(&connectbuf, dbname);
+			ahprintf(AH, "%s\n", connectbuf.data);
+			termPQExpBuffer(&connectbuf);
+		}
+		else
+			ahprintf(AH, "%s\n", "\\connect -\n");
 	}
 
 	/*
@@ -3268,15 +3280,22 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData, bool acl_pass)
 
 	/*
 	 * Avoid dumping the public schema, as it will already be created ...
-	 * unless we are using --clean mode, in which case it's been deleted and
-	 * we'd better recreate it.  Likewise for its comment, if any.
+	 * unless we are using --clean mode (and *not* --create mode), in which
+	 * case we've previously issued a DROP for it so we'd better recreate it.
+	 *
+	 * Likewise for its comment, if any.  (We could try issuing the COMMENT
+	 * command anyway; but it'd fail if the restore is done as non-super-user,
+	 * so let's not.)
+	 *
+	 * XXX it looks pretty ugly to hard-wire the public schema like this, but
+	 * it sits in a sort of no-mans-land between being a system object and a
+	 * user object, so it really is special in a way.
 	 */
-	if (!ropt->dropSchema)
+	if (!(ropt->dropSchema && !ropt->createDB))
 	{
 		if (strcmp(te->desc, "SCHEMA") == 0 &&
 			strcmp(te->tag, "public") == 0)
 			return;
-		/* The comment restore would require super-user privs, so avoid it. */
 		if (strcmp(te->desc, "COMMENT") == 0 &&
 			strcmp(te->tag, "SCHEMA public") == 0)
 			return;
@@ -4456,7 +4475,7 @@ CloneArchive(ArchiveHandle *AH)
 	}
 	else
 	{
-		char	   *dbname;
+		PQExpBufferData connstr;
 		char	   *pghost;
 		char	   *pgport;
 		char	   *username;
@@ -4469,14 +4488,18 @@ CloneArchive(ArchiveHandle *AH)
 		 * because all just return a pointer and do not actually send/receive
 		 * any data to/from the database.
 		 */
-		dbname = PQdb(AH->connection);
+		initPQExpBuffer(&connstr);
+		appendPQExpBuffer(&connstr, "dbname=");
+		appendConnStrVal(&connstr, PQdb(AH->connection));
 		pghost = PQhost(AH->connection);
 		pgport = PQport(AH->connection);
 		username = PQuser(AH->connection);
 
 		/* this also sets clone->connection */
-		ConnectDatabase((Archive *) clone, dbname, pghost, pgport, username, TRI_NO);
+		ConnectDatabase((Archive *) clone, connstr.data,
+						pghost, pgport, username, TRI_NO);
 
+		termPQExpBuffer(&connstr);
 		/* setupDumpWorker will fix up connection state */
 	}
 

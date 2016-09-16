@@ -2039,18 +2039,35 @@
       <row>
        <entry>
         <indexterm>
+         <primary>regexp_match</primary>
+        </indexterm>
+        <literal><function>regexp_match(<parameter>string</parameter> <type>text</type>, <parameter>pattern</parameter> <type>text</type> [, <parameter>flags</parameter> <type>text</type>])</function></literal>
+       </entry>
+       <entry><type>text[]</type></entry>
+       <entry>
+        Return captured substring(s) resulting from the first match of a POSIX
+        regular expression to the <parameter>string</parameter>. See
+        <xref linkend="functions-posix-regexp"> for more information.
+       </entry>
+       <entry><literal>regexp_match('foobarbequebaz', '(bar)(beque)')</literal></entry>
+       <entry><literal>{bar,beque}</literal></entry>
+      </row>
+
+      <row>
+       <entry>
+        <indexterm>
          <primary>regexp_matches</primary>
         </indexterm>
         <literal><function>regexp_matches(<parameter>string</parameter> <type>text</type>, <parameter>pattern</parameter> <type>text</type> [, <parameter>flags</parameter> <type>text</type>])</function></literal>
        </entry>
        <entry><type>setof text[]</type></entry>
        <entry>
-        Return all captured substrings resulting from matching a POSIX regular
-        expression against the <parameter>string</parameter>. See
+        Return captured substring(s) resulting from matching a POSIX regular
+        expression to the <parameter>string</parameter>. See
         <xref linkend="functions-posix-regexp"> for more information.
        </entry>
-       <entry><literal>regexp_matches('foobarbequebaz', '(bar)(beque)')</literal></entry>
-       <entry><literal>{bar,beque}</literal></entry>
+       <entry><literal>regexp_matches('foobarbequebaz', 'ba.', 'g')</literal></entry>
+       <entry><literal>{bar}</literal><para><literal>{baz}</literal></para> (2 rows)</entry>
       </row>
 
       <row>
@@ -4113,6 +4130,9 @@ substring('foobar' from '#"o_b#"%' for '#')    <lineannotation>NULL</lineannotat
     <primary>regexp_replace</primary>
    </indexterm>
    <indexterm>
+    <primary>regexp_match</primary>
+   </indexterm>
+   <indexterm>
     <primary>regexp_matches</primary>
    </indexterm>
    <indexterm>
@@ -4272,64 +4292,106 @@ regexp_replace('foobarbaz', 'b(..)', E'X\\1Y', 'g')
    </para>
 
     <para>
-     The <function>regexp_matches</> function returns a text array of
-     all of the captured substrings resulting from matching a POSIX
-     regular expression pattern.  It has the syntax
-     <function>regexp_matches</function>(<replaceable>string</>, <replaceable>pattern</>
-     <optional>, <replaceable>flags</> </optional>).
-     The function can return no rows, one row, or multiple rows (see
-     the <literal>g</> flag below).  If the <replaceable>pattern</>
-     does not match, the function returns no rows.  If the pattern
-     contains no parenthesized subexpressions, then each row
-     returned is a single-element text array containing the substring
-     matching the whole pattern.  If the pattern contains parenthesized
-     subexpressions, the function returns a text array whose
-     <replaceable>n</>'th element is the substring matching the
-     <replaceable>n</>'th parenthesized subexpression of the pattern
-     (not counting <quote>non-capturing</> parentheses; see below for
-     details).
-     The <replaceable>flags</> parameter is an optional text
-     string containing zero or more single-letter flags that change the
-     function's behavior.  Flag <literal>g</> causes the function to find
-     each match in the string, not only the first one, and return a row for
-     each such match.  Supported flags (though
-     not <literal>g</>)
-     are described in <xref linkend="posix-embedded-options-table">.
+     The <function>regexp_match</> function returns a text array of
+     captured substring(s) resulting from the first match of a POSIX
+     regular expression pattern to a string.  It has the syntax
+     <function>regexp_match</function>(<replaceable>string</>,
+     <replaceable>pattern</> <optional>, <replaceable>flags</> </optional>).
+     If there is no match, the result is <literal>NULL</>.
+     If a match is found, and the <replaceable>pattern</> contains no
+     parenthesized subexpressions, then the result is a single-element text
+     array containing the substring matching the whole pattern.
+     If a match is found, and the <replaceable>pattern</> contains
+     parenthesized subexpressions, then the result is a text array
+     whose <replaceable>n</>'th element is the substring matching
+     the <replaceable>n</>'th parenthesized subexpression of
+     the <replaceable>pattern</> (not counting <quote>non-capturing</>
+     parentheses; see below for details).
+     The <replaceable>flags</> parameter is an optional text string
+     containing zero or more single-letter flags that change the function's
+     behavior.  Supported flags are described
+     in <xref linkend="posix-embedded-options-table">.
     </para>
 
    <para>
     Some examples:
 <programlisting>
-SELECT regexp_matches('foobarbequebaz', '(bar)(beque)');
- regexp_matches 
-----------------
- {bar,beque}
+SELECT regexp_match('foobarbequebaz', 'bar.*que');
+ regexp_match
+--------------
+ {barbeque}
 (1 row)
 
+SELECT regexp_match('foobarbequebaz', '(bar)(beque)');
+ regexp_match
+--------------
+ {bar,beque}
+(1 row)
+</programlisting>
+    In the common case where you just want the whole matching substring
+    or <literal>NULL</> for no match, write something like
+<programlisting>
+SELECT (regexp_match('foobarbequebaz', 'bar.*que'))[1];
+ regexp_match
+--------------
+ barbeque
+(1 row)
+</programlisting>
+   </para>
+
+    <para>
+     The <function>regexp_matches</> function returns a set of text arrays
+     of captured substring(s) resulting from matching a POSIX regular
+     expression pattern to a string.  It has the same syntax as
+     <function>regexp_match</function>.
+     This function returns no rows if there is no match, one row if there is
+     a match and the <literal>g</> flag is not given, or <replaceable>N</>
+     rows if there are <replaceable>N</> matches and the <literal>g</> flag
+     is given.  Each returned row is a text array containing the whole
+     matched substring or the substrings matching parenthesized
+     subexpressions of the <replaceable>pattern</>, just as described above
+     for <function>regexp_match</function>.
+     <function>regexp_matches</> accepts all the flags shown
+     in <xref linkend="posix-embedded-options-table">, plus
+     the <literal>g</> flag which commands it to return all matches, not
+     just the first one.
+    </para>
+
+   <para>
+    Some examples:
+<programlisting>
+ SELECT regexp_matches('foo', 'not there');
+ regexp_matches
+----------------
+(0 rows)
+
 SELECT regexp_matches('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 'g');
- regexp_matches 
+ regexp_matches
 ----------------
  {bar,beque}
  {bazil,barf}
 (2 rows)
-
-SELECT regexp_matches('foobarbequebaz', 'barbeque');
- regexp_matches 
-----------------
- {barbeque}
-(1 row)
 </programlisting>
    </para>
 
-   <para>
-    It is possible to force <function>regexp_matches()</> to always
-    return one row by using a sub-select;  this is particularly useful
-    in a <literal>SELECT</> target list when you want all rows
-    returned, even non-matching ones:
+   <tip>
+    <para>
+     In most cases <function>regexp_matches()</> should be used with
+     the <literal>g</> flag, since if you only want the first match, it's
+     easier and more efficient to use <function>regexp_match()</>.
+     However, <function>regexp_match()</> only exists
+     in <productname>PostgreSQL</> version 10 and up.  When working in older
+     versions, a common trick is to place a <function>regexp_matches()</>
+     call in a sub-select, for example:
 <programlisting>
 SELECT col1, (SELECT regexp_matches(col2, '(bar)(beque)')) FROM tab;
 </programlisting>
-   </para>
+     This produces a text array if there's a match, or <literal>NULL</> if
+     not, the same as <function>regexp_match()</> would do.  Without the
+     sub-select, this query would produce no output at all for table rows
+     without a match, which is typically not the desired behavior.
+    </para>
+   </tip>
 
     <para>
      The <function>regexp_split_to_table</> function splits a string using a POSIX
@@ -4408,6 +4470,7 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
     zero-length matches that occur at the start or end of the string
     or immediately after a previous match.  This is contrary to the strict
     definition of regexp matching that is implemented by
+    <function>regexp_match</> and
     <function>regexp_matches</>, but is usually the most convenient behavior
     in practice.  Other software systems such as Perl use similar definitions.
    </para>
@@ -5482,7 +5545,7 @@ SELECT SUBSTRING('XY1234Z', 'Y*?([0-9]{1,3})');
     into the digits and the parts before and after them.  We might try to
     do that like this:
 <screen>
-SELECT regexp_matches('abc01234xyz', '(.*)(\d+)(.*)');
+SELECT regexp_match('abc01234xyz', '(.*)(\d+)(.*)');
 <lineannotation>Result: </lineannotation><computeroutput>{abc0123,4,xyz}</computeroutput>
 </screen>
     That didn't work: the first <literal>.*</> is greedy so
@@ -5490,14 +5553,14 @@ SELECT regexp_matches('abc01234xyz', '(.*)(\d+)(.*)');
     match at the last possible place, the last digit.  We might try to fix
     that by making it non-greedy:
 <screen>
-SELECT regexp_matches('abc01234xyz', '(.*?)(\d+)(.*)');
+SELECT regexp_match('abc01234xyz', '(.*?)(\d+)(.*)');
 <lineannotation>Result: </lineannotation><computeroutput>{abc,0,""}</computeroutput>
 </screen>
     That didn't work either, because now the RE as a whole is non-greedy
     and so it ends the overall match as soon as possible.  We can get what
     we want by forcing the RE as a whole to be greedy:
 <screen>
-SELECT regexp_matches('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
+SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
 <lineannotation>Result: </lineannotation><computeroutput>{abc,01234,xyz}</computeroutput>
 </screen>
     Controlling the RE's overall greediness separately from its components'
@@ -9294,7 +9357,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         <entry><type>tsvector</type></entry>
         <entry>convert array of lexemes to <type>tsvector</type></entry>
         <entry><literal>array_to_tsvector('{fat,cat,rat}'::text[])</literal></entry>
-        <entry><literal>'fat' 'cat' 'rat'</literal></entry>
+        <entry><literal>'cat' 'fat' 'rat'</literal></entry>
        </row>
        <row>
         <entry>
@@ -9460,7 +9523,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
          <literal><function>ts_filter(<replaceable class="PARAMETER">vector</replaceable> <type>tsvector</>, <replaceable class="PARAMETER">weights</replaceable> <type>"char"[]</>)</function></literal>
         </entry>
         <entry><type>tsvector</type></entry>
-        <entry>Select only elements with given <replaceable class="PARAMETER">weights</replaceable> from <replaceable class="PARAMETER">vector</replaceable></entry>
+        <entry>select only elements with given <replaceable class="PARAMETER">weights</replaceable> from <replaceable class="PARAMETER">vector</replaceable></entry>
         <entry><literal>ts_filter('fat:2,4 cat:3b rat:5A'::tsvector, '{a,b}')</literal></entry>
         <entry><literal>'cat':3B 'rat':5A</literal></entry>
        </row>
@@ -13737,7 +13800,7 @@ SELECT xmlagg(x) FROM (SELECT x FROM test ORDER BY y DESC) AS tab;
       <entry>No</entry>
       <entry>
        multiple continuous percentile: returns an array of results matching
-       the shape of the <literal>fractions</literal> parameter, with each
+       the shape of the <replaceable>fractions</replaceable> parameter, with each
        non-null element replaced by the value corresponding to that percentile
       </entry>
      </row>
@@ -13782,7 +13845,7 @@ SELECT xmlagg(x) FROM (SELECT x FROM test ORDER BY y DESC) AS tab;
       <entry>No</entry>
       <entry>
        multiple discrete percentile: returns an array of results matching the
-       shape of the <literal>fractions</literal> parameter, with each non-null
+       shape of the <replaceable>fractions</replaceable> parameter, with each non-null
        element replaced by the input value corresponding to that percentile
       </entry>
      </row>
@@ -16290,6 +16353,18 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
    </indexterm>
 
    <indexterm>
+    <primary>pg_index_column_has_property</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pg_index_has_property</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pg_indexam_has_property</primary>
+   </indexterm>
+
+   <indexterm>
     <primary>pg_options_to_table</primary>
    </indexterm>
 
@@ -16477,6 +16552,21 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
               number of columns, pretty-printing is implied</entry>
       </row>
       <row>
+       <entry><literal><function>pg_index_column_has_property(<parameter>index_oid</parameter>, <parameter>column_no</>, <parameter>prop_name</>)</function></literal></entry>
+       <entry><type>boolean</type></entry>
+       <entry>test whether an index column has a specified property</entry>
+      </row>
+      <row>
+       <entry><literal><function>pg_index_has_property(<parameter>index_oid</parameter>, <parameter>prop_name</>)</function></literal></entry>
+       <entry><type>boolean</type></entry>
+       <entry>test whether an index has a specified property</entry>
+      </row>
+      <row>
+       <entry><literal><function>pg_indexam_has_property(<parameter>am_oid</parameter>, <parameter>prop_name</>)</function></literal></entry>
+       <entry><type>boolean</type></entry>
+       <entry>test whether an index access method has a specified property</entry>
+      </row>
+      <row>
        <entry><literal><function>pg_options_to_table(<parameter>reloptions</parameter>)</function></literal></entry>
        <entry><type>setof record</type></entry>
        <entry>get the set of storage option name/value pairs</entry>
@@ -16620,9 +16710,147 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
   </para>
 
   <para>
+   <function>pg_index_column_has_property</function>,
+   <function>pg_index_has_property</function>, and
+   <function>pg_indexam_has_property</function> return whether the
+   specified index column, index, or index access method possesses the named
+   property. <literal>NULL</literal> is returned if the property name is not
+   known or does not apply to the particular object, or if the OID or column
+   number does not identify a valid object.  Refer to
+   <xref linkend="functions-info-index-column-props"> for column properties,
+   <xref linkend="functions-info-index-props"> for index properties, and
+   <xref linkend="functions-info-indexam-props"> for access method properties.
+   (Note that extension access methods can define additional property names
+   for their indexes.)
+  </para>
+
+  <table id="functions-info-index-column-props">
+   <title>Index Column Properties</title>
+   <tgroup cols="2">
+    <thead>
+     <row><entry>Name</entry><entry>Description</entry></row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>asc</literal></entry>
+      <entry>Does the column sort in ascending order on a forward scan?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>desc</literal></entry>
+      <entry>Does the column sort in descending order on a forward scan?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>nulls_first</literal></entry>
+      <entry>Does the column sort with nulls first on a forward scan?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>nulls_last</literal></entry>
+      <entry>Does the column sort with nulls last on a forward scan?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>orderable</literal></entry>
+      <entry>Does the column possess any defined sort ordering?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>distance_orderable</literal></entry>
+      <entry>Can the column be scanned in order by a <quote>distance</>
+      operator, for example <literal>ORDER BY col &lt;-&gt; constant</> ?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>returnable</literal></entry>
+      <entry>Can the column value be returned by an index-only scan?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>search_array</literal></entry>
+      <entry>Does the column natively support <literal>col = ANY(array)</>
+      searches?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>search_nulls</literal></entry>
+      <entry>Does the column support <literal>IS NULL</> and
+      <literal>IS NOT NULL</> searches?
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <table id="functions-info-index-props">
+   <title>Index Properties</title>
+   <tgroup cols="2">
+    <thead>
+     <row><entry>Name</entry><entry>Description</entry></row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>clusterable</literal></entry>
+      <entry>Can the index be used in a <literal>CLUSTER</> command?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>index_scan</literal></entry>
+      <entry>Does the index support plain (non-bitmap) scans?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>bitmap_scan</literal></entry>
+      <entry>Does the index support bitmap scans?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>backward_scan</literal></entry>
+      <entry>Can the index be scanned backwards?
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <table id="functions-info-indexam-props">
+   <title>Index Access Method Properties</title>
+   <tgroup cols="2">
+    <thead>
+     <row><entry>Name</entry><entry>Description</entry></row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>can_order</literal></entry>
+      <entry>Does the access method support <literal>ASC</>,
+      <literal>DESC</> and related keywords in
+      <literal>CREATE INDEX</>?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>can_unique</literal></entry>
+      <entry>Does the access method support unique indexes?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>can_multi_col</literal></entry>
+      <entry>Does the access method support indexes with multiple columns?
+      </entry>
+     </row>
+     <row>
+      <entry><literal>can_exclude</literal></entry>
+      <entry>Does the access method support exclusion constraints?
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
    <function>pg_options_to_table</function> returns the set of storage
    option name/value pairs
-   (<literal>option_name</>/<literal>option_value</>) when passed
+   (<replaceable>option_name</>/<replaceable>option_value</>) when passed
    <structname>pg_class</>.<structfield>reloptions</> or
    <structname>pg_attribute</>.<structfield>attoptions</>.
   </para>
@@ -16892,6 +17120,10 @@ SELECT collation for ('foo' COLLATE "de_DE");
    </indexterm>
 
    <indexterm>
+    <primary>txid_current_if_assigned</primary>
+   </indexterm>
+
+   <indexterm>
     <primary>txid_current_snapshot</primary>
    </indexterm>
 
@@ -16930,6 +17162,11 @@ SELECT collation for ('foo' COLLATE "de_DE");
        <entry><literal><function>txid_current()</function></literal></entry>
        <entry><type>bigint</type></entry>
        <entry>get current transaction ID, assigning a new one if the current transaction does not have one</entry>
+      </row>
+      <row>
+       <entry><literal><function>txid_current_if_assigned()</function></literal></entry>
+       <entry><type>bigint</type></entry>
+       <entry>same as <function>txid_current()</function> but returns null instead of assigning an xid if none is already assigned</entry>
       </row>
       <row>
        <entry><literal><function>txid_current_snapshot()</function></literal></entry>
@@ -17100,7 +17337,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
        </entry>
        <entry><type>record</type></entry>
        <entry>
-        Returns information about current controldata file state.
+        Returns information about current control file state.
        </entry>
       </row>
 
@@ -17148,97 +17385,97 @@ SELECT collation for ('foo' COLLATE "de_DE");
      <tbody>
 
       <row>
-       <entry>checkpoint_location</entry>
+       <entry><literal>checkpoint_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>prior_location</entry>
+       <entry><literal>prior_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>redo_location</entry>
+       <entry><literal>redo_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>redo_wal_file</entry>
+       <entry><literal>redo_wal_file</literal></entry>
        <entry><type>text</type></entry>
       </row>
 
       <row>
-       <entry>timeline_id</entry>
+       <entry><literal>timeline_id</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>prev_timeline_id</entry>
+       <entry><literal>prev_timeline_id</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>full_page_writes</entry>
+       <entry><literal>full_page_writes</literal></entry>
        <entry><type>boolean</type></entry>
       </row>
 
       <row>
-       <entry>next_xid</entry>
+       <entry><literal>next_xid</literal></entry>
        <entry><type>text</type></entry>
       </row>
 
       <row>
-       <entry>next_oid</entry>
+       <entry><literal>next_oid</literal></entry>
        <entry><type>oid</type></entry>
       </row>
 
       <row>
-       <entry>next_multixact_id</entry>
+       <entry><literal>next_multixact_id</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>next_multi_offset</entry>
+       <entry><literal>next_multi_offset</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_xid</entry>
+       <entry><literal>oldest_xid</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_xid_dbid</entry>
+       <entry><literal>oldest_xid_dbid</literal></entry>
        <entry><type>oid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_active_xid</entry>
+       <entry><literal>oldest_active_xid</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_multi_xid</entry>
+       <entry><literal>oldest_multi_xid</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_multi_dbid</entry>
+       <entry><literal>oldest_multi_dbid</literal></entry>
        <entry><type>oid</type></entry>
       </row>
 
       <row>
-       <entry>oldest_commit_ts_xid</entry>
+       <entry><literal>oldest_commit_ts_xid</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>newest_commit_ts_xid</entry>
+       <entry><literal>newest_commit_ts_xid</literal></entry>
        <entry><type>xid</type></entry>
       </row>
 
       <row>
-       <entry>checkpoint_time</entry>
+       <entry><literal>checkpoint_time</literal></entry>
        <entry><type>timestamp with time zone</type></entry>
       </row>
 
@@ -17264,22 +17501,22 @@ SELECT collation for ('foo' COLLATE "de_DE");
      <tbody>
 
       <row>
-       <entry>pg_control_version</entry>
+       <entry><literal>pg_control_version</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>catalog_version_no</entry>
+       <entry><literal>catalog_version_no</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>system_identifier</entry>
+       <entry><literal>system_identifier</literal></entry>
        <entry><type>bigint</type></entry>
       </row>
 
       <row>
-       <entry>pg_control_last_modified</entry>
+       <entry><literal>pg_control_last_modified</literal></entry>
        <entry><type>timestamp with time zone</type></entry>
       </row>
 
@@ -17305,67 +17542,67 @@ SELECT collation for ('foo' COLLATE "de_DE");
      <tbody>
 
       <row>
-       <entry>max_data_alignment</entry>
+       <entry><literal>max_data_alignment</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>database_block_size</entry>
+       <entry><literal>database_block_size</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>blocks_per_segment</entry>
+       <entry><literal>blocks_per_segment</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>wal_block_size</entry>
+       <entry><literal>wal_block_size</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>bytes_per_wal_segment</entry>
+       <entry><literal>bytes_per_wal_segment</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>max_identifier_length</entry>
+       <entry><literal>max_identifier_length</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>max_index_columns</entry>
+       <entry><literal>max_index_columns</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>max_toast_chunk_size</entry>
+       <entry><literal>max_toast_chunk_size</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>large_object_chunk_size</entry>
+       <entry><literal>large_object_chunk_size</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>bigint_timestamps</entry>
+       <entry><literal>bigint_timestamps</literal></entry>
        <entry><type>boolean</type></entry>
       </row>
 
       <row>
-       <entry>float4_pass_by_value</entry>
+       <entry><literal>float4_pass_by_value</literal></entry>
        <entry><type>boolean</type></entry>
       </row>
 
       <row>
-       <entry>float8_pass_by_value</entry>
+       <entry><literal>float8_pass_by_value</literal></entry>
        <entry><type>boolean</type></entry>
       </row>
 
       <row>
-       <entry>data_page_checksum_version</entry>
+       <entry><literal>data_page_checksum_version</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
@@ -17391,27 +17628,27 @@ SELECT collation for ('foo' COLLATE "de_DE");
      <tbody>
 
       <row>
-       <entry>min_recovery_end_location</entry>
+       <entry><literal>min_recovery_end_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>min_recovery_end_timeline</entry>
+       <entry><literal>min_recovery_end_timeline</literal></entry>
        <entry><type>integer</type></entry>
       </row>
 
       <row>
-       <entry>backup_start_location</entry>
+       <entry><literal>backup_start_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>backup_end_location</entry>
+       <entry><literal>backup_end_location</literal></entry>
        <entry><type>pg_lsn</type></entry>
       </row>
 
       <row>
-       <entry>end_of_backup_record_required</entry>
+       <entry><literal>end_of_backup_record_required</literal></entry>
        <entry><type>boolean</type></entry>
       </row>
 
@@ -18343,7 +18580,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal><function>pg_replication_origin_drop(<parameter>node_name</parameter> <type>text</type>)</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Delete a previously created replication origin, including any
@@ -18375,7 +18612,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal><function>pg_replication_origin_session_setup(<parameter>node_name</parameter> <type>text</type>)</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Mark the current session as replaying from the given
@@ -18393,7 +18630,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal><function>pg_replication_origin_session_reset()</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Cancel the effects
@@ -18442,7 +18679,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal><function>pg_replication_origin_xact_setup(<parameter>origin_lsn</parameter> <type>pg_lsn</type>, <parameter>origin_timestamp</parameter> <type>timestamptz</type>)</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Mark the current transaction as replaying a transaction that has
@@ -18461,7 +18698,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal><function>pg_replication_origin_xact_reset()</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Cancel the effects of
@@ -18477,7 +18714,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
         <literal>pg_replication_origin_advance<function>(<parameter>node_name</parameter> <type>text</type>, <parameter>pos</parameter> <type>pg_lsn</type>)</function></literal>
        </entry>
        <entry>
-        void
+        <type>void</>
        </entry>
        <entry>
         Set replication progress for the given node to the given
@@ -18937,7 +19174,7 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
      <tbody>
       <row>
        <entry>
-        <literal><function>brin_summarize_new_values(<parameter>index_oid</> <type>regclass</>)</function></literal>
+        <literal><function>brin_summarize_new_values(<parameter>index</> <type>regclass</>)</function></literal>
        </entry>
        <entry><type>integer</type></entry>
        <entry>summarize page ranges not already summarized</entry>
@@ -18954,8 +19191,8 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
    </table>
 
    <para>
-    <function>brin_summarize_new_values</> receives a BRIN index OID as
-    argument and inspects the index to find page ranges in the base table
+    <function>brin_summarize_new_values</> accepts the OID or name of a
+    BRIN index and inspects the index to find page ranges in the base table
     that are not currently summarized by the index; for any such range
     it creates a new summary index tuple by scanning the table pages.
     It returns the number of new page range summaries that were inserted
@@ -18964,12 +19201,12 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
 
    <para>
     <function>gin_clean_pending_list</> accepts the OID or name of
-    a GIN index and cleans up the pending list of the specified GIN index
+    a GIN index and cleans up the pending list of the specified index
     by moving entries in it to the main GIN data structure in bulk.
-    It returns the number of pages cleaned up from the pending list.
-    Note that if the argument is a GIN index built with <literal>fastupdate</>
-    option disabled, the cleanup does not happen and the return value is 0
-    because the index doesn't have a pending list.
+    It returns the number of pages removed from the pending list.
+    Note that if the argument is a GIN index built with
+    the <literal>fastupdate</> option disabled, no cleanup happens and the
+    return value is 0, because the index doesn't have a pending list.
     Please see <xref linkend="gin-fast-update"> and <xref linkend="gin-tips">
     for details of the pending list and <literal>fastupdate</> option.
    </para>

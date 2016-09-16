@@ -877,6 +877,7 @@ _copyAgg(const Agg *from)
 		COPY_POINTER_FIELD(grpOperators, from->numCols * sizeof(Oid));
 	}
 	COPY_SCALAR_FIELD(numGroups);
+	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
 
@@ -1747,6 +1748,22 @@ _copyMinMaxExpr(const MinMaxExpr *from)
 	COPY_SCALAR_FIELD(inputcollid);
 	COPY_SCALAR_FIELD(op);
 	COPY_NODE_FIELD(args);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copySQLValueFunction
+ */
+static SQLValueFunction *
+_copySQLValueFunction(const SQLValueFunction *from)
+{
+	SQLValueFunction *newnode = makeNode(SQLValueFunction);
+
+	COPY_SCALAR_FIELD(op);
+	COPY_SCALAR_FIELD(type);
+	COPY_SCALAR_FIELD(typmod);
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;
@@ -2659,6 +2676,7 @@ _copyDefElem(const DefElem *from)
 	COPY_STRING_FIELD(defname);
 	COPY_NODE_FIELD(arg);
 	COPY_SCALAR_FIELD(defaction);
+	COPY_LOCATION_FIELD(location);
 
 	return newnode;
 }
@@ -2713,6 +2731,7 @@ _copyQuery(const Query *from)
 	COPY_SCALAR_FIELD(resultRelation);
 	COPY_SCALAR_FIELD(hasAggs);
 	COPY_SCALAR_FIELD(hasWindowFuncs);
+	COPY_SCALAR_FIELD(hasTargetSRFs);
 	COPY_SCALAR_FIELD(hasSubLinks);
 	COPY_SCALAR_FIELD(hasDistinctOn);
 	COPY_SCALAR_FIELD(hasRecursive);
@@ -3357,10 +3376,11 @@ _copyAlterEnumStmt(const AlterEnumStmt *from)
 	AlterEnumStmt *newnode = makeNode(AlterEnumStmt);
 
 	COPY_NODE_FIELD(typeName);
+	COPY_STRING_FIELD(oldVal);
 	COPY_STRING_FIELD(newVal);
 	COPY_STRING_FIELD(newValNeighbor);
 	COPY_SCALAR_FIELD(newValIsAfter);
-	COPY_SCALAR_FIELD(skipIfExists);
+	COPY_SCALAR_FIELD(skipIfNewValExists);
 
 	return newnode;
 }
@@ -4524,6 +4544,9 @@ copyObject(const void *from)
 			break;
 		case T_MinMaxExpr:
 			retval = _copyMinMaxExpr(from);
+			break;
+		case T_SQLValueFunction:
+			retval = _copySQLValueFunction(from);
 			break;
 		case T_XmlExpr:
 			retval = _copyXmlExpr(from);

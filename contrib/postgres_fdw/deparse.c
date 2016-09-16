@@ -287,13 +287,14 @@ foreign_expr_walker(Node *node,
 					/* Var belongs to foreign table */
 
 					/*
-					 * System columns other than ctid should not be sent to
-					 * the remote, since we don't make any effort to ensure
-					 * that local and remote values match (tableoid, in
+					 * System columns other than ctid and oid should not be
+					 * sent to the remote, since we don't make any effort to
+					 * ensure that local and remote values match (tableoid, in
 					 * particular, almost certainly doesn't match).
 					 */
 					if (var->varattno < 0 &&
-						var->varattno != SelfItemPointerAttributeNumber)
+						var->varattno != SelfItemPointerAttributeNumber &&
+						var->varattno != ObjectIdAttributeNumber)
 						return false;
 
 					/* Else check the collation */
@@ -913,8 +914,8 @@ deparseTargetList(StringInfo buf,
 	}
 
 	/*
-	 * Add ctid if needed.  We currently don't support retrieving any other
-	 * system columns.
+	 * Add ctid and oid if needed.  We currently don't support retrieving any
+	 * other system columns.
 	 */
 	if (bms_is_member(SelfItemPointerAttributeNumber - FirstLowInvalidHeapAttributeNumber,
 					  attrs_used))
@@ -932,6 +933,22 @@ deparseTargetList(StringInfo buf,
 		*retrieved_attrs = lappend_int(*retrieved_attrs,
 									   SelfItemPointerAttributeNumber);
 	}
+	if (bms_is_member(ObjectIdAttributeNumber - FirstLowInvalidHeapAttributeNumber,
+					  attrs_used))
+	{
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		else if (is_returning)
+			appendStringInfoString(buf, " RETURNING ");
+		first = false;
+
+		if (qualify_col)
+			ADD_REL_QUALIFIER(buf, rtindex);
+		appendStringInfoString(buf, "oid");
+
+		*retrieved_attrs = lappend_int(*retrieved_attrs,
+									   ObjectIdAttributeNumber);
+	}
 
 	/* Don't generate bad syntax if no undropped columns */
 	if (first && !is_returning)
@@ -939,7 +956,7 @@ deparseTargetList(StringInfo buf,
 }
 
 /*
- * Deparse the appropriate locking clause (FOR SELECT or FOR SHARE) for a
+ * Deparse the appropriate locking clause (FOR UPDATE or FOR SHARE) for a
  * given relation (context->foreignrel).
  */
 static void
@@ -1163,7 +1180,7 @@ deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 		/*
 		 * For a join relation FROM clause entry is deparsed as
 		 *
-		 * ((outer relation) <join type> (inner relation) ON (joinclauses)
+		 * ((outer relation) <join type> (inner relation) ON (joinclauses))
 		 */
 		appendStringInfo(buf, "(%s %s JOIN %s ON ", join_sql_o.data,
 					   get_jointype_name(fpinfo->jointype), join_sql_i.data);
@@ -1574,12 +1591,18 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 {
 	RangeTblEntry *rte;
 
+	/* We support fetching the remote side's CTID and OID. */
 	if (varattno == SelfItemPointerAttributeNumber)
 	{
-		/* We support fetching the remote side's CTID. */
 		if (qualify_col)
 			ADD_REL_QUALIFIER(buf, varno);
 		appendStringInfoString(buf, "ctid");
+	}
+	else if (varattno == ObjectIdAttributeNumber)
+	{
+		if (qualify_col)
+			ADD_REL_QUALIFIER(buf, varno);
+		appendStringInfoString(buf, "oid");
 	}
 	else if (varattno < 0)
 	{
@@ -2347,10 +2370,27 @@ deparseNullTest(NullTest *node, deparse_expr_cxt *context)
 
 	appendStringInfoChar(buf, '(');
 	deparseExpr(node->arg, context);
-	if (node->nulltesttype == IS_NULL)
-		appendStringInfoString(buf, " IS NULL)");
+
+	/*
+	 * For scalar inputs, we prefer to print as IS [NOT] NULL, which is
+	 * shorter and traditional.  If it's a rowtype input but we're applying a
+	 * scalar test, must print IS [NOT] DISTINCT FROM NULL to be semantically
+	 * correct.
+	 */
+	if (node->argisrow || !type_is_rowtype(exprType((Node *) node->arg)))
+	{
+		if (node->nulltesttype == IS_NULL)
+			appendStringInfoString(buf, " IS NULL)");
+		else
+			appendStringInfoString(buf, " IS NOT NULL)");
+	}
 	else
-		appendStringInfoString(buf, " IS NOT NULL)");
+	{
+		if (node->nulltesttype == IS_NULL)
+			appendStringInfoString(buf, " IS NOT DISTINCT FROM NULL)");
+		else
+			appendStringInfoString(buf, " IS DISTINCT FROM NULL)");
+	}
 }
 
 /*

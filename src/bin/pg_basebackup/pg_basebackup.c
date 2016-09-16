@@ -26,6 +26,7 @@
 #endif
 
 #include "common/string.h"
+#include "fe_utils/string_utils.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
@@ -57,6 +58,7 @@ static TablespaceList tablespace_dirs = {NULL, NULL};
 static char *xlog_dir = "";
 static char format = 'p';		/* p(lain)/t(ar) */
 static char *label = "pg_basebackup base backup";
+static bool noclean = false;
 static bool showprogress = false;
 static int	verbose = 0;
 static int	compresslevel = 0;
@@ -68,6 +70,13 @@ static int	standby_message_timeout = 10 * 1000;		/* 10 sec = default */
 static pg_time_t last_progress_report = 0;
 static int32 maxrate = 0;		/* no limit by default */
 
+static bool success = false;
+static bool made_new_pgdata = false;
+static bool found_existing_pgdata = false;
+static bool made_new_xlogdir = false;
+static bool found_existing_xlogdir = false;
+static bool made_tablespace_dirs = false;
+static bool found_tablespace_dirs = false;
 
 /* Progress counters */
 static uint64 totalsize;
@@ -81,6 +90,7 @@ static int	bgpipe[2] = {-1, -1};
 
 /* Handle to child process */
 static pid_t bgchild = -1;
+static bool in_log_streamer = false;
 
 /* End position for xlog streaming, empty string if unknown yet */
 static XLogRecPtr xlogendptr;
@@ -97,7 +107,7 @@ static PQExpBuffer recoveryconfcontents = NULL;
 /* Function headers */
 static void usage(void);
 static void disconnect_and_exit(int code);
-static void verify_dir_is_empty_or_create(char *dirname);
+static void verify_dir_is_empty_or_create(char *dirname, bool *created, bool *found);
 static void progress_report(int tablespacenum, const char *filename, bool force);
 
 static void ReceiveTarFile(PGconn *conn, PGresult *res, int rownum);
@@ -112,6 +122,69 @@ static bool reached_end_position(XLogRecPtr segendpos, uint32 timeline,
 static const char *get_tablespace_mapping(const char *dir);
 static void tablespace_list_append(const char *arg);
 
+
+static void
+cleanup_directories_atexit(void)
+{
+	if (success || in_log_streamer)
+		return;
+
+	if (!noclean)
+	{
+		if (made_new_pgdata)
+		{
+			fprintf(stderr, _("%s: removing data directory \"%s\"\n"),
+					progname, basedir);
+			if (!rmtree(basedir, true))
+				fprintf(stderr, _("%s: failed to remove data directory\n"),
+						progname);
+		}
+		else if (found_existing_pgdata)
+		{
+			fprintf(stderr,
+					_("%s: removing contents of data directory \"%s\"\n"),
+					progname, basedir);
+			if (!rmtree(basedir, false))
+				fprintf(stderr, _("%s: failed to remove contents of data directory\n"),
+						progname);
+		}
+
+		if (made_new_xlogdir)
+		{
+			fprintf(stderr, _("%s: removing transaction log directory \"%s\"\n"),
+					progname, xlog_dir);
+			if (!rmtree(xlog_dir, true))
+				fprintf(stderr, _("%s: failed to remove transaction log directory\n"),
+						progname);
+		}
+		else if (found_existing_xlogdir)
+		{
+			fprintf(stderr,
+					_("%s: removing contents of transaction log directory \"%s\"\n"),
+					progname, xlog_dir);
+			if (!rmtree(xlog_dir, false))
+				fprintf(stderr, _("%s: failed to remove contents of transaction log directory\n"),
+						progname);
+		}
+	}
+	else
+	{
+		if (made_new_pgdata || found_existing_pgdata)
+			fprintf(stderr,
+			  _("%s: data directory \"%s\" not removed at user's request\n"),
+					progname, basedir);
+
+		if (made_new_xlogdir || found_existing_xlogdir)
+			fprintf(stderr,
+					_("%s: transaction log directory \"%s\" not removed at user's request\n"),
+					progname, xlog_dir);
+	}
+
+	if (made_tablespace_dirs || found_tablespace_dirs)
+		fprintf(stderr,
+				_("%s: changes to tablespace directories will not be undone"),
+				progname);
+}
 
 static void
 disconnect_and_exit(int code)
@@ -252,6 +325,7 @@ usage(void)
 	printf(_("  -c, --checkpoint=fast|spread\n"
 			 "                         set fast or spread checkpointing\n"));
 	printf(_("  -l, --label=LABEL      set backup label\n"));
+	printf(_("  -n, --noclean          do not clean up after errors\n"));
 	printf(_("  -P, --progress         show progress information\n"));
 	printf(_("  -v, --verbose          output verbose messages\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
@@ -373,6 +447,8 @@ static int
 LogStreamerMain(logstreamer_param *param)
 {
 	StreamCtl	stream;
+
+	in_log_streamer = true;
 
 	MemSet(&stream, 0, sizeof(stream));
 	stream.startpos = param->startptr;
@@ -500,7 +576,7 @@ StartLogStreamer(char *startpos, uint32 timeline, char *sysidentifier)
  * be give and the process ended.
  */
 static void
-verify_dir_is_empty_or_create(char *dirname)
+verify_dir_is_empty_or_create(char *dirname, bool *created, bool *found)
 {
 	switch (pg_check_dir(dirname))
 	{
@@ -516,12 +592,16 @@ verify_dir_is_empty_or_create(char *dirname)
 						progname, dirname, strerror(errno));
 				disconnect_and_exit(1);
 			}
+			if (created)
+				*created = true;
 			return;
 		case 1:
 
 			/*
 			 * Exists, empty
 			 */
+			if (found)
+				*found = true;
 			return;
 		case 2:
 		case 3:
@@ -1393,69 +1473,6 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 }
 
 /*
- * Escape a parameter value so that it can be used as part of a libpq
- * connection string, e.g. in:
- *
- * application_name=<value>
- *
- * The returned string is malloc'd. Return NULL on out-of-memory.
- */
-static char *
-escapeConnectionParameter(const char *src)
-{
-	bool		need_quotes = false;
-	bool		need_escaping = false;
-	const char *p;
-	char	   *dstbuf;
-	char	   *dst;
-
-	/*
-	 * First check if quoting is needed. Any quote (') or backslash (\)
-	 * characters need to be escaped. Parameters are separated by whitespace,
-	 * so any string containing whitespace characters need to be quoted. An
-	 * empty string is represented by ''.
-	 */
-	if (strchr(src, '\'') != NULL || strchr(src, '\\') != NULL)
-		need_escaping = true;
-
-	for (p = src; *p; p++)
-	{
-		if (isspace((unsigned char) *p))
-		{
-			need_quotes = true;
-			break;
-		}
-	}
-
-	if (*src == '\0')
-		return pg_strdup("''");
-
-	if (!need_quotes && !need_escaping)
-		return pg_strdup(src);	/* no quoting or escaping needed */
-
-	/*
-	 * Allocate a buffer large enough for the worst case that all the source
-	 * characters need to be escaped, plus quotes.
-	 */
-	dstbuf = pg_malloc(strlen(src) * 2 + 2 + 1);
-
-	dst = dstbuf;
-	if (need_quotes)
-		*(dst++) = '\'';
-	for (; *src; src++)
-	{
-		if (*src == '\'' || *src == '\\')
-			*(dst++) = '\\';
-		*(dst++) = *src;
-	}
-	if (need_quotes)
-		*(dst++) = '\'';
-	*dst = '\0';
-
-	return dstbuf;
-}
-
-/*
  * Escape a string so that it can be used as a value in a key-value pair
  * a configuration file.
  */
@@ -1523,9 +1540,8 @@ GenerateRecoveryConf(PGconn *conn)
 		 * Write "keyword=value" pieces, the value string is escaped and/or
 		 * quoted if necessary.
 		 */
-		escaped = escapeConnectionParameter(option->val);
-		appendPQExpBuffer(&conninfo_buf, "%s=%s", option->keyword, escaped);
-		free(escaped);
+		appendPQExpBuffer(&conninfo_buf, "%s=", option->keyword);
+		appendConnStrVal(&conninfo_buf, option->val);
 	}
 
 	/*
@@ -1746,7 +1762,7 @@ BaseBackup(void)
 		{
 			char	   *path = (char *) get_tablespace_mapping(PQgetvalue(res, i, 1));
 
-			verify_dir_is_empty_or_create(path);
+			verify_dir_is_empty_or_create(path, &made_tablespace_dirs, &found_tablespace_dirs);
 		}
 	}
 
@@ -1955,6 +1971,7 @@ main(int argc, char **argv)
 		{"gzip", no_argument, NULL, 'z'},
 		{"compress", required_argument, NULL, 'Z'},
 		{"label", required_argument, NULL, 'l'},
+		{"noclean", no_argument, NULL, 'n'},
 		{"dbname", required_argument, NULL, 'd'},
 		{"host", required_argument, NULL, 'h'},
 		{"port", required_argument, NULL, 'p'},
@@ -1989,7 +2006,9 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "D:F:r:RT:xX:l:zZ:d:c:h:p:U:s:S:wWvP",
+	atexit(cleanup_directories_atexit);
+
+	while ((c = getopt_long(argc, argv, "D:F:r:RT:xX:l:nzZ:d:c:h:p:U:s:S:wWvP",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2064,6 +2083,9 @@ main(int argc, char **argv)
 			case 'l':
 				label = pg_strdup(optarg);
 				break;
+			case 'n':
+				noclean = true;
+				break;
 			case 'z':
 #ifdef HAVE_LIBZ
 				compresslevel = Z_DEFAULT_COMPRESSION;
@@ -2073,7 +2095,7 @@ main(int argc, char **argv)
 				break;
 			case 'Z':
 				compresslevel = atoi(optarg);
-				if (compresslevel <= 0 || compresslevel > 9)
+				if (compresslevel < 0 || compresslevel > 9)
 				{
 					fprintf(stderr, _("%s: invalid compression level \"%s\"\n"),
 							progname, optarg);
@@ -2233,14 +2255,14 @@ main(int argc, char **argv)
 	 * unless we are writing to stdout.
 	 */
 	if (format == 'p' || strcmp(basedir, "-") != 0)
-		verify_dir_is_empty_or_create(basedir);
+		verify_dir_is_empty_or_create(basedir, &made_new_pgdata, &found_existing_pgdata);
 
 	/* Create transaction log symlink, if required */
 	if (strcmp(xlog_dir, "") != 0)
 	{
 		char	   *linkloc;
 
-		verify_dir_is_empty_or_create(xlog_dir);
+		verify_dir_is_empty_or_create(xlog_dir, &made_new_xlogdir, &found_existing_xlogdir);
 
 		/* form name of the place where the symlink must go */
 		linkloc = psprintf("%s/pg_xlog", basedir);
@@ -2261,5 +2283,6 @@ main(int argc, char **argv)
 
 	BaseBackup();
 
+	success = true;
 	return 0;
 }

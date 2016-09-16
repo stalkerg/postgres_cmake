@@ -19,6 +19,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/hash_xlog.h"
 #include "access/relscan.h"
 #include "catalog/index.h"
 #include "commands/vacuum.h"
@@ -75,6 +76,7 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->amcanreturn = NULL;
 	amroutine->amcostestimate = hashcostestimate;
 	amroutine->amoptions = hashoptions;
+	amroutine->amproperty = NULL;
 	amroutine->amvalidate = hashvalidate;
 	amroutine->ambeginscan = hashbeginscan;
 	amroutine->amrescan = hashrescan;

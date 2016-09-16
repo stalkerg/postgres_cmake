@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * libpq_be.h
+ * libpq-be.h
  *	  This file contains definitions for structures and externs used
  *	  by the postmaster during client authentication.
  *
@@ -192,7 +192,6 @@ typedef struct Port
 #ifdef USE_OPENSSL
 	SSL		   *ssl;
 	X509	   *peer;
-	unsigned long count;
 #endif
 } Port;
 

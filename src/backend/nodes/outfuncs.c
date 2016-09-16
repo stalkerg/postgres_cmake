@@ -716,6 +716,7 @@ _outAgg(StringInfo str, const Agg *node)
 		appendStringInfo(str, " %u", node->grpOperators[i]);
 
 	WRITE_LONG_FIELD(numGroups);
+	WRITE_BITMAPSET_FIELD(aggParams);
 	WRITE_NODE_FIELD(groupingSets);
 	WRITE_NODE_FIELD(chain);
 }
@@ -1424,6 +1425,17 @@ _outMinMaxExpr(StringInfo str, const MinMaxExpr *node)
 }
 
 static void
+_outSQLValueFunction(StringInfo str, const SQLValueFunction *node)
+{
+	WRITE_NODE_TYPE("SQLVALUEFUNCTION");
+
+	WRITE_ENUM_FIELD(op, SQLValueFunctionOp);
+	WRITE_OID_FIELD(type);
+	WRITE_INT_FIELD(typmod);
+	WRITE_LOCATION_FIELD(location);
+}
+
+static void
 _outXmlExpr(StringInfo str, const XmlExpr *node)
 {
 	WRITE_NODE_TYPE("XMLEXPR");
@@ -2018,6 +2030,7 @@ _outPlannerGlobal(StringInfo str, const PlannerGlobal *node)
 	WRITE_BOOL_FIELD(dependsOnRole);
 	WRITE_BOOL_FIELD(parallelModeOK);
 	WRITE_BOOL_FIELD(parallelModeNeeded);
+	WRITE_CHAR_FIELD(maxParallelHazard);
 }
 
 static void
@@ -2529,6 +2542,7 @@ _outDefElem(StringInfo str, const DefElem *node)
 	WRITE_STRING_FIELD(defname);
 	WRITE_NODE_FIELD(arg);
 	WRITE_ENUM_FIELD(defaction, DefElemAction);
+	WRITE_LOCATION_FIELD(location);
 }
 
 static void
@@ -2669,6 +2683,7 @@ _outQuery(StringInfo str, const Query *node)
 	WRITE_INT_FIELD(resultRelation);
 	WRITE_BOOL_FIELD(hasAggs);
 	WRITE_BOOL_FIELD(hasWindowFuncs);
+	WRITE_BOOL_FIELD(hasTargetSRFs);
 	WRITE_BOOL_FIELD(hasSubLinks);
 	WRITE_BOOL_FIELD(hasDistinctOn);
 	WRITE_BOOL_FIELD(hasRecursive);
@@ -2901,6 +2916,10 @@ _outAExpr(StringInfo str, const A_Expr *node)
 			break;
 		case AEXPR_DISTINCT:
 			appendStringInfoString(str, " DISTINCT ");
+			WRITE_NODE_FIELD(name);
+			break;
+		case AEXPR_NOT_DISTINCT:
+			appendStringInfoString(str, " NOT_DISTINCT ");
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_NULLIF:
@@ -3517,6 +3536,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_MinMaxExpr:
 				_outMinMaxExpr(str, obj);
+				break;
+			case T_SQLValueFunction:
+				_outSQLValueFunction(str, obj);
 				break;
 			case T_XmlExpr:
 				_outXmlExpr(str, obj);

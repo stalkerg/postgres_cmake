@@ -818,12 +818,6 @@ if(WIN32 OR CYGWIN OR MINGW)
 	endif(NAVE_MINIDUMP_TYPE)
 endif()
 
-if(APPLE)
-	set(backend_port_darwin_SRC
-		port/darwin/system.c
-	)
-endif(APPLE)
-
 set(gen_lwlocknames_depend
 	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/generate-lwlocknames.pl
 	${PROJECT_SOURCE_DIR}/src/backend/storage/lmgr/lwlocknames.txt

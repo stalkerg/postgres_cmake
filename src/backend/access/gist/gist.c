@@ -79,6 +79,7 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amcanreturn = gistcanreturn;
 	amroutine->amcostestimate = gistcostestimate;
 	amroutine->amoptions = gistoptions;
+	amroutine->amproperty = gistproperty;
 	amroutine->amvalidate = gistvalidate;
 	amroutine->ambeginscan = gistbeginscan;
 	amroutine->amrescan = gistrescan;
@@ -104,9 +105,7 @@ createTempGistContext(void)
 {
 	return AllocSetContextCreate(CurrentMemoryContext,
 								 "GiST temporary context",
-								 ALLOCSET_DEFAULT_MINSIZE,
-								 ALLOCSET_DEFAULT_INITSIZE,
-								 ALLOCSET_DEFAULT_MAXSIZE);
+								 ALLOCSET_DEFAULT_SIZES);
 }
 
 /*
@@ -494,18 +493,36 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 	else
 	{
 		/*
-		 * Enough space. We also get here if ntuples==0.
+		 * Enough space.  We always get here if ntup==0.
 		 */
 		START_CRIT_SECTION();
 
 		/*
-		 * While we delete only one tuple at once we could mix calls
-		 * PageIndexTupleDelete() here and PageIndexMultiDelete() in
-		 * gistRedoPageUpdateRecord()
+		 * Delete old tuple if any, then insert new tuple(s) if any.  If
+		 * possible, use the fast path of PageIndexTupleOverwrite.
 		 */
 		if (OffsetNumberIsValid(oldoffnum))
-			PageIndexTupleDelete(page, oldoffnum);
-		gistfillbuffer(page, itup, ntup, InvalidOffsetNumber);
+		{
+			if (ntup == 1)
+			{
+				/* One-for-one replacement, so use PageIndexTupleOverwrite */
+				if (!PageIndexTupleOverwrite(page, oldoffnum, (Item) *itup,
+											 IndexTupleSize(*itup)))
+					elog(ERROR, "failed to add item to index page in \"%s\"",
+						 RelationGetRelationName(rel));
+			}
+			else
+			{
+				/* Delete old, then append new tuple(s) to page */
+				PageIndexTupleDelete(page, oldoffnum);
+				gistfillbuffer(page, itup, ntup, InvalidOffsetNumber);
+			}
+		}
+		else
+		{
+			/* Just append new tuples at the end of the page */
+			gistfillbuffer(page, itup, ntup, InvalidOffsetNumber);
+		}
 
 		MarkBufferDirty(buffer);
 
@@ -1410,9 +1427,7 @@ initGISTstate(Relation index)
 	/* Create the memory context that will hold the GISTSTATE */
 	scanCxt = AllocSetContextCreate(CurrentMemoryContext,
 									"GiST scan context",
-									ALLOCSET_DEFAULT_MINSIZE,
-									ALLOCSET_DEFAULT_INITSIZE,
-									ALLOCSET_DEFAULT_MAXSIZE);
+									ALLOCSET_DEFAULT_SIZES);
 	oldCxt = MemoryContextSwitchTo(scanCxt);
 
 	/* Create and fill in the GISTSTATE */

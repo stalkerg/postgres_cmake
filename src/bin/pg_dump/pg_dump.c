@@ -1302,7 +1302,7 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 
 	/*
 	 * In 9.6 and above, mark the member object to have any non-initial ACL,
-	 * policies, and security lables dumped.
+	 * policies, and security labels dumped.
 	 *
 	 * Note that any initial ACLs (see pg_init_privs) will be removed when we
 	 * extract the information about the object.  We don't provide support for
@@ -1324,8 +1324,8 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 			dobj->dump = DUMP_COMPONENT_NONE;
 		else
 			dobj->dump = ext->dobj.dump_contains & (DUMP_COMPONENT_ACL |
-							DUMP_COMPONENT_SECLABEL | DUMP_COMPONENT_POLICY);
-
+													DUMP_COMPONENT_SECLABEL |
+													DUMP_COMPONENT_POLICY);
 	}
 
 	return true;
@@ -1338,15 +1338,11 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 static void
 selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout)
 {
-	if (checkExtensionMembership(&nsinfo->dobj, fout))
-		return;					/* extension membership overrides all else */
-
 	/*
 	 * If specific tables are being dumped, do not dump any complete
 	 * namespaces. If specific namespaces are being dumped, dump just those
 	 * namespaces. Otherwise, dump all non-system namespaces.
 	 */
-
 	if (table_include_oids.head != NULL)
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_NONE;
 	else if (schema_include_oids.head != NULL)
@@ -1355,18 +1351,21 @@ selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout)
 								   nsinfo->dobj.catId.oid) ?
 			DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
 	else if (fout->remoteVersion >= 90600 &&
-			 strncmp(nsinfo->dobj.name, "pg_catalog",
-					 strlen("pg_catalog")) == 0)
-
+			 strcmp(nsinfo->dobj.name, "pg_catalog") == 0)
+	{
 		/*
 		 * In 9.6 and above, we dump out any ACLs defined in pg_catalog, if
 		 * they are interesting (and not the original ACLs which were set at
 		 * initdb time, see pg_init_privs).
 		 */
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_ACL;
+	}
 	else if (strncmp(nsinfo->dobj.name, "pg_", 3) == 0 ||
 			 strcmp(nsinfo->dobj.name, "information_schema") == 0)
+	{
+		/* Other system schemas don't get dumped */
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_NONE;
+	}
 	else
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_ALL;
 
@@ -1377,6 +1376,15 @@ selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout)
 		simple_oid_list_member(&schema_exclude_oids,
 							   nsinfo->dobj.catId.oid))
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_NONE;
+
+	/*
+	 * If the schema belongs to an extension, allow extension membership to
+	 * override the dump decision for the schema itself.  However, this does
+	 * not change dump_contains, so this won't change what we do with objects
+	 * within the schema.  (If they belong to the extension, they'll get
+	 * suppressed by it, otherwise not.)
+	 */
+	(void) checkExtensionMembership(&nsinfo->dobj, fout);
 }
 
 /*
@@ -2552,7 +2560,8 @@ dumpDatabase(Archive *fout)
 		appendPQExpBufferStr(creaQry, " LC_CTYPE = ");
 		appendStringLiteralAH(creaQry, ctype, fout);
 	}
-	if (strlen(tablespace) > 0 && strcmp(tablespace, "pg_default") != 0)
+	if (strlen(tablespace) > 0 && strcmp(tablespace, "pg_default") != 0 &&
+		!dopt->outputNoTablespaces)
 		appendPQExpBuffer(creaQry, " TABLESPACE = %s",
 						  fmtId(tablespace));
 	appendPQExpBufferStr(creaQry, ";\n");
@@ -6035,14 +6044,28 @@ getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables)
 
 		if (!OidIsValid(seqinfo->owning_tab))
 			continue;			/* not an owned sequence */
-		if (seqinfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
-			continue;			/* no need to search */
+
 		owning_tab = findTableByOid(seqinfo->owning_tab);
-		if (owning_tab && owning_tab->dobj.dump)
-		{
+
+		/*
+		 * We need to dump the components that are being dumped for the table
+		 * and any components which the sequence is explicitly marked with.
+		 *
+		 * We can't simply use the set of components which are being dumped
+		 * for the table as the table might be in an extension (and only the
+		 * non-extension components, eg: ACLs if changed, security labels, and
+		 * policies, are being dumped) while the sequence is not (and
+		 * therefore the definition and other components should also be
+		 * dumped).
+		 *
+		 * If the sequence is part of the extension then it should be properly
+		 * marked by checkExtensionMembership() and this will be a no-op as
+		 * the table will be equivalently marked.
+		 */
+		seqinfo->dobj.dump = seqinfo->dobj.dump | owning_tab->dobj.dump;
+
+		if (seqinfo->dobj.dump != DUMP_COMPONENT_NONE)
 			seqinfo->interesting = true;
-			seqinfo->dobj.dump = DUMP_COMPONENT_ALL;
-		}
 	}
 }
 
@@ -16465,7 +16488,7 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 	{
 		TableInfo  *owning_tab = findTableByOid(tbinfo->owning_tab);
 
-		if (owning_tab && owning_tab->dobj.dump)
+		if (owning_tab && owning_tab->dobj.dump & DUMP_COMPONENT_DEFINITION)
 		{
 			resetPQExpBuffer(query);
 			appendPQExpBuffer(query, "ALTER SEQUENCE %s",

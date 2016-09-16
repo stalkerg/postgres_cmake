@@ -14,9 +14,9 @@
 
 #include "postgres.h"
 
+#include "access/parallel.h"
 #include "access/xact.h"
 #include "access/xlog.h"
-#include "access/parallel.h"
 #include "catalog/namespace.h"
 #include "commands/async.h"
 #include "libpq/libpq.h"
@@ -34,6 +34,7 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 #include "utils/snapmgr.h"
+
 
 /*
  * We don't want to waste a lot of memory on an error queue which, most of
@@ -94,7 +95,7 @@ typedef struct FixedParallelState
 int			ParallelWorkerNumber = -1;
 
 /* Is there a parallel message pending which we need to receive? */
-bool		ParallelMessagePending = false;
+volatile bool ParallelMessagePending = false;
 
 /* Are we initializing a parallel worker? */
 bool		InitializingParallelWorker = false;
@@ -106,11 +107,11 @@ static FixedParallelState *MyFixedParallelState;
 static dlist_head pcxt_list = DLIST_STATIC_INIT(pcxt_list);
 
 /* Private functions. */
-static void HandleParallelMessage(ParallelContext *, int, StringInfo msg);
-static void ParallelErrorContext(void *arg);
+static void HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg);
 static void ParallelExtensionTrampoline(dsm_segment *seg, shm_toc *toc);
 static void ParallelWorkerMain(Datum main_arg);
 static void WaitForParallelWorkersToExit(ParallelContext *pcxt);
+
 
 /*
  * Establish a new parallel context.  This should be done after entering
@@ -681,17 +682,17 @@ ParallelContextActive(void)
 
 /*
  * Handle receipt of an interrupt indicating a parallel worker message.
+ *
+ * Note: this is called within a signal handler!  All we can do is set
+ * a flag that will cause the next CHECK_FOR_INTERRUPTS() to invoke
+ * HandleParallelMessages().
  */
 void
 HandleParallelMessageInterrupt(void)
 {
-	int			save_errno = errno;
-
 	InterruptPending = true;
 	ParallelMessagePending = true;
 	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /*
@@ -701,15 +702,40 @@ void
 HandleParallelMessages(void)
 {
 	dlist_iter	iter;
+	MemoryContext oldcontext;
 
+	static MemoryContext hpm_context = NULL;
+
+	/*
+	 * This is invoked from ProcessInterrupts(), and since some of the
+	 * functions it calls contain CHECK_FOR_INTERRUPTS(), there is a potential
+	 * for recursive calls if more signals are received while this runs.  It's
+	 * unclear that recursive entry would be safe, and it doesn't seem useful
+	 * even if it is safe, so let's block interrupts until done.
+	 */
+	HOLD_INTERRUPTS();
+
+	/*
+	 * Moreover, CurrentMemoryContext might be pointing almost anywhere.  We
+	 * don't want to risk leaking data into long-lived contexts, so let's do
+	 * our work here in a private context that we can reset on each use.
+	 */
+	if (hpm_context == NULL)	/* first time through? */
+		hpm_context = AllocSetContextCreate(TopMemoryContext,
+											"HandleParallelMessages",
+											ALLOCSET_DEFAULT_SIZES);
+	else
+		MemoryContextReset(hpm_context);
+
+	oldcontext = MemoryContextSwitchTo(hpm_context);
+
+	/* OK to process messages.  Reset the flag saying there are more to do. */
 	ParallelMessagePending = false;
 
 	dlist_foreach(iter, &pcxt_list)
 	{
 		ParallelContext *pcxt;
 		int			i;
-		Size		nbytes;
-		void	   *data;
 
 		pcxt = dlist_container(ParallelContext, node, iter.cur);
 		if (pcxt->worker == NULL)
@@ -719,13 +745,15 @@ HandleParallelMessages(void)
 		{
 			/*
 			 * Read as many messages as we can from each worker, but stop when
-			 * either (1) the error queue goes away, which can happen if we
-			 * receive a Terminate message from the worker; or (2) no more
-			 * messages can be read from the worker without blocking.
+			 * either (1) the worker's error queue goes away, which can happen
+			 * if we receive a Terminate message from the worker; or (2) no
+			 * more messages can be read from the worker without blocking.
 			 */
 			while (pcxt->worker[i].error_mqh != NULL)
 			{
 				shm_mq_result res;
+				Size		nbytes;
+				void	   *data;
 
 				res = shm_mq_receive(pcxt->worker[i].error_mqh, &nbytes,
 									 &data, true);
@@ -742,14 +770,18 @@ HandleParallelMessages(void)
 				}
 				else
 					ereport(ERROR,
-							(errcode(ERRCODE_INTERNAL_ERROR),	/* XXX: wrong errcode? */
-							 errmsg("lost connection to parallel worker")));
-
-				/* This might make the error queue go away. */
-				CHECK_FOR_INTERRUPTS();
+						  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						   errmsg("lost connection to parallel worker")));
 			}
 		}
 	}
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/* Might as well clear the context on our way out */
+	MemoryContextReset(hpm_context);
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -778,19 +810,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 		case 'N':				/* NoticeResponse */
 			{
 				ErrorData	edata;
-				ErrorContextCallback errctx;
 				ErrorContextCallback *save_error_context_stack;
-
-				/*
-				 * Rethrow the error using the error context callbacks that
-				 * were in effect when the context was created, not the
-				 * current ones.
-				 */
-				save_error_context_stack = error_context_stack;
-				errctx.callback = ParallelErrorContext;
-				errctx.arg = NULL;
-				errctx.previous = pcxt->error_context_stack;
-				error_context_stack = &errctx;
 
 				/* Parse ErrorResponse or NoticeResponse. */
 				pq_parse_errornotice(msg, &edata);
@@ -798,10 +818,35 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				/* Death of a worker isn't enough justification for suicide. */
 				edata.elevel = Min(edata.elevel, ERROR);
 
-				/* Rethrow error or notice. */
+				/*
+				 * If desired, add a context line to show that this is a
+				 * message propagated from a parallel worker.  Otherwise, it
+				 * can sometimes be confusing to understand what actually
+				 * happened.  (We don't do this in FORCE_PARALLEL_REGRESS mode
+				 * because it causes test-result instability depending on
+				 * whether a parallel worker is actually used or not.)
+				 */
+				if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
+				{
+					if (edata.context)
+						edata.context = psprintf("%s\n%s", edata.context,
+												 _("parallel worker"));
+					else
+						edata.context = pstrdup(_("parallel worker"));
+				}
+
+				/*
+				 * Context beyond that should use the error context callbacks
+				 * that were in effect when the ParallelContext was created,
+				 * not the current ones.
+				 */
+				save_error_context_stack = error_context_stack;
+				error_context_stack = pcxt->error_context_stack;
+
+				/* Rethrow error or print notice. */
 				ThrowErrorData(&edata);
 
-				/* Restore previous context. */
+				/* Not an error, so restore previous context stack. */
 				error_context_stack = save_error_context_stack;
 
 				break;
@@ -833,7 +878,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 
 		default:
 			{
-				elog(ERROR, "unknown message type: %c (%d bytes)",
+				elog(ERROR, "unrecognized message type received from parallel worker: %c (message length %d bytes)",
 					 msgtype, msg->len);
 			}
 	}
@@ -915,10 +960,8 @@ ParallelWorkerMain(Datum main_arg)
 	Assert(CurrentResourceOwner == NULL);
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "parallel toplevel");
 	CurrentMemoryContext = AllocSetContextCreate(TopMemoryContext,
-												 "parallel worker",
-												 ALLOCSET_DEFAULT_MINSIZE,
-												 ALLOCSET_DEFAULT_INITSIZE,
-												 ALLOCSET_DEFAULT_MAXSIZE);
+												 "Parallel worker",
+												 ALLOCSET_DEFAULT_SIZES);
 
 	/*
 	 * Now that we have a resource owner, we can attach to the dynamic shared
@@ -1100,18 +1143,6 @@ ParallelExtensionTrampoline(dsm_segment *seg, shm_toc *toc)
 	entrypt = (parallel_worker_main_type)
 		load_external_function(library_name, function_name, true, NULL);
 	entrypt(seg, toc);
-}
-
-/*
- * Give the user a hint that this is a message propagated from a parallel
- * worker.  Otherwise, it can sometimes be confusing to understand what
- * actually happened.
- */
-static void
-ParallelErrorContext(void *arg)
-{
-	if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
-		errcontext("parallel worker");
 }
 
 /*

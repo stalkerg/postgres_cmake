@@ -238,6 +238,7 @@ _readQuery(void)
 	READ_INT_FIELD(resultRelation);
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasWindowFuncs);
+	READ_BOOL_FIELD(hasTargetSRFs);
 	READ_BOOL_FIELD(hasSubLinks);
 	READ_BOOL_FIELD(hasDistinctOn);
 	READ_BOOL_FIELD(hasRecursive);
@@ -1042,6 +1043,22 @@ _readMinMaxExpr(void)
 }
 
 /*
+ * _readSQLValueFunction
+ */
+static SQLValueFunction *
+_readSQLValueFunction(void)
+{
+	READ_LOCALS(SQLValueFunction);
+
+	READ_ENUM_FIELD(op, SQLValueFunctionOp);
+	READ_OID_FIELD(type);
+	READ_INT_FIELD(typmod);
+	READ_LOCATION_FIELD(location);
+
+	READ_DONE();
+}
+
+/*
  * _readXmlExpr
  */
 static XmlExpr *
@@ -1372,6 +1389,7 @@ _readDefElem(void)
 	READ_STRING_FIELD(defname);
 	READ_NODE_FIELD(arg);
 	READ_ENUM_FIELD(defaction, DefElemAction);
+	READ_LOCATION_FIELD(location);
 
 	READ_DONE();
 }
@@ -1991,6 +2009,7 @@ _readAgg(void)
 	READ_ATTRNUMBER_ARRAY(grpColIdx, local_node->numCols);
 	READ_OID_ARRAY(grpOperators, local_node->numCols);
 	READ_LONG_FIELD(numGroups);
+	READ_BITMAPSET_FIELD(aggParams);
 	READ_NODE_FIELD(groupingSets);
 	READ_NODE_FIELD(chain);
 
@@ -2348,6 +2367,8 @@ parseNodeString(void)
 		return_value = _readCoalesceExpr();
 	else if (MATCH("MINMAX", 6))
 		return_value = _readMinMaxExpr();
+	else if (MATCH("SQLVALUEFUNCTION", 16))
+		return_value = _readSQLValueFunction();
 	else if (MATCH("XMLEXPR", 7))
 		return_value = _readXmlExpr();
 	else if (MATCH("NULLTEST", 8))

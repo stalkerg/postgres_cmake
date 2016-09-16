@@ -78,7 +78,6 @@ static void set_plain_rel_size(PlannerInfo *root, RelOptInfo *rel,
 static void create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel);
 static void set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 						  RangeTblEntry *rte);
-static bool function_rte_parallel_ok(RangeTblEntry *rte);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					   RangeTblEntry *rte);
 static void set_tablesample_rel_size(PlannerInfo *root, RelOptInfo *rel,
@@ -542,8 +541,7 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 
 				if (proparallel != PROPARALLEL_SAFE)
 					return;
-				if (has_parallel_hazard((Node *) rte->tablesample->args,
-										false))
+				if (!is_parallel_safe(root, (Node *) rte->tablesample->args))
 					return;
 			}
 
@@ -596,16 +594,14 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 
 		case RTE_FUNCTION:
 			/* Check for parallel-restricted functions. */
-			if (!function_rte_parallel_ok(rte))
+			if (!is_parallel_safe(root, (Node *) rte->functions))
 				return;
 			break;
 
 		case RTE_VALUES:
-
-			/*
-			 * The data for a VALUES clause is stored in the plan tree itself,
-			 * so scanning it in a worker is fine.
-			 */
+			/* Check for parallel-restricted functions. */
+			if (!is_parallel_safe(root, (Node *) rte->values_lists))
+				return;
 			break;
 
 		case RTE_CTE:
@@ -629,38 +625,18 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 	 * outer join clauses work correctly.  It would likely break equivalence
 	 * classes, too.
 	 */
-	if (has_parallel_hazard((Node *) rel->baserestrictinfo, false))
+	if (!is_parallel_safe(root, (Node *) rel->baserestrictinfo))
 		return;
 
 	/*
 	 * Likewise, if the relation's outputs are not parallel-safe, give up.
 	 * (Usually, they're just Vars, but sometimes they're not.)
 	 */
-	if (has_parallel_hazard((Node *) rel->reltarget->exprs, false))
+	if (!is_parallel_safe(root, (Node *) rel->reltarget->exprs))
 		return;
 
 	/* We have a winner. */
 	rel->consider_parallel = true;
-}
-
-/*
- * Check whether a function RTE is scanning something parallel-restricted.
- */
-static bool
-function_rte_parallel_ok(RangeTblEntry *rte)
-{
-	ListCell   *lc;
-
-	foreach(lc, rte->functions)
-	{
-		RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
-
-		Assert(IsA(rtfunc, RangeTblFunction));
-		if (has_parallel_hazard(rtfunc->funcexpr, false))
-			return false;
-	}
-
-	return true;
 }
 
 /*
@@ -2446,7 +2422,8 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
 			continue;
 
 		/* Functions returning sets are unsafe (point 1) */
-		if (expression_returns_set((Node *) tle->expr))
+		if (subquery->hasTargetSRFs &&
+			expression_returns_set((Node *) tle->expr))
 		{
 			safetyInfo->unsafeColumns[tle->resno] = true;
 			continue;
@@ -2859,7 +2836,8 @@ remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel)
 		 * If it contains a set-returning function, we can't remove it since
 		 * that could change the number of rows returned by the subquery.
 		 */
-		if (expression_returns_set(texpr))
+		if (subquery->hasTargetSRFs &&
+			expression_returns_set(texpr))
 			continue;
 
 		/*

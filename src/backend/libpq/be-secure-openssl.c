@@ -53,10 +53,8 @@
 
 #include <openssl/ssl.h>
 #include <openssl/dh.h>
-#if SSLEAY_VERSION_NUMBER >= 0x0907000L
 #include <openssl/conf.h>
-#endif
-#if (OPENSSL_VERSION_NUMBER >= 0x0090800fL) && !defined(OPENSSL_NO_ECDH)
+#ifndef OPENSSL_NO_ECDH
 #include <openssl/ec.h>
 #endif
 
@@ -166,9 +164,7 @@ be_tls_init(void)
 
 	if (!SSL_context)
 	{
-#if SSLEAY_VERSION_NUMBER >= 0x0907000L
 		OPENSSL_config(NULL);
-#endif
 		SSL_library_init();
 		SSL_load_error_strings();
 
@@ -451,8 +447,6 @@ aloop:
 		return -1;
 	}
 
-	port->count = 0;
-
 	/* Get client certificate, if available. */
 	port->peer = SSL_get_peer_certificate(port->ssl);
 
@@ -553,7 +547,7 @@ be_tls_read(Port *port, void *ptr, size_t len, int *waitfor)
 	switch (err)
 	{
 		case SSL_ERROR_NONE:
-			port->count += n;
+			/* a-ok */
 			break;
 		case SSL_ERROR_WANT_READ:
 			*waitfor = WL_SOCKET_READABLE;
@@ -613,7 +607,7 @@ be_tls_write(Port *port, void *ptr, size_t len, int *waitfor)
 	switch (err)
 	{
 		case SSL_ERROR_NONE:
-			port->count += n;
+			/* a-ok */
 			break;
 		case SSL_ERROR_WANT_READ:
 			*waitfor = WL_SOCKET_READABLE;
@@ -978,7 +972,7 @@ info_cb(const SSL *ssl, int type, int args)
 static void
 initialize_ecdh(void)
 {
-#if (OPENSSL_VERSION_NUMBER >= 0x0090800fL) && !defined(OPENSSL_NO_ECDH)
+#ifndef OPENSSL_NO_ECDH
 	EC_KEY	   *ecdh;
 	int			nid;
 

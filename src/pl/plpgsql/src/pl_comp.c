@@ -93,7 +93,7 @@ static PLpgSQL_function *do_compile(FunctionCallInfo fcinfo,
 		   PLpgSQL_func_hashkey *hashkey,
 		   bool forValidator);
 static void plpgsql_compile_error_callback(void *arg);
-static void add_parameter_name(int itemtype, int itemno, const char *name);
+static void add_parameter_name(PLpgSQL_nsitem_type itemtype, int itemno, const char *name);
 static void add_dummy_return(PLpgSQL_function *function);
 static Node *plpgsql_pre_column_ref(ParseState *pstate, ColumnRef *cref);
 static Node *plpgsql_post_column_ref(ParseState *pstate, ColumnRef *cref, Node *var);
@@ -340,9 +340,7 @@ do_compile(FunctionCallInfo fcinfo,
 	 */
 	func_cxt = AllocSetContextCreate(TopMemoryContext,
 									 "PL/pgSQL function context",
-									 ALLOCSET_DEFAULT_MINSIZE,
-									 ALLOCSET_DEFAULT_INITSIZE,
-									 ALLOCSET_DEFAULT_MAXSIZE);
+									 ALLOCSET_DEFAULT_SIZES);
 	plpgsql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
 	function->fn_signature = format_procedure(fcinfo->flinfo->fn_oid);
@@ -412,7 +410,7 @@ do_compile(FunctionCallInfo fcinfo,
 				char		argmode = argmodes ? argmodes[i] : PROARGMODE_IN;
 				PLpgSQL_type *argdtype;
 				PLpgSQL_variable *argvariable;
-				int			argitemtype;
+				PLpgSQL_nsitem_type argitemtype;
 
 				/* Create $n name for variable */
 				snprintf(buf, sizeof(buf), "$%d", i + 1);
@@ -829,10 +827,8 @@ plpgsql_compile_inline(char *proc_source)
 	 * its own memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
-									 "PL/pgSQL function context",
-									 ALLOCSET_DEFAULT_MINSIZE,
-									 ALLOCSET_DEFAULT_INITSIZE,
-									 ALLOCSET_DEFAULT_MAXSIZE);
+									 "PL/pgSQL inline code context",
+									 ALLOCSET_DEFAULT_SIZES);
 	plpgsql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
 	function->fn_signature = pstrdup(func_name);
@@ -950,7 +946,7 @@ plpgsql_compile_error_callback(void *arg)
  * Add a name for a function parameter to the function's namespace
  */
 static void
-add_parameter_name(int itemtype, int itemno, const char *name)
+add_parameter_name(PLpgSQL_nsitem_type itemtype, int itemno, const char *name)
 {
 	/*
 	 * Before adding the name, check for duplicates.  We need this even though
@@ -2192,14 +2188,19 @@ build_datatype(HeapTuple typeTup, int32 typmod, Oid collation)
 	/* NB: this is only used to decide whether to apply expand_array */
 	if (typeStruct->typtype == TYPTYPE_BASE)
 	{
-		/* this test should match what get_element_type() checks */
+		/*
+		 * This test should include what get_element_type() checks.  We also
+		 * disallow non-toastable array types (i.e. oidvector and int2vector).
+		 */
 		typ->typisarray = (typeStruct->typlen == -1 &&
-						   OidIsValid(typeStruct->typelem));
+						   OidIsValid(typeStruct->typelem) &&
+						   typeStruct->typstorage != 'p');
 	}
 	else if (typeStruct->typtype == TYPTYPE_DOMAIN)
 	{
 		/* we can short-circuit looking up base types if it's not varlena */
 		typ->typisarray = (typeStruct->typlen == -1 &&
+						   typeStruct->typstorage != 'p' &&
 				 OidIsValid(get_base_element_type(typeStruct->typbasetype)));
 	}
 	else

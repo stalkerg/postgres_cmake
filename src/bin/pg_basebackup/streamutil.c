@@ -41,7 +41,8 @@ char	   *dbport = NULL;
 char	   *replication_slot = NULL;
 char	   *dbname = NULL;
 int			dbgetpassword = 0;	/* 0=auto, -1=never, 1=always */
-static char *dbpassword = NULL;
+static bool have_password = false;
+static char password[100];
 PGconn	   *conn = NULL;
 
 /*
@@ -64,9 +65,15 @@ GetConnection(void)
 	PQconninfoOption *conn_opt;
 	char	   *err_msg = NULL;
 
+	/* pg_recvlogical uses dbname only; others use connection_string only. */
+	Assert(dbname == NULL || connection_string == NULL);
+
 	/*
 	 * Merge the connection info inputs given in form of connection string,
 	 * options and default values (dbname=replication, replication=true, etc.)
+	 * Explicitly discard any dbname value in the connection string;
+	 * otherwise, PQconnectdbParams() would interpret that value as being
+	 * itself a connection string.
 	 */
 	i = 0;
 	if (connection_string)
@@ -80,7 +87,8 @@ GetConnection(void)
 
 		for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
 		{
-			if (conn_opt->val != NULL && conn_opt->val[0] != '\0')
+			if (conn_opt->val != NULL && conn_opt->val[0] != '\0' &&
+				strcmp(conn_opt->keyword, "dbname") != 0)
 				argcount++;
 		}
 
@@ -89,7 +97,8 @@ GetConnection(void)
 
 		for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
 		{
-			if (conn_opt->val != NULL && conn_opt->val[0] != '\0')
+			if (conn_opt->val != NULL && conn_opt->val[0] != '\0' &&
+				strcmp(conn_opt->keyword, "dbname") != 0)
 			{
 				keywords[i] = conn_opt->keyword;
 				values[i] = conn_opt->val;
@@ -133,24 +142,23 @@ GetConnection(void)
 	}
 
 	/* If -W was given, force prompt for password, but only the first time */
-	need_password = (dbgetpassword == 1 && dbpassword == NULL);
+	need_password = (dbgetpassword == 1 && !have_password);
 
 	do
 	{
 		/* Get a new password if appropriate */
 		if (need_password)
 		{
-			if (dbpassword)
-				free(dbpassword);
-			dbpassword = simple_prompt(_("Password: "), 100, false);
+			simple_prompt("Password: ", password, sizeof(password), false);
+			have_password = true;
 			need_password = false;
 		}
 
 		/* Use (or reuse, on a subsequent connection) password if we have it */
-		if (dbpassword)
+		if (have_password)
 		{
 			keywords[i] = "password";
-			values[i] = dbpassword;
+			values[i] = password;
 		}
 		else
 		{

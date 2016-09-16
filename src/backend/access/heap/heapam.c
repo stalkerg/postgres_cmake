@@ -3335,7 +3335,7 @@ l1:
 		Assert(!HeapTupleHasExternal(&tp));
 	}
 	else if (HeapTupleHasExternal(&tp))
-		toast_delete(relation, &tp);
+		toast_delete(relation, &tp, false);
 
 	/*
 	 * Mark tuple for invalidation from system caches at next command
@@ -3802,6 +3802,7 @@ l2:
 			ReleaseBuffer(vmbuffer);
 		bms_free(hot_attrs);
 		bms_free(key_attrs);
+		bms_free(id_attrs);
 		return result;
 	}
 
@@ -4268,6 +4269,7 @@ l2:
 
 	bms_free(hot_attrs);
 	bms_free(key_attrs);
+	bms_free(id_attrs);
 
 	return HeapTupleMayBeUpdated;
 }
@@ -4571,7 +4573,7 @@ heap_lock_tuple(Relation relation, HeapTuple tuple,
 	ItemId		lp;
 	Page		page;
 	Buffer		vmbuffer = InvalidBuffer;
-	BlockNumber	block;
+	BlockNumber block;
 	TransactionId xid,
 				xmax;
 	uint16		old_infomask,
@@ -4585,9 +4587,10 @@ heap_lock_tuple(Relation relation, HeapTuple tuple,
 	block = ItemPointerGetBlockNumber(tid);
 
 	/*
-	 * Before locking the buffer, pin the visibility map page if it may be
-	 * necessary. XXX: It might be possible for this to change after acquiring
-	 * the lock below. We don't yet deal with that case.
+	 * Before locking the buffer, pin the visibility map page if it appears to
+	 * be necessary.  Since we haven't got the lock yet, someone else might be
+	 * in the middle of changing this, so we'll need to recheck after we have
+	 * the lock.
 	 */
 	if (PageIsAllVisible(BufferGetPage(*buffer)))
 		visibilitymap_pin(relation, block, &vmbuffer);
@@ -5073,6 +5076,23 @@ failed:
 		else
 			hufd->cmax = InvalidCommandId;
 		goto out_locked;
+	}
+
+	/*
+	 * If we didn't pin the visibility map page and the page has become all
+	 * visible while we were busy locking the buffer, or during some
+	 * subsequent window during which we had it unlocked, we'll have to unlock
+	 * and re-lock, to avoid holding the buffer lock across I/O.  That's a bit
+	 * unfortunate, especially since we'll now have to recheck whether the
+	 * tuple has been locked or updated under us, but hopefully it won't
+	 * happen very often.
+	 */
+	if (vmbuffer == InvalidBuffer && PageIsAllVisible(page))
+	{
+		LockBuffer(*buffer, BUFFER_LOCK_UNLOCK);
+		visibilitymap_pin(relation, block, &vmbuffer);
+		LockBuffer(*buffer, BUFFER_LOCK_EXCLUSIVE);
+		goto l3;
 	}
 
 	xmax = HeapTupleHeaderGetRawXmax(tuple->t_data);
@@ -5625,7 +5645,7 @@ static HTSU_Result
 heap_lock_updated_tuple_rec(Relation rel, ItemPointer tid, TransactionId xid,
 							LockTupleMode mode)
 {
-	HTSU_Result	result;
+	HTSU_Result result;
 	ItemPointerData tupid;
 	HeapTupleData mytup;
 	Buffer		buf;
@@ -5665,9 +5685,10 @@ l4:
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * Before locking the buffer, pin the visibility map page if it may be
-		 * necessary.  XXX: It might be possible for this to change after
-		 * acquiring the lock below. We don't yet deal with that case.
+		 * Before locking the buffer, pin the visibility map page if it
+		 * appears to be necessary.  Since we haven't got the lock yet,
+		 * someone else might be in the middle of changing this, so we'll need
+		 * to recheck after we have the lock.
 		 */
 		if (PageIsAllVisible(BufferGetPage(buf)))
 			visibilitymap_pin(rel, block, &vmbuffer);
@@ -5675,6 +5696,19 @@ l4:
 			vmbuffer = InvalidBuffer;
 
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
+		/*
+		 * If we didn't pin the visibility map page and the page has become
+		 * all visible while we were busy locking the buffer, we'll have to
+		 * unlock and re-lock, to avoid holding the buffer lock across I/O.
+		 * That's a bit unfortunate, but hopefully shouldn't happen often.
+		 */
+		if (vmbuffer == InvalidBuffer && PageIsAllVisible(BufferGetPage(buf)))
+		{
+			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+			visibilitymap_pin(rel, block, &vmbuffer);
+			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+		}
 
 		/*
 		 * Check the tuple XMIN against prior XMAX, if any.  If we reached the
@@ -5686,6 +5720,17 @@ l4:
 		{
 			result = HeapTupleMayBeUpdated;
 			goto out_locked;
+		}
+
+		/*
+		 * Also check Xmin: if this tuple was created by an aborted
+		 * (sub)transaction, then we already locked the last live one in the
+		 * chain, thus we're done, so return success.
+		 */
+		if (TransactionIdDidAbort(HeapTupleHeaderGetXmin(mytup.t_data)))
+		{
+			UnlockReleaseBuffer(buf);
+			return HeapTupleMayBeUpdated;
 		}
 
 		old_infomask = mytup.t_data->t_infomask;
@@ -6025,7 +6070,8 @@ heap_finish_speculative(Relation relation, HeapTuple tuple)
  * could deadlock with each other, which would not be acceptable.
  *
  * This is somewhat redundant with heap_delete, but we prefer to have a
- * dedicated routine with stripped down requirements.
+ * dedicated routine with stripped down requirements.  Note that this is also
+ * used to delete the TOAST tuples created during speculative insertion.
  *
  * This routine does not affect logical decoding as it only looks at
  * confirmation records.
@@ -6069,7 +6115,7 @@ heap_abort_speculative(Relation relation, HeapTuple tuple)
 	 */
 	if (tp.t_data->t_choice.t_heap.t_xmin != xid)
 		elog(ERROR, "attempted to kill a tuple inserted by another transaction");
-	if (!HeapTupleHeaderIsSpeculative(tp.t_data))
+	if (!(IsToastRelation(relation) || HeapTupleHeaderIsSpeculative(tp.t_data)))
 		elog(ERROR, "attempted to kill a non-speculative tuple");
 	Assert(!HeapTupleHeaderIsHeapOnly(tp.t_data));
 
@@ -6139,7 +6185,10 @@ heap_abort_speculative(Relation relation, HeapTuple tuple)
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
 	if (HeapTupleHasExternal(&tp))
-		toast_delete(relation, &tp);
+	{
+		Assert(!IsToastRelation(relation));
+		toast_delete(relation, &tp, true);
+	}
 
 	/*
 	 * Never need to mark tuple for invalidation, since catalogs don't support
@@ -6666,6 +6715,7 @@ heap_prepare_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 	if (tuple->t_infomask & HEAP_MOVED)
 	{
 		xid = HeapTupleHeaderGetXvac(tuple);
+
 		/*
 		 * For Xvac, we ignore the cutoff_xid and just always perform the
 		 * freeze operation.  The oldest release in which such a value can
@@ -8809,9 +8859,9 @@ heap_xlog_lock(XLogReaderState *record)
 	 */
 	if (xlrec->flags & XLH_LOCK_ALL_FROZEN_CLEARED)
 	{
-		RelFileNode	rnode;
+		RelFileNode rnode;
 		Buffer		vmbuffer = InvalidBuffer;
-		BlockNumber	block;
+		BlockNumber block;
 		Relation	reln;
 
 		XLogRecGetBlockTag(record, 0, &rnode, NULL, &block);
@@ -8882,9 +8932,9 @@ heap_xlog_lock_updated(XLogReaderState *record)
 	 */
 	if (xlrec->flags & XLH_LOCK_ALL_FROZEN_CLEARED)
 	{
-		RelFileNode	rnode;
+		RelFileNode rnode;
 		Buffer		vmbuffer = InvalidBuffer;
-		BlockNumber	block;
+		BlockNumber block;
 		Relation	reln;
 
 		XLogRecGetBlockTag(record, 0, &rnode, NULL, &block);

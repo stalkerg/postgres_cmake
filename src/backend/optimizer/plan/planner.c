@@ -23,6 +23,7 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/pg_constraint_fn.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
@@ -241,12 +242,26 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * time and execution time, so don't generate a parallel plan if we're in
 	 * serializable mode.
 	 */
-	glob->parallelModeOK = (cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
-		IsUnderPostmaster && dynamic_shared_memory_type != DSM_IMPL_NONE &&
-		parse->commandType == CMD_SELECT && !parse->hasModifyingCTE &&
-		parse->utilityStmt == NULL && max_parallel_workers_per_gather > 0 &&
-		!IsParallelWorker() && !IsolationIsSerializable() &&
-		!has_parallel_hazard((Node *) parse, true);
+	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
+		IsUnderPostmaster &&
+		dynamic_shared_memory_type != DSM_IMPL_NONE &&
+		parse->commandType == CMD_SELECT &&
+		parse->utilityStmt == NULL &&
+		!parse->hasModifyingCTE &&
+		max_parallel_workers_per_gather > 0 &&
+		!IsParallelWorker() &&
+		!IsolationIsSerializable())
+	{
+		/* all the cheap tests pass, so scan the query tree */
+		glob->maxParallelHazard = max_parallel_hazard(parse);
+		glob->parallelModeOK = (glob->maxParallelHazard != PROPARALLEL_UNSAFE);
+	}
+	else
+	{
+		/* skip the query tree scan, just assume it's unsafe */
+		glob->maxParallelHazard = PROPARALLEL_UNSAFE;
+		glob->parallelModeOK = false;
+	}
 
 	/*
 	 * glob->parallelModeNeeded should tell us whether it's necessary to
@@ -588,6 +603,10 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	parse->targetList = (List *)
 		preprocess_expression(root, (Node *) parse->targetList,
 							  EXPRKIND_TARGET);
+
+	/* Constant-folding might have removed all set-returning functions */
+	if (parse->hasTargetSRFs)
+		parse->hasTargetSRFs = expression_returns_set((Node *) parse->targetList);
 
 	newWithCheckOptions = NIL;
 	foreach(l, parse->withCheckOptions)
@@ -1687,16 +1706,14 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * Figure out whether there's a hard limit on the number of rows that
 		 * query_planner's result subplan needs to return.  Even if we know a
 		 * hard limit overall, it doesn't apply if the query has any
-		 * grouping/aggregation operations.  (XXX it also doesn't apply if the
-		 * tlist contains any SRFs; but checking for that here seems more
-		 * costly than it's worth, since root->limit_tuples is only used for
-		 * cost estimates, and only in a small number of cases.)
+		 * grouping/aggregation operations, or SRFs in the tlist.
 		 */
 		if (parse->groupClause ||
 			parse->groupingSets ||
 			parse->distinctClause ||
 			parse->hasAggs ||
 			parse->hasWindowFuncs ||
+			parse->hasTargetSRFs ||
 			root->hasHavingQual)
 			root->limit_tuples = -1.0;
 		else
@@ -1802,7 +1819,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * computed by partial paths.
 		 */
 		if (current_rel->partial_pathlist &&
-			!has_parallel_hazard((Node *) scanjoin_target->exprs, false))
+			is_parallel_safe(root, (Node *) scanjoin_target->exprs))
 		{
 			/* Apply the scan/join target to each partial path */
 			foreach(lc, current_rel->partial_pathlist)
@@ -1913,7 +1930,11 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	 * weird usage that it doesn't seem worth greatly complicating matters to
 	 * account for it.
 	 */
-	tlist_rows = tlist_returns_set_rows(tlist);
+	if (parse->hasTargetSRFs)
+		tlist_rows = tlist_returns_set_rows(tlist);
+	else
+		tlist_rows = 1;
+
 	if (tlist_rows > 1)
 	{
 		foreach(lc, current_rel->pathlist)
@@ -1948,8 +1969,8 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	 * query.
 	 */
 	if (current_rel->consider_parallel &&
-		!has_parallel_hazard(parse->limitOffset, false) &&
-		!has_parallel_hazard(parse->limitCount, false))
+		is_parallel_safe(root, parse->limitOffset) &&
+		is_parallel_safe(root, parse->limitCount))
 		final_rel->consider_parallel = true;
 
 	/*
@@ -3326,8 +3347,8 @@ create_grouping_paths(PlannerInfo *root,
 	 * target list and HAVING quals are parallel-safe.
 	 */
 	if (input_rel->consider_parallel &&
-		!has_parallel_hazard((Node *) target->exprs, false) &&
-		!has_parallel_hazard((Node *) parse->havingQual, false))
+		is_parallel_safe(root, (Node *) target->exprs) &&
+		is_parallel_safe(root, (Node *) parse->havingQual))
 		grouped_rel->consider_parallel = true;
 
 	/*
@@ -3881,8 +3902,8 @@ create_window_paths(PlannerInfo *root,
 	 * target list and active windows for non-parallel-safe constructs.
 	 */
 	if (input_rel->consider_parallel &&
-		!has_parallel_hazard((Node *) output_target->exprs, false) &&
-		!has_parallel_hazard((Node *) activeWindows, false))
+		is_parallel_safe(root, (Node *) output_target->exprs) &&
+		is_parallel_safe(root, (Node *) activeWindows))
 		window_rel->consider_parallel = true;
 
 	/*
@@ -4272,7 +4293,7 @@ create_ordered_paths(PlannerInfo *root,
 	 * target list is parallel-safe.
 	 */
 	if (input_rel->consider_parallel &&
-		!has_parallel_hazard((Node *) target->exprs, false))
+		is_parallel_safe(root, (Node *) target->exprs))
 		ordered_rel->consider_parallel = true;
 
 	/*
@@ -4980,7 +5001,8 @@ make_sort_input_target(PlannerInfo *root,
 			 * Check for SRF or volatile functions.  Check the SRF case first
 			 * because we must know whether we have any postponed SRFs.
 			 */
-			if (expression_returns_set((Node *) expr))
+			if (parse->hasTargetSRFs &&
+				expression_returns_set((Node *) expr))
 			{
 				/* We'll decide below whether these are postponable */
 				col_is_srf[i] = true;
@@ -5019,6 +5041,7 @@ make_sort_input_target(PlannerInfo *root,
 		{
 			/* For sortgroupref cols, just check if any contain SRFs */
 			if (!have_srf_sortcols &&
+				parse->hasTargetSRFs &&
 				expression_returns_set((Node *) expr))
 				have_srf_sortcols = true;
 		}

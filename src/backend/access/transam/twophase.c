@@ -1645,9 +1645,12 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 
 	if (log_checkpoints && serialized_xacts > 0)
 		ereport(LOG,
-				(errmsg("%u two-phase state files were written "
-						"for long-running prepared transactions",
-						serialized_xacts)));
+				(errmsg_plural("%u two-phase state file was written "
+							   "for long-running prepared transactions",
+							   "%u two-phase state files were written "
+							   "for long-running prepared transactions",
+							   serialized_xacts,
+							   serialized_xacts)));
 }
 
 /*
@@ -1755,8 +1758,9 @@ PrescanPreparedTransactions(TransactionId **xids_p, int *nxids_p)
 			 * need to hold a lock while examining it.  We still acquire the
 			 * lock to modify it, though.
 			 */
-			subxids = (TransactionId *)
-				(buf + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+			subxids = (TransactionId *) (buf +
+								MAXALIGN(sizeof(TwoPhaseFileHeader)) +
+								MAXALIGN(hdr->gidlen));
 			for (i = 0; i < hdr->nsubxacts; i++)
 			{
 				TransactionId subxid = subxids[i];
@@ -1874,8 +1878,9 @@ StandbyRecoverPreparedTransactions(bool overwriteOK)
 			 * Examine subtransaction XIDs ... they should all follow main
 			 * XID.
 			 */
-			subxids = (TransactionId *)
-				(buf + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+			subxids = (TransactionId *) (buf +
+								MAXALIGN(sizeof(TwoPhaseFileHeader)) +
+								MAXALIGN(hdr->gidlen));
 			for (i = 0; i < hdr->nsubxacts; i++)
 			{
 				TransactionId subxid = subxids[i];
@@ -1883,6 +1888,8 @@ StandbyRecoverPreparedTransactions(bool overwriteOK)
 				Assert(TransactionIdFollows(subxid, xid));
 				SubTransSetParent(xid, subxid, overwriteOK);
 			}
+
+			pfree(buf);
 		}
 	}
 	FreeDir(cldir);

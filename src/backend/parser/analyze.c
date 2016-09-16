@@ -51,7 +51,8 @@ post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
 static Query *transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt);
 static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt);
 static List *transformInsertRow(ParseState *pstate, List *exprlist,
-				   List *stmtcols, List *icolumns, List *attrnos);
+				   List *stmtcols, List *icolumns, List *attrnos,
+				   bool strip_indirection);
 static OnConflictExpr *transformOnConflictClause(ParseState *pstate,
 						  OnConflictClause *onConflictClause);
 static int	count_rowexpr_columns(ParseState *pstate, Node *expr);
@@ -416,6 +417,7 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
+	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs)
 		parseCheckAggregates(pstate, qry);
@@ -619,7 +621,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
 									  stmt->cols,
-									  icolumns, attrnos);
+									  icolumns, attrnos,
+									  false);
 	}
 	else if (list_length(selectStmt->valuesLists) > 1)
 	{
@@ -663,10 +666,20 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 											exprLocation((Node *) sublist))));
 			}
 
-			/* Prepare row for assignment to target table */
+			/*
+			 * Prepare row for assignment to target table.  We process any
+			 * indirection on the target column specs normally but then strip
+			 * off the resulting field/array assignment nodes, since we don't
+			 * want the parsed statement to contain copies of those in each
+			 * VALUES row.  (It's annoying to have to transform the
+			 * indirection specs over and over like this, but avoiding it
+			 * would take some really messy refactoring of
+			 * transformAssignmentIndirection.)
+			 */
 			sublist = transformInsertRow(pstate, sublist,
 										 stmt->cols,
-										 icolumns, attrnos);
+										 icolumns, attrnos,
+										 true);
 
 			/*
 			 * We must assign collations now because assign_query_collations
@@ -717,6 +730,14 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		 * Generate list of Vars referencing the RTE
 		 */
 		expandRTE(rte, rtr->rtindex, 0, -1, false, NULL, &exprList);
+
+		/*
+		 * Re-apply any indirection on the target column specs to the Vars
+		 */
+		exprList = transformInsertRow(pstate, exprList,
+									  stmt->cols,
+									  icolumns, attrnos,
+									  false);
 	}
 	else
 	{
@@ -739,7 +760,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
 									  stmt->cols,
-									  icolumns, attrnos);
+									  icolumns, attrnos,
+									  false);
 	}
 
 	/*
@@ -798,6 +820,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
+	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 
 	assign_query_collations(pstate, qry);
@@ -808,12 +831,17 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 /*
  * Prepare an INSERT row for assignment to the target table.
  *
- * The row might be either a VALUES row, or variables referencing a
- * sub-SELECT output.
+ * exprlist: transformed expressions for source values; these might come from
+ * a VALUES row, or be Vars referencing a sub-SELECT or VALUES RTE output.
+ * stmtcols: original target-columns spec for INSERT (we just test for NIL)
+ * icolumns: effective target-columns spec (list of ResTarget)
+ * attrnos: integer column numbers (must be same length as icolumns)
+ * strip_indirection: if true, remove any field/array assignment nodes
  */
 static List *
 transformInsertRow(ParseState *pstate, List *exprlist,
-				   List *stmtcols, List *icolumns, List *attrnos)
+				   List *stmtcols, List *icolumns, List *attrnos,
+				   bool strip_indirection)
 {
 	List	   *result;
 	ListCell   *lc;
@@ -878,6 +906,29 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 									 lfirst_int(attnos),
 									 col->indirection,
 									 col->location);
+
+		if (strip_indirection)
+		{
+			while (expr)
+			{
+				if (IsA(expr, FieldStore))
+				{
+					FieldStore *fstore = (FieldStore *) expr;
+
+					expr = (Expr *) linitial(fstore->newvals);
+				}
+				else if (IsA(expr, ArrayRef))
+				{
+					ArrayRef   *aref = (ArrayRef *) expr;
+
+					if (aref->refassgnexpr == NULL)
+						break;
+					expr = aref->refassgnexpr;
+				}
+				else
+					break;
+			}
+		}
 
 		result = lappend(result, expr);
 
@@ -1182,6 +1233,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
+	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
@@ -1642,6 +1694,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
+	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
@@ -2121,6 +2174,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
+	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 
 	assign_query_collations(pstate, qry);
@@ -2516,7 +2570,7 @@ CheckSelectLocking(Query *qry, LockClauseStrength strength)
 		  translator: %s is a SQL row locking clause such as FOR UPDATE */
 				 errmsg("%s is not allowed with window functions",
 						LCS_asString(strength))));
-	if (expression_returns_set((Node *) qry->targetList))
+	if (qry->hasTargetSRFs)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*------

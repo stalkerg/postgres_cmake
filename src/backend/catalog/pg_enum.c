@@ -315,21 +315,21 @@ restart:
 			newelemorder = nbr_en->enumsortorder + 1;
 		else
 		{
-			other_nbr_en = (Form_pg_enum) GETSTRUCT(existing[other_nbr_index]);
-			newelemorder = (nbr_en->enumsortorder +
-							other_nbr_en->enumsortorder) / 2;
-
 			/*
-			 * On some machines, newelemorder may be in a register that's
-			 * wider than float4.  We need to force it to be rounded to float4
-			 * precision before making the following comparisons, or we'll get
-			 * wrong results.  (Such behavior violates the C standard, but
-			 * fixing the compilers is out of our reach.)
+			 * The midpoint value computed here has to be rounded to float4
+			 * precision, else our equality comparisons against the adjacent
+			 * values are meaningless.  The most portable way of forcing that
+			 * to happen with non-C-standard-compliant compilers is to store
+			 * it into a volatile variable.
 			 */
-			newelemorder = DatumGetFloat4(Float4GetDatum(newelemorder));
+			volatile float4 midpoint;
 
-			if (newelemorder == nbr_en->enumsortorder ||
-				newelemorder == other_nbr_en->enumsortorder)
+			other_nbr_en = (Form_pg_enum) GETSTRUCT(existing[other_nbr_index]);
+			midpoint = (nbr_en->enumsortorder +
+						other_nbr_en->enumsortorder) / 2;
+
+			if (midpoint == nbr_en->enumsortorder ||
+				midpoint == other_nbr_en->enumsortorder)
 			{
 				RenumberEnumType(pg_enum, existing, nelems);
 				/* Clean up and start over */
@@ -337,6 +337,8 @@ restart:
 				ReleaseCatCacheList(list);
 				goto restart;
 			}
+
+			newelemorder = midpoint;
 		}
 	}
 
@@ -456,6 +458,91 @@ restart:
 	enum_tup = heap_form_tuple(RelationGetDescr(pg_enum), values, nulls);
 	HeapTupleSetOid(enum_tup, newOid);
 	simple_heap_insert(pg_enum, enum_tup);
+	CatalogUpdateIndexes(pg_enum, enum_tup);
+	heap_freetuple(enum_tup);
+
+	heap_close(pg_enum, RowExclusiveLock);
+}
+
+
+/*
+ * RenameEnumLabel
+ *		Rename a label in an enum set.
+ */
+void
+RenameEnumLabel(Oid enumTypeOid,
+				const char *oldVal,
+				const char *newVal)
+{
+	Relation	pg_enum;
+	HeapTuple	enum_tup;
+	Form_pg_enum en;
+	CatCList   *list;
+	int			nelems;
+	HeapTuple	old_tup;
+	bool		found_new;
+	int			i;
+
+	/* check length of new label is ok */
+	if (strlen(newVal) > (NAMEDATALEN - 1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_NAME),
+				 errmsg("invalid enum label \"%s\"", newVal),
+				 errdetail("Labels must be %d characters or less.",
+						   NAMEDATALEN - 1)));
+
+	/*
+	 * Acquire a lock on the enum type, which we won't release until commit.
+	 * This ensures that two backends aren't concurrently modifying the same
+	 * enum type.  Since we are not changing the type's sort order, this is
+	 * probably not really necessary, but there seems no reason not to take
+	 * the lock to be sure.
+	 */
+	LockDatabaseObject(TypeRelationId, enumTypeOid, 0, ExclusiveLock);
+
+	pg_enum = heap_open(EnumRelationId, RowExclusiveLock);
+
+	/* Get the list of existing members of the enum */
+	list = SearchSysCacheList1(ENUMTYPOIDNAME,
+							   ObjectIdGetDatum(enumTypeOid));
+	nelems = list->n_members;
+
+	/*
+	 * Locate the element to rename and check if the new label is already in
+	 * use.  (The unique index on pg_enum would catch that anyway, but we
+	 * prefer a friendlier error message.)
+	 */
+	old_tup = NULL;
+	found_new = false;
+	for (i = 0; i < nelems; i++)
+	{
+		enum_tup = &(list->members[i]->tuple);
+		en = (Form_pg_enum) GETSTRUCT(enum_tup);
+		if (strcmp(NameStr(en->enumlabel), oldVal) == 0)
+			old_tup = enum_tup;
+		if (strcmp(NameStr(en->enumlabel), newVal) == 0)
+			found_new = true;
+	}
+	if (!old_tup)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("\"%s\" is not an existing enum label",
+						oldVal)));
+	if (found_new)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("enum label \"%s\" already exists",
+						newVal)));
+
+	/* OK, make a writable copy of old tuple */
+	enum_tup = heap_copytuple(old_tup);
+	en = (Form_pg_enum) GETSTRUCT(enum_tup);
+
+	ReleaseCatCacheList(list);
+
+	/* Update the pg_enum entry */
+	namestrcpy(&en->enumlabel, newVal);
+	simple_heap_update(pg_enum, &enum_tup->t_self, enum_tup);
 	CatalogUpdateIndexes(pg_enum, enum_tup);
 	heap_freetuple(enum_tup);
 

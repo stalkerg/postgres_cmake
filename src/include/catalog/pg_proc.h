@@ -563,11 +563,18 @@ DATA(insert OID = 334 (  spghandler		PGNSP PGUID 12 1 0 0 0 f f f f t f v s 1 0 
 DESCR("spgist index access method handler");
 DATA(insert OID = 335 (  brinhandler	PGNSP PGUID 12 1 0 0 0 f f f f t f v s 1 0 325 "2281" _null_ _null_ _null_ _null_ _null_	brinhandler _null_ _null_ _null_ ));
 DESCR("brin index access method handler");
+DATA(insert OID = 3952 (  brin_summarize_new_values PGNSP PGUID 12 1 0 0 0 f f f f t f v s 1 0 23 "2205" _null_ _null_ _null_ _null_ _null_ brin_summarize_new_values _null_ _null_ _null_ ));
+DESCR("brin: standalone scan new table pages");
 
 DATA(insert OID = 338 (  amvalidate		PGNSP PGUID 12 1 0 0 0 f f f f t f v s 1 0 16 "26" _null_ _null_ _null_ _null_ _null_	amvalidate _null_ _null_ _null_ ));
 DESCR("validate an operator class");
-DATA(insert OID = 3952 (  brin_summarize_new_values PGNSP PGUID 12 1 0 0 0 f f f f t f v s 1 0 23 "2205" _null_ _null_ _null_ _null_ _null_ brin_summarize_new_values _null_ _null_ _null_ ));
-DESCR("brin: standalone scan new table pages");
+
+DATA(insert OID = 636 (  pg_indexam_has_property		PGNSP PGUID 12 1 0 0 0 f f f f t f s s 2 0 16 "26 25" _null_ _null_ _null_ _null_ _null_	pg_indexam_has_property _null_ _null_ _null_ ));
+DESCR("test property of an index access method");
+DATA(insert OID = 637 (  pg_index_has_property			PGNSP PGUID 12 1 0 0 0 f f f f t f s s 2 0 16 "2205 25" _null_ _null_ _null_ _null_ _null_	pg_index_has_property _null_ _null_ _null_ ));
+DESCR("test property of an index");
+DATA(insert OID = 638 (  pg_index_column_has_property	PGNSP PGUID 12 1 0 0 0 f f f f t f s s 3 0 16 "2205 23 25" _null_ _null_ _null_ _null_ _null_ pg_index_column_has_property _null_ _null_ _null_ ));
+DESCR("test property of an index column");
 
 DATA(insert OID = 339 (  poly_same		   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "604 604" _null_ _null_ _null_ _null_ _null_ poly_same _null_ _null_ _null_ ));
 DATA(insert OID = 340 (  poly_contain	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "604 604" _null_ _null_ _null_ _null_ _null_ poly_contain _null_ _null_ _null_ ));
@@ -1905,10 +1912,14 @@ DATA(insert OID =  2284 ( regexp_replace	   PGNSP PGUID 12 1 0 0 0 f f f f t f i
 DESCR("replace text using regexp");
 DATA(insert OID =  2285 ( regexp_replace	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 4 0 25 "25 25 25 25" _null_ _null_ _null_ _null_ _null_ textregexreplace _null_ _null_ _null_ ));
 DESCR("replace text using regexp");
+DATA(insert OID =  3396 ( regexp_match	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 1009 "25 25" _null_ _null_ _null_ _null_ _null_ regexp_match_no_flags _null_ _null_ _null_ ));
+DESCR("find first match for regexp");
+DATA(insert OID =  3397 ( regexp_match	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 1009 "25 25 25" _null_ _null_ _null_ _null_ _null_ regexp_match _null_ _null_ _null_ ));
+DESCR("find first match for regexp");
 DATA(insert OID =  2763 ( regexp_matches   PGNSP PGUID 12 1 1 0 0 f f f f t t i s 2 0 1009 "25 25" _null_ _null_ _null_ _null_ _null_ regexp_matches_no_flags _null_ _null_ _null_ ));
-DESCR("find all match groups for regexp");
+DESCR("find match(es) for regexp");
 DATA(insert OID =  2764 ( regexp_matches   PGNSP PGUID 12 1 10 0 0 f f f f t t i s 3 0 1009 "25 25 25" _null_ _null_ _null_ _null_ _null_ regexp_matches _null_ _null_ _null_ ));
-DESCR("find all match groups for regexp");
+DESCR("find match(es) for regexp");
 DATA(insert OID =  2088 ( split_part   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 25 "25 25 23" _null_ _null_ _null_ _null_ _null_	split_text _null_ _null_ _null_ ));
 DESCR("split string by field_sep and return field_num");
 DATA(insert OID =  2765 ( regexp_split_to_table PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 2 0 25 "25 25" _null_ _null_ _null_ _null_ _null_ regexp_split_to_table_no_flags _null_ _null_ _null_ ));
@@ -2200,6 +2211,18 @@ DATA(insert OID = 3558 (  inet_gist_picksplit	PGNSP PGUID 12 1 0 0 0 f f f f t f
 DESCR("GiST support");
 DATA(insert OID = 3559 (  inet_gist_same		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 2281 "869 869 2281" _null_ _null_ _null_ _null_ _null_ inet_gist_same _null_ _null_ _null_ ));
 DESCR("GiST support");
+
+/* SP-GiST support for inet and cidr */
+DATA(insert OID = 3795 (  inet_spg_config		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_ _null_ inet_spg_config _null_ _null_ _null_ ));
+DESCR("SP-GiST support");
+DATA(insert OID = 3796 (  inet_spg_choose		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_ _null_ inet_spg_choose _null_ _null_ _null_ ));
+DESCR("SP-GiST support");
+DATA(insert OID = 3797 (  inet_spg_picksplit	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_ _null_ inet_spg_picksplit _null_ _null_ _null_ ));
+DESCR("SP-GiST support");
+DATA(insert OID = 3798 (  inet_spg_inner_consistent PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_ _null_ inet_spg_inner_consistent _null_ _null_ _null_ ));
+DESCR("SP-GiST support");
+DATA(insert OID = 3799 (  inet_spg_leaf_consistent	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "2281 2281" _null_ _null_ _null_ _null_ _null_ inet_spg_leaf_consistent _null_ _null_ _null_ ));
+DESCR("SP-GiST support");
 
 /* Selectivity estimation for inet and cidr */
 DATA(insert OID = 3560 (  networksel		   PGNSP PGUID 12 1 0 0 0 f f f f t f s s 4 0 701 "2281 26 2281 23" _null_ _null_ _null_ _null_ _null_	networksel _null_ _null_ _null_ ));
@@ -4893,6 +4916,8 @@ DATA(insert OID = 2942 (  txid_snapshot_send		PGNSP PGUID 12 1  0 0 0 f f f f t 
 DESCR("I/O");
 DATA(insert OID = 2943 (  txid_current				PGNSP PGUID 12 1  0 0 0 f f f f t f s u 0 0 20 "" _null_ _null_ _null_ _null_ _null_ txid_current _null_ _null_ _null_ ));
 DESCR("get current transaction ID");
+DATA(insert OID = 3348 (  txid_current_if_assigned	PGNSP PGUID 12 1  0 0 0 f f f f t f s u 0 0 20 "" _null_ _null_ _null_ _null_ _null_ txid_current_if_assigned _null_ _null_ _null_ ));
+DESCR("get current transaction ID");
 DATA(insert OID = 2944 (  txid_current_snapshot		PGNSP PGUID 12 1  0 0 0 f f f f t f s s 0 0 2970 "" _null_ _null_ _null_ _null_ _null_ txid_current_snapshot _null_ _null_ _null_ ));
 DESCR("get current snapshot");
 DATA(insert OID = 2945 (  txid_snapshot_xmin		PGNSP PGUID 12 1  0 0 0 f f f f t f i s 1 0 20 "2970" _null_ _null_ _null_ _null_ _null_ txid_snapshot_xmin _null_ _null_ _null_ ));
@@ -5284,7 +5309,7 @@ DESCR("get the replication progress of the current session");
 DATA(insert OID = 6010 ( pg_replication_origin_xact_setup PGNSP PGUID 12 1 0 0 0 f f f f t f v r 2 0 2278 "3220 1184" _null_ _null_ _null_ _null_ _null_ pg_replication_origin_xact_setup _null_ _null_ _null_ ));
 DESCR("setup the transaction's origin lsn and timestamp");
 
-DATA(insert OID = 6011 ( pg_replication_origin_xact_reset PGNSP PGUID 12 1 0 0 0 f f f f t f v r 2 0 2278 "3220 1184" _null_ _null_ _null_ _null_ _null_ pg_replication_origin_xact_reset _null_ _null_ _null_ ));
+DATA(insert OID = 6011 ( pg_replication_origin_xact_reset PGNSP PGUID 12 1 0 0 0 f f f f t f v r 0 0 2278 "" _null_ _null_ _null_ _null_ _null_ pg_replication_origin_xact_reset _null_ _null_ _null_ ));
 DESCR("reset the transaction's origin lsn and timestamp");
 
 DATA(insert OID = 6012 ( pg_replication_origin_advance PGNSP PGUID 12 1 0 0 0 f f f f t f v u 2 0 2278 "25 3220" _null_ _null_ _null_ _null_ _null_ pg_replication_origin_advance _null_ _null_ _null_ ));

@@ -14,7 +14,6 @@
 #ifndef BUFMGR_H
 #define BUFMGR_H
 
-#include "catalog/catalog.h"
 #include "storage/block.h"
 #include "storage/buf.h"
 #include "storage/bufpage.h"
@@ -279,7 +278,8 @@ TestForOldSnapshot(Snapshot snapshot, Relation relation, Page page)
 
 	if (old_snapshot_threshold >= 0
 		&& (snapshot) != NULL
-		&& (snapshot)->satisfies == HeapTupleSatisfiesMVCC
+		&& ((snapshot)->satisfies == HeapTupleSatisfiesMVCC
+			|| (snapshot)->satisfies == HeapTupleSatisfiesToast)
 		&& !XLogRecPtrIsInvalid((snapshot)->lsn)
 		&& PageGetLSN(page) > (snapshot)->lsn)
 		TestForOldSnapshot_impl(snapshot, relation);

@@ -12,6 +12,7 @@
 #include "postgres_fe.h"
 
 #include "dumputils.h"
+#include "fe_utils/string_utils.h"
 #include "parallel.h"
 #include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
@@ -128,10 +129,12 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname, const char *username)
 static PGconn *
 _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 {
+	PQExpBufferData connstr;
 	PGconn	   *newConn;
 	const char *newdb;
 	const char *newuser;
 	char	   *password;
+	char		passbuf[100];
 	bool		new_pass;
 
 	if (!reqdb)
@@ -147,14 +150,17 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 	ahlog(AH, 1, "connecting to database \"%s\" as user \"%s\"\n",
 		  newdb, newuser);
 
-	password = AH->savedPassword ? pg_strdup(AH->savedPassword) : NULL;
+	password = AH->savedPassword;
 
 	if (AH->promptPassword == TRI_YES && password == NULL)
 	{
-		password = simple_prompt("Password: ", 100, false);
-		if (password == NULL)
-			exit_horribly(modulename, "out of memory\n");
+		simple_prompt("Password: ", passbuf, sizeof(passbuf), false);
+		password = passbuf;
 	}
+
+	initPQExpBuffer(&connstr);
+	appendPQExpBuffer(&connstr, "dbname=");
+	appendConnStrVal(&connstr, newdb);
 
 	do
 	{
@@ -170,7 +176,7 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 		keywords[3] = "password";
 		values[3] = password;
 		keywords[4] = "dbname";
-		values[4] = newdb;
+		values[4] = connstr.data;
 		keywords[5] = "fallback_application_name";
 		values[5] = progname;
 		keywords[6] = NULL;
@@ -195,16 +201,14 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 			fprintf(stderr, "Connecting to %s as %s\n",
 					newdb, newuser);
 
-			if (password)
-				free(password);
-
 			if (AH->promptPassword != TRI_NO)
-				password = simple_prompt("Password: ", 100, false);
+			{
+				simple_prompt("Password: ", passbuf, sizeof(passbuf), false);
+				password = passbuf;
+			}
 			else
 				exit_horribly(modulename, "connection needs password\n");
 
-			if (password == NULL)
-				exit_horribly(modulename, "out of memory\n");
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -219,8 +223,8 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 			free(AH->savedPassword);
 		AH->savedPassword = pg_strdup(PQpass(newConn));
 	}
-	if (password)
-		free(password);
+
+	termPQExpBuffer(&connstr);
 
 	/* check for version mismatch */
 	_check_database_version(AH);
@@ -250,18 +254,18 @@ ConnectDatabase(Archive *AHX,
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	char	   *password;
+	char		passbuf[100];
 	bool		new_pass;
 
 	if (AH->connection)
 		exit_horribly(modulename, "already connected to a database\n");
 
-	password = AH->savedPassword ? pg_strdup(AH->savedPassword) : NULL;
+	password = AH->savedPassword;
 
 	if (prompt_password == TRI_YES && password == NULL)
 	{
-		password = simple_prompt("Password: ", 100, false);
-		if (password == NULL)
-			exit_horribly(modulename, "out of memory\n");
+		simple_prompt("Password: ", passbuf, sizeof(passbuf), false);
+		password = passbuf;
 	}
 	AH->promptPassword = prompt_password;
 
@@ -301,9 +305,8 @@ ConnectDatabase(Archive *AHX,
 			prompt_password != TRI_NO)
 		{
 			PQfinish(AH->connection);
-			password = simple_prompt("Password: ", 100, false);
-			if (password == NULL)
-				exit_horribly(modulename, "out of memory\n");
+			simple_prompt("Password: ", passbuf, sizeof(passbuf), false);
+			password = passbuf;
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -324,8 +327,6 @@ ConnectDatabase(Archive *AHX,
 			free(AH->savedPassword);
 		AH->savedPassword = pg_strdup(PQpass(AH->connection));
 	}
-	if (password)
-		free(password);
 
 	/* check for version mismatch */
 	_check_database_version(AH);

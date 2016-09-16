@@ -28,10 +28,12 @@ typedef struct
 } inet_struct;
 
 /*
+ * We use these values for the "family" field.
+ *
  * Referencing all of the non-AF_INET types to AF_INET lets us work on
  * machines which may not have the appropriate address family (like
  * inet6 addresses when AF_INET6 isn't present) but doesn't cause a
- * dump/reload requirement.  Existing databases used AF_INET for the family
+ * dump/reload requirement.  Pre-7.4 databases used AF_INET for the family
  * type on disk.
  */
 #define PGSQL_AF_INET	(AF_INET + 0)
@@ -117,6 +119,7 @@ typedef struct macaddr
 /*
  * Support functions in network.c
  */
+extern inet *cidr_set_masklen_internal(const inet *src, int bits);
 extern int	bitncmp(const unsigned char *l, const unsigned char *r, int n);
 extern int	bitncommon(const unsigned char *l, const unsigned char *r, int n);
 
@@ -131,6 +134,15 @@ extern Datum inet_gist_decompress(PG_FUNCTION_ARGS);
 extern Datum inet_gist_penalty(PG_FUNCTION_ARGS);
 extern Datum inet_gist_picksplit(PG_FUNCTION_ARGS);
 extern Datum inet_gist_same(PG_FUNCTION_ARGS);
+
+/*
+ * SP-GiST support functions in network_spgist.c
+ */
+extern Datum inet_spg_config(PG_FUNCTION_ARGS);
+extern Datum inet_spg_choose(PG_FUNCTION_ARGS);
+extern Datum inet_spg_picksplit(PG_FUNCTION_ARGS);
+extern Datum inet_spg_inner_consistent(PG_FUNCTION_ARGS);
+extern Datum inet_spg_leaf_consistent(PG_FUNCTION_ARGS);
 
 /*
  * Estimation functions in network_selfuncs.c
