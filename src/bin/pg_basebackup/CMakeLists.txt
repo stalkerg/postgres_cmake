@@ -29,6 +29,7 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 	add_executable(${loop_var} ${loop_var}.c)
 
 	target_link_libraries(${loop_var}
+		pgfeutils
 		port
 		pq
 		pgcommon

@@ -346,7 +346,7 @@ set(catalog_include
 add_custom_command(
 	DEPENDS ${POSTGRES_BKI_SRCS}
 	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
-	COMMAND ${PERL_EXECUTABLE} genbki.pl ${catalog_include} --set-version=${POSTGRES_MAJOR_VERSION}.${POSTGRES_MINOR_VERSION} ${POSTGRES_BKI_SRCS}
+	COMMAND ${PERL_EXECUTABLE} genbki.pl ${catalog_include} --set-version=${POSTGRES_MAJOR_VERSION} ${POSTGRES_BKI_SRCS}
 	COMMAND ${CMAKE_COMMAND} -E copy schemapg.h ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/catalog
 )
@@ -476,12 +476,11 @@ set(libpq_SRCS
 	libpq/auth.c
 	libpq/crypt.c
 	libpq/hba.c
-	libpq/ip.c
-	libpq/md5.c
 	libpq/pqcomm.c
 	libpq/pqformat.c
 	libpq/pqmq.c
 	libpq/pqsignal.c
+	libpq/ifaddr.c
 	${libpq_ssl_SRCS}
 )
 
@@ -592,11 +591,12 @@ set(utils_SRCS
 	utils/adt/varbit.c
 	utils/adt/varchar.c
 	utils/adt/varlena.c
-	#utils/adt/levenshtein.c
+	utils/adt/amutils.c
 	utils/adt/version.c
 	utils/adt/windowfuncs.c
 	utils/adt/xid.c
 	utils/adt/xml.c
+	utils/adt/network_spgist.c
 	utils/fmgr/dfmgr.c
 	utils/fmgr/fmgr.c
 	utils/fmgr/funcapi.c

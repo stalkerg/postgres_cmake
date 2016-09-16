@@ -13,14 +13,14 @@ include(CheckStructHasMember)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-set(POSTGRES_MAJOR_VERSION 9)
-set(POSTGRES_MINOR_VERSION 6)
+set(POSTGRES_MAJOR_VERSION 10)
+set(POSTGRES_MINOR_VERSION 0)
 set(POSTGRES_PATCH_VERSION 0)
 set(POSTGRES_VERSION
   ${POSTGRES_MAJOR_VERSION}.${POSTGRES_MINOR_VERSION}.${POSTGRES_PATCH_VERSION})
 
-set(PG_VERSION "9.6beta3")
-set(PG_VERSION_NUM 90600)
+set(PG_VERSION "10devel")
+set(PG_VERSION_NUM 100000)
 set(PACKAGE_BUGREPORT "pgsql-bugs@postgresql.org")
 
  # Offer the user the choice of overriding the installation directories

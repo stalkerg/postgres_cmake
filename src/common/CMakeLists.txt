@@ -11,6 +11,8 @@ set(pgcommon_srv_SRCS
 	controldata_utils.c
 	config_info.c
 	keywords.c
+	md5.c
+	ip.c
 )
 
 set(pgcommon_SRCS

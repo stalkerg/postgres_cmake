@@ -12,6 +12,7 @@ add_executable(initdb
 )
 
 target_link_libraries(initdb
+	pgfeutils
 	pgcommon
 	port
 	pq

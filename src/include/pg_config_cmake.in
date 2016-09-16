@@ -722,7 +722,7 @@
 #define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
 
 /* PostgreSQL major version as a string */
-#define PG_MAJORVERSION "@POSTGRES_MAJOR_VERSION@.@POSTGRES_MINOR_VERSION@"
+#define PG_MAJORVERSION "@POSTGRES_MAJOR_VERSION@"
 
 /* Define to gnu_printf if compiler supports it, else printf. */
 #define PG_PRINTF_ATTRIBUTE @PG_PRINTF_ATTRIBUTE@

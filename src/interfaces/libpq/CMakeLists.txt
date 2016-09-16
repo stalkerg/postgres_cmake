@@ -28,8 +28,8 @@ set(pq_SRCS
 	${PORT_DIR}/pqsignal.c
 	${PORT_DIR}/thread.c
 
-	${PQ_BACKEND_DIR}/ip.c
-	${PQ_BACKEND_DIR}/md5.c
+	${PROJECT_SOURCE_DIR}/src/common/ip.c
+	${PROJECT_SOURCE_DIR}/src/common/md5.c
 	${MB_UTILS_BACKEND_DIR}/encnames.c
 	${MB_UTILS_BACKEND_DIR}/wchar.c
 
