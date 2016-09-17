@@ -1062,16 +1062,22 @@ add_library(pqwalreceiver MODULE
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
 )
-target_link_libraries(pqwalreceiver pq)
-if (MSVC)
+
+if(MSVC)
 	gen_def(pqwalreceiver)
 	gen_def(postgres)
 endif()
 
 if(WIN32)
-	target_compile_definitions(pqwalreceiver PRIVATE -DBUILDING_DLL)
 	target_link_libraries(pqwalreceiver postgres)
 endif()
+
+#Strange logic
+if(MINGW)
+	target_compile_definitions(pqwalreceiver PRIVATE -DBUILDING_DLL)
+endif()
+
+target_link_libraries(pqwalreceiver pq)
 
 install(TARGETS postgres pqwalreceiver
 		RUNTIME DESTINATION ${PGBINDIR}

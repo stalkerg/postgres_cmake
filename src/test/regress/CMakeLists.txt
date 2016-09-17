@@ -22,9 +22,9 @@ target_compile_definitions(pg_regress PRIVATE
 
 
 add_library(regress MODULE regress.c)
-target_link_libraries(regress
-	pq
-)
+#target_link_libraries(regress
+#	pq
+#)
 if (MSVC)
 	gen_def(regress)
 endif()
