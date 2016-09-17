@@ -11,6 +11,11 @@ include(CheckCSourceRuns)
 include(TestBigEndian)
 include(CheckStructHasMember)
 
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+	message(STATUS "${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}")
+	message(FATAL_ERROR "You must use another folder for build PostgreSQL")
+endif()
+
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 set(POSTGRES_MAJOR_VERSION 10)
