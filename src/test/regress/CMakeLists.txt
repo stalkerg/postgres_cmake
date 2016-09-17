@@ -42,13 +42,23 @@ add_custom_target(tablespace-setup
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_custom_target(check
-	COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND make installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/
-	DEPENDS tablespace-setup
-	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-)
+if(CMAKE_GENERATOR STREQUAL "Ninja")
+	add_custom_target(check
+		COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+		COMMAND DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install ${check_make_command} install
+		COMMAND DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/ ${check_make_command} installcheck_tmp
+		DEPENDS tablespace-setup
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+else()
+	add_custom_target(check
+		COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+		COMMAND ${check_make_command} install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+		COMMAND ${check_make_command} installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/
+		DEPENDS tablespace-setup
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+endif()
 
 add_custom_target(installcheck
 	COMMAND ${pg_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/parallel_schedule --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}

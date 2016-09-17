@@ -103,6 +103,12 @@ if(TEMP_CONFIG)
 	set(TEMP_CONF "${TEMP_CONF} --temp-config=${TEMP_CONFIG}")
 endif()
 
+if(CMAKE_GENERATOR STREQUAL "Ninja")
+	set(check_make_command "ninja")
+else()
+	set(check_make_command "make")
+endif()
+
 macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	add_custom_target(${TARGET_NAME}_installcheck_tmp
 		COMMAND ${pg_regress_check_tmp} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
@@ -116,13 +122,23 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
 
-	add_custom_target(${TARGET_NAME}_check
-		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
-		COMMAND make install DESTDIR=${tmp_check_folder}
-		COMMAND make ${TARGET_NAME}_installcheck_tmp DESTDIR=${tmp_check_folder}
-		DEPENDS tablespace-setup
-		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-	)
+	if(CMAKE_GENERATOR STREQUAL "Ninja")
+		add_custom_target(${TARGET_NAME}_check
+			COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+			COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} install
+			COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} ${TARGET_NAME}_installcheck_tmp
+			DEPENDS tablespace-setup
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		)
+	else()
+		add_custom_target(${TARGET_NAME}_check
+			COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+			COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
+			COMMAND ${check_make_command} ${TARGET_NAME}_installcheck_tmp DESTDIR=${tmp_check_folder}
+			DEPENDS tablespace-setup
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		)
+	endif()
 	
 	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_installcheck_tmp tests/tmp)
 	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_installcheck "tests/install")
@@ -137,8 +153,8 @@ macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
 	add_custom_target(${TARGET_NAME}_check
 		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
-		COMMAND make install DESTDIR=${tmp_check_folder}
-		COMMAND make ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
+		COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
+		COMMAND ${check_make_command} ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
 	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_isolation_installcheck_tmp tests/tmp)
