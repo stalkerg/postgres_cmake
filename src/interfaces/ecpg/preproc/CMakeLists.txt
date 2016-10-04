@@ -12,7 +12,7 @@ set(preproc_parser_DEP
 
 add_custom_command(
 	DEPENDS ${preproc_parser_DEP}
-	OUTPUT preproc.y
+	OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/preproc.y
 	COMMAND ${PERL_EXECUTABLE} parse.pl . < ${PROJECT_SOURCE_DIR}/src/backend/parser/gram.y > preproc.y
 	COMMAND ${PERL_EXECUTABLE} check_rules.pl . ${PROJECT_SOURCE_DIR}/src/backend/parser/gram.y
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
