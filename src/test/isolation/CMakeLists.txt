@@ -38,12 +38,21 @@ target_link_libraries(isolationtester
 	pq
 )
 
-add_custom_target(isolation_check
-	COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND make install DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/tmp_install
-	COMMAND make isolation_installcheck_tmp DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/
-	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-)
+if(CMAKE_GENERATOR STREQUAL "Ninja")
+	add_custom_target(isolation_check
+		COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+		COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} install
+		COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} isolation_installcheck_tmp
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+else()
+	add_custom_target(isolation_check
+		COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_install
+		COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
+		COMMAND ${check_make_command} isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+endif()
 
 add_custom_target(isolation_installcheck
 	COMMAND ${pg_isolation_regress_check} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/isolation_schedule --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
@@ -51,7 +60,7 @@ add_custom_target(isolation_installcheck
 )
 
 add_custom_target(isolation_installcheck_tmp
-	COMMAND ${pg_isolation_regress_check_tmp} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/isolation_schedule --dlpath=${CMAKE_CURRENT_BINARY_DIR}/tmp_install${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
+	COMMAND ${pg_isolation_regress_check_tmp} ${REGRESS_OPTS} --schedule=${CMAKE_CURRENT_SOURCE_DIR}/isolation_schedule --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${EXTRA_TESTS}
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

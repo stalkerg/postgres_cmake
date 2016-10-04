@@ -50,6 +50,8 @@ add_subdirectory(interfaces/ecpg/pgtypeslib)
 add_subdirectory(interfaces/ecpg/ecpglib)
 add_subdirectory(interfaces/ecpg/compatlib)
 add_subdirectory(interfaces/ecpg/include)
+add_subdirectory(interfaces/ecpg/preproc)
+add_subdirectory(interfaces/ecpg/test)
 
 add_subdirectory(backend)
 add_subdirectory(timezone)

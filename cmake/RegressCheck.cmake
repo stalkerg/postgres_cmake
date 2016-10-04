@@ -69,6 +69,13 @@ else(MSVC)
 		--encoding=UTF8
 		--no-locale
 	)
+	set(pre_pg_ecpg_regress_check
+		${CMAKE_BINARY_DIR}/src/interfaces/ecpg/test/${CMAKE_INSTALL_CONFIG_NAME}/pg_ecpg_regress${CMAKE_EXECUTABLE_SUFFIX}
+		--inputdir="${CMAKE_BINARY_DIR}/src/interfaces/ecpg/test"
+		--temp-instance="tmp_check"
+		--encoding=UTF8
+		--no-locale
+	)
 endif()
 
 set(pg_regress_check
@@ -92,6 +99,18 @@ set(pg_isolation_regress_check
 set(pg_isolation_regress_check_tmp
 	${tmp_env_cmd}
 	${pre_pg_isolation_regress_check}
+	--bindir=${tmp_check_folder}${PGBINDIR}
+)
+
+set(pg_ecpg_regress_check
+	${env_cmd}
+	${pre_pg_ecpg_regress_check}
+	--bindir=$ENV{DESTDIR}${PGBINDIR}
+)
+
+set(pg_ecpg_regress_check_tmp
+	${tmp_env_cmd}
+	${pre_pg_ecpg_regress_check}
 	--bindir=${tmp_check_folder}${PGBINDIR}
 )
 
