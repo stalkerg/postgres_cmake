@@ -57,6 +57,7 @@ add_subdirectory(backend)
 add_subdirectory(timezone)
 add_subdirectory(test/regress)
 add_subdirectory(test/isolation)
+add_subdirectory(test/modules)
 
 add_subdirectory(pl/plpgsql/src)
 if(PYTHONINTERP_FOUND AND PYTHONLIBS_FOUND)

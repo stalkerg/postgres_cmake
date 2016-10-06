@@ -10,12 +10,15 @@ mkdir build
 cd build
 CFLAGS="-s -O2" cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
 #strip binary + O2 optimisation, for CLang you must use -strip-all insted -s
+#also you can use -G Ninja for Ninja make system
 make -j2
 make check
 make isolation_check
 make contrib_check
 
 #Optional:
+make ecpg_check
+make modules_check
 make plperl_check
 make pltcl_check
 

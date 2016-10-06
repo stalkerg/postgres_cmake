@@ -135,6 +135,7 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
 	
+	#message(WARNING "${TARGET_NAME}_installcheck")
 	add_custom_target(${TARGET_NAME}_installcheck
 		COMMAND ${pg_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
 		DEPENDS tablespace-setup
@@ -167,10 +168,11 @@ endmacro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	add_custom_target(${TARGET_NAME}_isolation_installcheck_tmp
 		COMMAND ${pg_isolation_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
+		DEPENDS pg_isolation_regress
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
 
-	add_custom_target(${TARGET_NAME}_check
+	add_custom_target(${TARGET_NAME}_isolation_installcheck
 		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
 		COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
 		COMMAND ${check_make_command} ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
@@ -185,3 +187,16 @@ macro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(contrib_installcheck_targets ${contrib_installcheck_targets} ${TARGET_NAME}_installcheck PARENT_SCOPE)
 	REGRESS_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
 endmacro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+
+
+macro(MODULES_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+	set(modules_check_targets ${modules_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
+	set(modules_installcheck_targets ${modules_installcheck_targets} ${TARGET_NAME}_installcheck PARENT_SCOPE)
+	REGRESS_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
+endmacro(MODULES_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+
+macro(MODULES_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+	set(modules_check_targets ${modules_check_targets} ${TARGET_NAME}_isolation_installcheck_tmp PARENT_SCOPE)
+	set(modules_installcheck_targets ${modules_installcheck_targets} ${TARGET_NAME}_isolation_installcheck PARENT_SCOPE)
+	ISOLATION_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
+endmacro(MODULES_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
