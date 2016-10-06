@@ -135,7 +135,6 @@ macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
 	
-	#message(WARNING "${TARGET_NAME}_installcheck")
 	add_custom_target(${TARGET_NAME}_installcheck
 		COMMAND ${pg_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
 		DEPENDS tablespace-setup
@@ -167,7 +166,7 @@ endmacro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
 macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	add_custom_target(${TARGET_NAME}_isolation_installcheck_tmp
-		COMMAND ${pg_isolation_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
+		COMMAND ${pg_isolation_regress_check_tmp} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath=${tmp_check_folder}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
 		DEPENDS pg_isolation_regress
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	)
