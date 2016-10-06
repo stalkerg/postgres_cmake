@@ -8,8 +8,10 @@ compiler:
   - gcc
   - clang
 before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq cmake
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install cmake; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update -qq; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -qq cmake; fi
 script:
   - cd ${TRAVIS_BUILD_DIR}
   - mkdir build && cd build && cmake .. && make && make check && make isolation_check && make contrib_check && make plperl_check && make plpython_check && make pltcl_check && make ecpg_check && make modules_check
