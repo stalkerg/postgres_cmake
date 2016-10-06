@@ -173,6 +173,12 @@ macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	)
 
 	add_custom_target(${TARGET_NAME}_isolation_installcheck
+		COMMAND ${pg_isolation_regress_check} --inputdir="${CMAKE_CURRENT_SOURCE_DIR}" --dbname=${TARGET_NAME}_regress ${REGRESS_OPTS} --dlpath==$ENV{DESTDIR}${LIBDIR} ${MAXCONNOPT} ${TEMP_CONF} ${REGRESS_FILES}
+		DEPENDS pg_isolation_regress
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	add_custom_target(${TARGET_NAME}_isolation_check
 		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
 		COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
 		COMMAND ${check_make_command} ${TARGET_NAME}_isolation_installcheck_tmp DESTDIR=${tmp_check_folder}
