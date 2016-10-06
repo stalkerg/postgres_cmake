@@ -97,7 +97,7 @@ set(thread_tests
 	alloc
 )
 
-set(ecpg_preproc_bin ${CMAKE_BINARY_DIR}/src/interfaces/ecpg/preproc/${CMAKE_INSTALL_CONFIG_NAME}/ecpg${CMAKE_EXECUTABLE_SUFFIX})
+set(ecpg_preproc_bin ${CMAKE_BINARY_DIR}/src/interfaces/ecpg/preproc/ecpg${CMAKE_EXECUTABLE_SUFFIX})
 
 macro(ECPG_CHECK TARGET_LIST FOLDER PREPROC_OPTS)
 	foreach(test ${TARGET_LIST})
