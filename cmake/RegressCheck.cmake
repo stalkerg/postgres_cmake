@@ -187,13 +187,20 @@ macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_check tests)
 endmacro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
+# Contrib macros
 macro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
 	set(contrib_installcheck_targets ${contrib_installcheck_targets} ${TARGET_NAME}_installcheck PARENT_SCOPE)
 	REGRESS_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
 endmacro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
+macro(CONTRIB_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_isolation_installcheck_tmp PARENT_SCOPE)
+	set(contrib_installcheck_targets ${contrib_installcheck_targets} ${TARGET_NAME}_isolation_installcheck PARENT_SCOPE)
+	ISOLATION_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
+endmacro(CONTRIB_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
+# Modules macros
 macro(MODULES_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(modules_check_targets ${modules_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
 	set(modules_installcheck_targets ${modules_installcheck_targets} ${TARGET_NAME}_installcheck PARENT_SCOPE)

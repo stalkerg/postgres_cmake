@@ -85,11 +85,13 @@ if(LIBXML2_FOUND)
 	add_subdirectory(xml2)
 endif()
 
+add_subdirectory(test_decoding)
+
 if(CMAKE_GENERATOR STREQUAL "Ninja")
 	add_custom_target(contrib_check
 		COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
 		COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} install
-		COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} ${contrib_check_targets}
+		COMMAND DESTDIR=${tmp_check_folder} -j1 ${check_make_command} ${contrib_check_targets}
 		DEPENDS tablespace-setup
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
@@ -102,7 +104,6 @@ else()
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 	)
 endif()
-
 # Make chain for run tests in strict order
 # TODO: we can't run tests separately now
 set(first_element "")
