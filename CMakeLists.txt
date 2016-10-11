@@ -101,10 +101,6 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD|NetBSD|OpenBSD")
 	set(CMAKE_SHARED_LIBRARY_SONAME_C_FLAG "-Wl,-x,-soname,")
 endif()
 
-if (${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-ignored-attributes")
-endif()
-
 if(MSVC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D _CRT_SECURE_NO_WARNINGS")
 endif()
@@ -1270,6 +1266,7 @@ if(WITH_UUID)
 	endif()
 endif()
 
+#file(REMOVE ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h)
 file(GENERATE OUTPUT ${PROJECT_SOURCE_DIR}/src/include/pg_config_os.h
 	INPUT ${pgos_include_SRCS})
 
