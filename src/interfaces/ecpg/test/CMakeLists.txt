@@ -13,7 +13,7 @@ add_executable(pg_ecpg_regress
 )
 
 target_link_libraries(pg_ecpg_regress
-	#pq
+	pq
 	pgcommon
 	port
 )
