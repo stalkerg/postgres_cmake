@@ -130,8 +130,11 @@ endif()
 
 option(WITH_TAP "try enable TAP tests" OFF)
 # It's really pain to use the TAP tests without env cmake command
-if (WITH_TAP AND CMAKE_VERSION VERSION_GREATER "3.2.0")
+if (CMAKE_VERSION VERSION_GREATER "3.2.0")
 	find_program(PROVE prove)
+endif()
+if(NOT WITH_TAP)
+	set(PROVE "")
 endif()
 
 find_package(BISON REQUIRED)
