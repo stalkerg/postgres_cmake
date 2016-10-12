@@ -16,3 +16,6 @@ install(FILES
 
 
 MODULES_REGRESS_CHECK(${extension_name} "" "${extension_name}")
+if(PROVE)
+	MODULES_TAP_CHECK(${extension_name} "${TAP_FLAGS}" "t/*.pl")
+endif()

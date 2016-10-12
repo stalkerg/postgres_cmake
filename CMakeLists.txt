@@ -128,6 +128,12 @@ if(PERLLIBS_FOUND)
 	STRING(STRIP "${PERL_LDFLAGS}" PERL_LDFLAGS)
 endif()
 
+option(WITH_TAP "try enable TAP tests" OFF)
+# It's really pain to use the TAP tests without env cmake command
+if (WITH_TAP AND CMAKE_VERSION VERSION_GREATER "3.2.0")
+	find_program(PROVE prove)
+endif()
+
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(Threads)
@@ -1337,4 +1343,5 @@ message(STATUS "LibXML2: ${LIBXML2_FOUND}")
 message(STATUS "LibXslt: ${LIBXSLT_FOUND}")
 message(STATUS "TCL: ${TCL_FOUND}")
 message(STATUS "PAM: ${PAM_LIB}")
+message(STATUS "PROVE (TAP tests): ${PROVE}")
 message(STATUS "------------------")

@@ -30,3 +30,7 @@ CMAKE_SET_TARGET_FOLDER(pgbench bin)
 install(TARGETS pgbench
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+if(PROVE)
+	TAP_CHECK("pgbench_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()

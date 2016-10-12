@@ -87,3 +87,7 @@ install(TARGETS ${dump_modules_list} createlang droplang pg_isready
 if(ENABLE_NLS)
 	MAKE_MO(pgscripts "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN")
 endif()
+
+if(PROVE)
+	TAP_CHECK("scripts_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()

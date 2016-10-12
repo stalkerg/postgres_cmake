@@ -26,6 +26,23 @@ make pltcl_check
 #-DPython_ADDITIONAL_VERSIONS=2.7 -DPYTHON_EXECUTABLE=/usr/bin/python2.7
 make plpython_check
 
+#TAP tests (experimental):
+make commit_ts_tap_check
+make bloom_tap_check
+make initdb_tap_check
+make pg_basebackup_tap_check
+make pg_config_tap_check
+make pg_controldata_tap_check
+make pg_ctl_tap_check
+make pg_dump_tap_check
+make pg_rewind_tap_check
+make pgbench_tap_check
+make scripts_tap_check
+make test_pg_dump_tap_check
+make recovery_tap_check
+make ssl_tap_check
+
+
 make install
 make installcheck
 ```
@@ -79,6 +96,8 @@ CMake build options
 **-DCMAKE_USE_FOLDERS** default ON, folder grouping of projects in IDEs, actual for MSVC
 
 **-DUSE_REPL_SNPRINTF** default not use but if ON you can switch OFF
+
+**-DWITH_TAP** default OFF, experemental support TAP tests
 
 
 

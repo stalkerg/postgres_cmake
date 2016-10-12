@@ -33,3 +33,6 @@ install(FILES ${extension_name}.control ${extension_name}--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
 CONTRIB_REGRESS_CHECK(${extension_name} "" "bloom")
+if(PROVE)
+	CONTRIB_TAP_CHECK(${extension_name} "${TAP_FLAGS}" "t/*.pl")
+endif()

@@ -35,3 +35,7 @@ install(TARGETS pg_rewind
 if(ENABLE_NLS)
 	MAKE_MO(pg_rewind "de;es;fr;it;ko;pl;ru;zh_CN")
 endif()
+
+if(PROVE)
+	TAP_CHECK("pg_rewind_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()

@@ -122,6 +122,9 @@ if(TEMP_CONFIG)
 	set(TEMP_CONF "${TEMP_CONF} --temp-config=${TEMP_CONFIG}")
 endif()
 
+
+set(TAP_FLAGS "-I;${CMAKE_SOURCE_DIR}/src/test/perl/;--verbose")
+
 if(CMAKE_GENERATOR STREQUAL "Ninja")
 	set(check_make_command "ninja")
 else()
@@ -187,6 +190,49 @@ macro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_check tests)
 endmacro(ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
+macro(TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)
+	set(TAP_TMP_CMD
+		${CMAKE_COMMAND} -E env
+		TESTDIR="${CMAKE_CURRENT_SOURCE_DIR}" PGPORT="65432" PG_REGRESS="${CMAKE_BINARY_DIR}/src/test/regress/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}"
+		${PROVE}
+	)
+	set(TAP_CMD
+		${CMAKE_COMMAND} -E env
+		PATH="$ENV{DESTDIR}${BINDIR}:$$PATH" TESTDIR="${CMAKE_CURRENT_SOURCE_DIR}" PGPORT="65432" PG_REGRESS="${CMAKE_BINARY_DIR}/src/test/regress/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}"
+		${PROVE}
+	)
+	add_custom_target(${TARGET_NAME}_installcheck_tmp
+		COMMAND ${tmp_env_cmd} ${TAP_TMP_CMD} ${OPTS} ${REGRESS_FILES}
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	add_custom_target(${TARGET_NAME}_installcheck
+		COMMAND ${env_cmd} ${TAP_CMD} ${OPTS} ${REGRESS_FILES}
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+
+	if(CMAKE_GENERATOR STREQUAL "Ninja")
+		add_custom_target(${TARGET_NAME}_check
+			COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+			COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} install
+			COMMAND DESTDIR=${tmp_check_folder} ${check_make_command} ${TARGET_NAME}_installcheck_tmp
+			DEPENDS tablespace-setup
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		)
+	else()
+		add_custom_target(${TARGET_NAME}_check
+			COMMAND ${CMAKE_COMMAND} -E remove_directory ${tmp_check_folder}
+			COMMAND ${check_make_command} install DESTDIR=${tmp_check_folder}
+			COMMAND ${check_make_command} ${TARGET_NAME}_installcheck_tmp DESTDIR=${tmp_check_folder}
+			DEPENDS tablespace-setup
+			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		)
+	endif()
+
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_installcheck_tmp tests/tmp)
+	CMAKE_SET_TARGET_FOLDER(${TARGET_NAME}_check tests)
+endmacro(TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)
+
 # Contrib macros
 macro(CONTRIB_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
@@ -200,6 +246,13 @@ macro(CONTRIB_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	ISOLATION_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
 endmacro(CONTRIB_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 
+macro(CONTRIB_TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)
+	set(contrib_check_targets ${contrib_check_targets} ${TARGET_NAME}_tap_installcheck_tmp PARENT_SCOPE)
+	set(contrib_installcheck_targets ${contrib_installcheck_targets} ${TARGET_NAME}_tap_installcheck PARENT_SCOPE)
+	TAP_CHECK("${TARGET_NAME}_tap" "${OPTS}" "${REGRESS_FILES}")
+endmacro(CONTRIB_TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)
+
+
 # Modules macros
 macro(MODULES_REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(modules_check_targets ${modules_check_targets} ${TARGET_NAME}_installcheck_tmp PARENT_SCOPE)
@@ -212,3 +265,9 @@ macro(MODULES_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
 	set(modules_installcheck_targets ${modules_installcheck_targets} ${TARGET_NAME}_isolation_installcheck PARENT_SCOPE)
 	ISOLATION_CHECK("${TARGET_NAME}" "${REGRESS_OPTS}" "${REGRESS_FILES}")
 endmacro(MODULES_ISOLATION_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
+
+macro(MODULES_TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)
+	set(modules_check_targets ${modules_check_targets} ${TARGET_NAME}_tap_installcheck_tmp PARENT_SCOPE)
+	set(modules_installcheck_targets ${modules_installcheck_targets} ${TARGET_NAME}_tap_installcheck PARENT_SCOPE)
+	TAP_CHECK("${TARGET_NAME}_tap" "${OPTS}" "${REGRESS_FILES}")
+endmacro(MODULES_TAP_CHECK TARGET_NAME OPTS REGRESS_FILES)

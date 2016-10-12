@@ -22,3 +22,7 @@ install(TARGETS pg_config
 if(ENABLE_NLS)
 	MAKE_MO(pg_config "cs;de;es;fr;it;ja;ko;nb;pl;pt_BR;ro;ru;sv;ta;tr;zh_CN;zh_TW")
 endif()
+
+if(PROVE)
+	TAP_CHECK("pg_config_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()

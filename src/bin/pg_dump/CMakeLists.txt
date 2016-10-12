@@ -86,3 +86,8 @@ install(TARGETS pg_dump pg_restore pg_dumpall
 if(ENABLE_NLS)
 	MAKE_MO(pg_dump "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN")
 endif()
+
+if(PROVE)
+	TAP_CHECK("pg_dump_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()
+

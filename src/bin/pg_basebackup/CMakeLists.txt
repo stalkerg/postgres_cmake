@@ -49,3 +49,7 @@ install(TARGETS ${basebackup_list}
 if(ENABLE_NLS)
 	MAKE_MO(pg_basebackup "de;es;fr;it;ko;pl;pt_BR;ru;zh_CN")
 endif()
+
+if(PROVE)
+	TAP_CHECK("pg_basebackup_tap" "${TAP_FLAGS}" "t/*.pl")
+endif()
