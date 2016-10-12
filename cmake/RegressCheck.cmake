@@ -128,7 +128,7 @@ set(TAP_FLAGS "-I;${CMAKE_SOURCE_DIR}/src/test/perl/;--verbose")
 if(CMAKE_GENERATOR STREQUAL "Ninja")
 	set(check_make_command "ninja")
 else()
-	set(check_make_command "make")
+	set(check_make_command ${CMAKE_MAKE_PROGRAM})
 endif()
 
 macro(REGRESS_CHECK TARGET_NAME REGRESS_OPTS REGRESS_FILES)
