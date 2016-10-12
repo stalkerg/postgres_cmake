@@ -12,7 +12,7 @@ set(extension_name test_rls_hooks)
 add_library(${extension_name} MODULE
 	test_rls_hooks.c
 )
-target_link_libraries(${extension_name} ${contrib_libs})
+target_link_libraries(${extension_name} ${modules_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 if (MSVC)
 	gen_def(${extension_name})

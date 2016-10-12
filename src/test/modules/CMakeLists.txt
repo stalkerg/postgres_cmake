@@ -1,3 +1,22 @@
+set(modules_libs postgres)
+
+#TODO: need test under mingw or cygwin
+if(WIN32)
+	set(modules_libs
+		port
+		pgcommon
+	)
+endif()
+
+if(MSVC OR MINGW)
+	set(modules_libs
+		port
+		postgres
+		pgcommon_srv
+	)
+endif()
+
+
 set(modules_check_targets "")
 set(modules_installcheck_targets "")
 

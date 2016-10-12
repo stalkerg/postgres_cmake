@@ -14,7 +14,7 @@ add_library(${extension_name} MODULE
 	setup.c
 	worker.c
 )
-target_link_libraries(${extension_name} ${contrib_libs})
+target_link_libraries(${extension_name} ${modules_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 if (MSVC)
 	gen_def(${extension_name})
