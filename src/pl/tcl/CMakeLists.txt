@@ -18,7 +18,7 @@ add_library(${plname} MODULE
 target_link_libraries(${plname} postgres ${TCL_LIBRARY})
 if (MSVC)
 	gen_def(${plname})
-	target_link_libraries(${plname} port)
+	target_link_libraries(${plname} pgport)
 endif()
 set_target_properties(${plname} PROPERTIES PREFIX "")
 add_dependencies(${plname} postgres gen_pltclerrcodes)

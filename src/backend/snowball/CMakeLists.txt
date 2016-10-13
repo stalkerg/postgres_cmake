@@ -98,7 +98,7 @@ add_library(dict_snowball MODULE ${snowball_SRCS})
 target_link_libraries(dict_snowball postgres)
 if (MSVC)
 	gen_def(dict_snowball)
-	target_link_libraries(dict_snowball pgcommon port)
+	target_link_libraries(dict_snowball pgcommon pgport)
 endif()
 set_target_properties(dict_snowball PROPERTIES PREFIX "")
 install(TARGETS dict_snowball

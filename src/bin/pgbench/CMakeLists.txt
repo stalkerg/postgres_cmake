@@ -17,7 +17,7 @@ add_executable(pgbench
 
 target_link_libraries(pgbench
 	pgfeutils
-	port
+	pgport
 	pq
 	pgcommon
 	${M_LIB}

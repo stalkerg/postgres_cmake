@@ -15,7 +15,7 @@ add_library(common_basebackup STATIC
 )
 
 target_link_libraries(common_basebackup
-	port
+	pgport
 	pq
 )
 
@@ -30,7 +30,7 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 
 	target_link_libraries(${loop_var}
 		pgfeutils
-		port
+		pgport
 		pq
 		pgcommon
 		${M_LIB}

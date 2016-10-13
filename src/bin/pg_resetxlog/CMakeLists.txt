@@ -10,7 +10,7 @@ add_executable(pg_resetxlog
 
 target_link_libraries(pg_resetxlog
 	pgcommon
-	port
+	pgport
 )
 
 CMAKE_SET_TARGET_FOLDER(pg_resetxlog bin)

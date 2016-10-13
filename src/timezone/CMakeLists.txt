@@ -27,7 +27,7 @@ add_executable(zic
 	zic.c
 )
 target_link_libraries(zic
-	port
+	pgport
 )
 
 if(MSVC)

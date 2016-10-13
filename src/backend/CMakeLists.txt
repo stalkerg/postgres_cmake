@@ -1007,7 +1007,7 @@ add_executable(postgres
 
 target_link_libraries(postgres
 	pgcommon_srv
-	port_srv
+	pgport_srv
 	pq
 	${READLINE_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT}

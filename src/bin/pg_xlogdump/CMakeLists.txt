@@ -14,7 +14,7 @@ add_executable(pg_xlogdump
 
 target_link_libraries(pg_xlogdump
 	pgcommon
-	port
+	pgport
 	pq
 )
 

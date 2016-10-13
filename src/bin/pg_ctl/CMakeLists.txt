@@ -10,7 +10,7 @@ add_executable(pg_ctl
 
 target_link_libraries(pg_ctl
 	pgcommon
-	port
+	pgport
 	pq
 )
 

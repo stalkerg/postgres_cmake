@@ -13,7 +13,7 @@ add_executable(pg_regress
 target_link_libraries(pg_regress
 	pq
 	pgcommon
-	port
+	pgport
 )
 
 target_compile_definitions(pg_regress PRIVATE

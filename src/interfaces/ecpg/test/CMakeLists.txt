@@ -15,7 +15,7 @@ add_executable(pg_ecpg_regress
 target_link_libraries(pg_ecpg_regress
 	pq
 	pgcommon
-	port
+	pgport
 )
 
 target_compile_definitions(pg_ecpg_regress PRIVATE

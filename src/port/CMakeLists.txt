@@ -149,17 +149,17 @@ if(NOT HAVE_CRYPT)
 	)
 endif()
 
-add_library(port_srv STATIC ${port_SRCS})
-add_library(port STATIC ${port_SRCS})
+add_library(pgport_srv STATIC ${port_SRCS})
+add_library(pgport STATIC ${port_SRCS})
 
-add_dependencies(port_srv gen_errorcodes)
-add_dependencies(port gen_errorcodes)
+add_dependencies(pgport_srv gen_errorcodes)
+add_dependencies(pgport gen_errorcodes)
 
 # because port used in shared libraries
-set_property(TARGET port PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+set_property(TARGET pgport PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 
-target_compile_definitions(port PRIVATE -DFRONTEND)
+target_compile_definitions(pgport PRIVATE -DFRONTEND)
 set_source_files_properties(thread.c PROPERTIES COMPILE_FLAGS ${PTHREAD_CFLAGS})
-install(TARGETS port
+install(TARGETS pgport
 		ARCHIVE DESTINATION ${LIBDIR})

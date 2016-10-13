@@ -17,7 +17,7 @@ add_library(common_print STATIC
 set(common_libs
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 	${LIB_M}
 )

@@ -7,7 +7,7 @@ include_directories(BEFORE
 add_executable(pg_archivecleanup pg_archivecleanup.c)
 
 target_link_libraries(pg_archivecleanup
-	port
+	pgport
 #	pq
 	pgcommon
 	${M_LIB}

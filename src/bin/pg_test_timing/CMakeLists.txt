@@ -11,7 +11,7 @@ add_executable(pg_test_timing
 
 target_link_libraries(pg_test_timing
 	pgcommon
-	port
+	pgport
 )
 
 CMAKE_SET_TARGET_FOLDER(pg_test_timing bin)

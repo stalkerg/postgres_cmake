@@ -11,7 +11,7 @@ add_executable(pg_test_fsync
 
 target_link_libraries(pg_test_fsync
 	pgcommon
-	port
+	pgport
 )
 
 CMAKE_SET_TARGET_FOLDER(pg_test_fsync bin)

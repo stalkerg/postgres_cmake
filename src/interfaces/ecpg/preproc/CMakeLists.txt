@@ -46,7 +46,7 @@ add_executable(ecpg_preproc
 target_link_libraries(ecpg_preproc
 	#pq
 	pgcommon
-	port
+	pgport
 )
 
 target_compile_definitions(ecpg_preproc PRIVATE

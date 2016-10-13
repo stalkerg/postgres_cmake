@@ -10,7 +10,7 @@ add_executable(pg_controldata
 
 target_link_libraries(pg_controldata
 	pgcommon
-	port
+	pgport
 )
 
 CMAKE_SET_TARGET_FOLDER(pg_controldata bin)

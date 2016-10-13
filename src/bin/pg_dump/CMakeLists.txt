@@ -32,7 +32,7 @@ target_link_libraries(pg_dump
 	libdump
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 )
 
@@ -50,7 +50,7 @@ target_link_libraries(pg_restore
 	libdump
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 )
 
@@ -69,7 +69,7 @@ target_link_libraries(pg_dumpall
 	libdump
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 )
 

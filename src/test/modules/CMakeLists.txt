@@ -3,14 +3,14 @@ set(modules_libs postgres)
 #TODO: need test under mingw or cygwin
 if(WIN32)
 	set(modules_libs
-		port
+		pgport
 		pgcommon
 	)
 endif()
 
 if(MSVC OR MINGW)
 	set(modules_libs
-		port
+		pgport
 		postgres
 		pgcommon_srv
 	)

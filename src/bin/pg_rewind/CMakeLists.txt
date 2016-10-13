@@ -20,7 +20,7 @@ add_executable(pg_rewind
 
 target_link_libraries(pg_rewind
 	pgcommon
-	port
+	pgport
 	pq
 )
 

@@ -14,7 +14,7 @@ add_executable(initdb
 target_link_libraries(initdb
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 	${GSS_LIBS}
 )

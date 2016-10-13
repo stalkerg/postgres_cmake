@@ -25,7 +25,7 @@ add_executable(pg_upgrade
 target_link_libraries(pg_upgrade
 	pgfeutils
 	pgcommon
-	port
+	pgport
 	pq
 )
 
