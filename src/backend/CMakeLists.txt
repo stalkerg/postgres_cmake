@@ -346,7 +346,7 @@ set(catalog_include
 add_custom_command(
 	DEPENDS ${POSTGRES_BKI_SRCS}
 	OUTPUT ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
-	COMMAND ${PERL_EXECUTABLE} genbki.pl ${catalog_include} --set-version=${POSTGRES_MAJOR_VERSION} ${POSTGRES_BKI_SRCS}
+	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog genbki.pl ${catalog_include} --set-version=${POSTGRES_MAJOR_VERSION} ${POSTGRES_BKI_SRCS}
 	COMMAND ${CMAKE_COMMAND} -E copy schemapg.h ${PROJECT_SOURCE_DIR}/src/include/catalog/schemapg.h
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/catalog
 )
