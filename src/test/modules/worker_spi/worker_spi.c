@@ -227,7 +227,8 @@ worker_spi_main(Datum main_arg)
 		 */
 		rc = WaitLatch(MyLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   worker_spi_naptime * 1000L);
+					   worker_spi_naptime * 1000L,
+					   PG_WAIT_EXTENSION);
 		ResetLatch(MyLatch);
 
 		/* emergency bailout if postmaster has died */
@@ -292,6 +293,7 @@ worker_spi_main(Datum main_arg)
 		SPI_finish();
 		PopActiveSnapshot();
 		CommitTransactionCommand();
+		pgstat_report_stat(false);
 		pgstat_report_activity(STATE_IDLE, NULL);
 	}
 

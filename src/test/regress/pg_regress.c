@@ -738,9 +738,9 @@ initialize_environment(void)
 		/*
 		 * Most platforms have adopted the POSIX locale as their
 		 * implementation-defined default locale.  Exceptions include native
-		 * Windows, Darwin with --enable-nls, and Cygwin with --enable-nls.
+		 * Windows, macOS with --enable-nls, and Cygwin with --enable-nls.
 		 * (Use of --enable-nls matters because libintl replaces setlocale().)
-		 * Also, PostgreSQL does not support Darwin with locale environment
+		 * Also, PostgreSQL does not support macOS with locale environment
 		 * variables unset; see PostmasterMain().
 		 */
 #if defined(WIN32) || defined(__CYGWIN__) || defined(__darwin__)
@@ -874,6 +874,29 @@ initialize_environment(void)
 
 	convert_sourcefiles();
 	load_resultmap();
+}
+
+pg_attribute_unused()
+static const char *
+fmtHba(const char *raw)
+{
+	static char *ret;
+	const char *rp;
+	char	   *wp;
+
+	wp = ret = realloc(ret, 3 + strlen(raw) * 2);
+
+	*wp++ = '"';
+	for (rp = raw; *rp; rp++)
+	{
+		if (*rp == '"')
+			*wp++ = '"';
+		*wp++ = *rp;
+	}
+	*wp++ = '"';
+	*wp++ = '\0';
+
+	return ret;
 }
 
 #ifdef ENABLE_SSPI
@@ -1037,11 +1060,11 @@ config_sspi_auth(const char *pgdata)
 	 * '#'.  Windows forbids the double-quote character itself, so don't
 	 * bother escaping embedded double-quote characters.
 	 */
-	CW(fprintf(ident, "regress  \"%s@%s\"  \"%s\"\n",
-			   accountname, domainname, username) >= 0);
+	CW(fprintf(ident, "regress  \"%s@%s\"  %s\n",
+			   accountname, domainname, fmtHba(username)) >= 0);
 	for (sl = extraroles; sl; sl = sl->next)
-		CW(fprintf(ident, "regress  \"%s@%s\"  \"%s\"\n",
-				   accountname, domainname, sl->str) >= 0);
+		CW(fprintf(ident, "regress  \"%s@%s\"  %s\n",
+				   accountname, domainname, fmtHba(sl->str)) >= 0);
 	CW(fclose(ident) == 0);
 }
 #endif
@@ -2064,7 +2087,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				 * before we add the specified one.
 				 */
 				free_stringlist(&dblist);
-				split_to_stringlist(optarg, ", ", &dblist);
+				split_to_stringlist(optarg, ",", &dblist);
 				break;
 			case 2:
 				debug = true;
@@ -2114,7 +2137,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				dlpath = pg_strdup(optarg);
 				break;
 			case 18:
-				split_to_stringlist(optarg, ", ", &extraroles);
+				split_to_stringlist(optarg, ",", &extraroles);
 				break;
 			case 19:
 				add_stringlist_item(&temp_configs, optarg);
@@ -2216,7 +2239,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		/* initdb */
 		header(_("initializing database system"));
 		snprintf(buf, sizeof(buf),
-				 "\"%s%sinitdb\" -D \"%s/data\" --noclean --nosync%s%s > \"%s/log/initdb.log\" 2>&1",
+				 "\"%s%sinitdb\" -D \"%s/data\" --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 temp_instance,
@@ -2247,6 +2270,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		fputs("\n# Configuration added by pg_regress\n\n", pg_conf);
 		fputs("log_autovacuum_min_duration = 0\n", pg_conf);
 		fputs("log_checkpoints = on\n", pg_conf);
+		fputs("log_line_prefix = '%m [%p] %q%a '\n", pg_conf);
 		fputs("log_lock_waits = on\n", pg_conf);
 		fputs("log_temp_files = 128kB\n", pg_conf);
 		fputs("max_prepared_transactions = 2\n", pg_conf);

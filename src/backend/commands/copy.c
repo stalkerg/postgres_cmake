@@ -353,7 +353,7 @@ SendCopyBegin(CopyState cstate)
 		pq_endmessage(&buf);
 		cstate->copy_dest = COPY_NEW_FE;
 	}
-	else if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
+	else
 	{
 		/* old way */
 		if (cstate->binary)
@@ -361,18 +361,6 @@ SendCopyBegin(CopyState cstate)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('H');
-		/* grottiness needed for old COPY OUT protocol */
-		pq_startcopyout();
-		cstate->copy_dest = COPY_OLD_FE;
-	}
-	else
-	{
-		/* very old way */
-		if (cstate->binary)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("COPY BINARY is not supported to stdout or from stdin")));
-		pq_putemptymessage('B');
 		/* grottiness needed for old COPY OUT protocol */
 		pq_startcopyout();
 		cstate->copy_dest = COPY_OLD_FE;
@@ -399,7 +387,7 @@ ReceiveCopyBegin(CopyState cstate)
 		cstate->copy_dest = COPY_NEW_FE;
 		cstate->fe_msgbuf = makeStringInfo();
 	}
-	else if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
+	else
 	{
 		/* old way */
 		if (cstate->binary)
@@ -407,18 +395,6 @@ ReceiveCopyBegin(CopyState cstate)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('G');
-		/* any error in old protocol will make us lose sync */
-		pq_startmsgread();
-		cstate->copy_dest = COPY_OLD_FE;
-	}
-	else
-	{
-		/* very old way */
-		if (cstate->binary)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("COPY BINARY is not supported to stdout or from stdin")));
-		pq_putemptymessage('D');
 		/* any error in old protocol will make us lose sync */
 		pq_startmsgread();
 		cstate->copy_dest = COPY_OLD_FE;
@@ -871,6 +847,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt, uint64 *processed)
 			ColumnRef  *cr;
 			ResTarget  *target;
 			RangeVar   *from;
+			List	   *targetList = NIL;
 
 			if (is_from)
 				ereport(ERROR,
@@ -878,21 +855,59 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt, uint64 *processed)
 				   errmsg("COPY FROM not supported with row-level security"),
 						 errhint("Use INSERT statements instead.")));
 
-			/* Build target list */
-			cr = makeNode(ColumnRef);
-
+			/*
+			 * Build target list
+			 *
+			 * If no columns are specified in the attribute list of the COPY
+			 * command, then the target list is 'all' columns. Therefore, '*'
+			 * should be used as the target list for the resulting SELECT
+			 * statement.
+			 *
+			 * In the case that columns are specified in the attribute list,
+			 * create a ColumnRef and ResTarget for each column and add them to
+			 * the target list for the resulting SELECT statement.
+			 */
 			if (!stmt->attlist)
+			{
+				cr = makeNode(ColumnRef);
 				cr->fields = list_make1(makeNode(A_Star));
+				cr->location = -1;
+
+				target = makeNode(ResTarget);
+				target->name = NULL;
+				target->indirection = NIL;
+				target->val = (Node *) cr;
+				target->location = -1;
+
+				targetList = list_make1(target);
+			}
 			else
-				cr->fields = stmt->attlist;
+			{
+				ListCell   *lc;
 
-			cr->location = 1;
+				foreach(lc, stmt->attlist)
+				{
+					/*
+					 * Build the ColumnRef for each column.  The ColumnRef
+					 * 'fields' property is a String 'Value' node (see
+					 * nodes/value.h) that corresponds to the column name
+					 * respectively.
+					 */
+					cr = makeNode(ColumnRef);
+					cr->fields = list_make1(lfirst(lc));
+					cr->location = -1;
 
-			target = makeNode(ResTarget);
-			target->name = NULL;
-			target->indirection = NIL;
-			target->val = (Node *) cr;
-			target->location = 1;
+					/* Build the ResTarget and add the ColumnRef to it. */
+					target = makeNode(ResTarget);
+					target->name = NULL;
+					target->indirection = NIL;
+					target->val = (Node *) cr;
+					target->location = -1;
+
+					/* Add each column to the SELECT statement's target list */
+					targetList = lappend(targetList, target);
+				}
+			}
 
 			/*
 			 * Build RangeVar for from clause, fully qualified based on the
@@ -903,7 +918,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt, uint64 *processed)
 
 			/* Build query */
 			select = makeNode(SelectStmt);
-			select->targetList = list_make1(target);
+			select->targetList = targetList;
 			select->fromClause = list_make1(from);
 
 			query = (Node *) select;

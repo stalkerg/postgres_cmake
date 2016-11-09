@@ -586,7 +586,7 @@ StartReplication(StartReplicationCmd *cmd)
 			 * segment that contains switchpoint, but on the new timeline, so
 			 * that it doesn't end up with a partial segment. If you ask for a
 			 * too old starting point, you'll get an error later when we fail
-			 * to find the requested WAL segment in pg_xlog.
+			 * to find the requested WAL segment in pg_wal.
 			 *
 			 * XXX: we could be more strict here and only allow a startpoint
 			 * that's older than the switchpoint, if it's still in the same
@@ -1146,7 +1146,8 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 
 		/* Sleep until something happens or we time out */
 		WaitLatchOrSocket(MyLatch, wakeEvents,
-						  MyProcPort->sock, sleeptime);
+						  MyProcPort->sock, sleeptime,
+						  WAIT_EVENT_WAL_SENDER_WRITE_DATA);
 	}
 
 	/* reactivate latch so WalSndLoop knows to continue */
@@ -1272,7 +1273,8 @@ WalSndWaitForWal(XLogRecPtr loc)
 
 		/* Sleep until something happens or we time out */
 		WaitLatchOrSocket(MyLatch, wakeEvents,
-						  MyProcPort->sock, sleeptime);
+						  MyProcPort->sock, sleeptime,
+						  WAIT_EVENT_WAL_SENDER_WAIT_WAL);
 	}
 
 	/* reactivate latch so WalSndLoop knows to continue */
@@ -1924,7 +1926,8 @@ WalSndLoop(WalSndSendDataCallback send_data)
 
 			/* Sleep until something happens or we time out */
 			WaitLatchOrSocket(MyLatch, wakeEvents,
-							  MyProcPort->sock, sleeptime);
+							  MyProcPort->sock, sleeptime,
+							  WAIT_EVENT_WAL_SENDER_MAIN);
 		}
 	}
 	return;
@@ -2055,7 +2058,7 @@ retry:
 			 *
 			 * For example, imagine that this server is currently on timeline
 			 * 5, and we're streaming timeline 4. The switch from timeline 4
-			 * to 5 happened at 0/13002088. In pg_xlog, we have these files:
+			 * to 5 happened at 0/13002088. In pg_wal, we have these files:
 			 *
 			 * ...
 			 * 000000040000000000000012

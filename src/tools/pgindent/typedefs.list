@@ -1797,6 +1797,9 @@ SERIALIZABLEXIDTAG
 SERVICE_STATUS
 SERVICE_STATUS_HANDLE
 SERVICE_TABLE_ENTRY
+SH_TYPE
+SH_ITERATOR
+SH_STATUS
 SHA1_CTX
 SHA224_CTX
 SHA256_CTX
@@ -2810,6 +2813,8 @@ tsKEY
 ts_db_fctx
 ts_tokentype
 tsearch_readline_state
+tuplehash_hash
+tuplehash_iterator
 txid
 tzEntry
 u1byte

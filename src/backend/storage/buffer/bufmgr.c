@@ -821,7 +821,7 @@ ReadBuffer_common(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 
 			Assert(buf_state & BM_VALID);
 			buf_state &= ~BM_VALID;
-			pg_atomic_write_u32(&bufHdr->state, buf_state);
+			pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
 		}
 		else
 		{
@@ -941,7 +941,7 @@ ReadBuffer_common(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 		uint32		buf_state = pg_atomic_read_u32(&bufHdr->state);
 
 		buf_state |= BM_VALID;
-		pg_atomic_write_u32(&bufHdr->state, buf_state);
+		pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
 	}
 	else
 	{
@@ -3167,7 +3167,7 @@ FlushRelationBuffers(Relation rel)
 						  false);
 
 				buf_state &= ~(BM_DIRTY | BM_JUST_DIRTIED);
-				pg_atomic_write_u32(&bufHdr->state, buf_state);
+				pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -3635,9 +3635,6 @@ LockBufferForCleanup(Buffer buffer)
 		UnlockBufHdr(bufHdr, buf_state);
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
-		/* Report the wait */
-		pgstat_report_wait_start(WAIT_BUFFER_PIN, 0);
-
 		/* Wait to be signaled by UnpinBuffer() */
 		if (InHotStandby)
 		{
@@ -3649,9 +3646,7 @@ LockBufferForCleanup(Buffer buffer)
 			SetStartupBufferPinWaitBufId(-1);
 		}
 		else
-			ProcWaitForSignal();
-
-		pgstat_report_wait_end();
+			ProcWaitForSignal(PG_WAIT_BUFFER_PIN);
 
 		/*
 		 * Remove flag marking us as waiter. Normally this will not be set

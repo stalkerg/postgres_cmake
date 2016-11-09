@@ -18,7 +18,7 @@
  * If the primary server ends streaming, but doesn't disconnect, walreceiver
  * goes into "waiting" mode, and waits for the startup process to give new
  * instructions. The startup process will treat that the same as
- * disconnection, and will rescan the archive/pg_xlog directory. But when the
+ * disconnection, and will rescan the archive/pg_wal directory. But when the
  * startup process wants to try streaming replication again, it will just
  * nudge the existing walreceiver process that's waiting, instead of launching
  * a new one.
@@ -55,6 +55,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "replication/walreceiver.h"
 #include "replication/walsender.h"
 #include "storage/ipc.h"
@@ -364,7 +365,7 @@ WalReceiverMain(void)
 		 * we've already reached the end of the old timeline, the server will
 		 * finish the streaming immediately, and we will go back to await
 		 * orders from the startup process. If recovery_target_timeline is
-		 * 'latest', the startup process will scan pg_xlog and find the new
+		 * 'latest', the startup process will scan pg_wal and find the new
 		 * history file, bump recovery target timeline, and ask us to restart
 		 * on the new timeline.
 		 */
@@ -486,7 +487,8 @@ WalReceiverMain(void)
 								   WL_POSTMASTER_DEATH | WL_SOCKET_READABLE |
 									   WL_TIMEOUT | WL_LATCH_SET,
 									   wait_fd,
-									   NAPTIME_PER_CYCLE);
+									   NAPTIME_PER_CYCLE,
+									   WAIT_EVENT_WAL_RECEIVER_MAIN);
 				if (rc & WL_LATCH_SET)
 				{
 					ResetLatch(&walrcv->latch);
@@ -685,7 +687,8 @@ WalRcvWaitForStartPosition(XLogRecPtr *startpoint, TimeLineID *startpointTLI)
 		}
 		SpinLockRelease(&walrcv->mutex);
 
-		WaitLatch(&walrcv->latch, WL_LATCH_SET | WL_POSTMASTER_DEATH, 0);
+		WaitLatch(&walrcv->latch, WL_LATCH_SET | WL_POSTMASTER_DEATH, 0,
+				  WAIT_EVENT_WAL_RECEIVER_WAIT_START);
 	}
 
 	if (update_process_title)
@@ -739,7 +742,7 @@ WalRcvFetchTimeLineHistoryFiles(TimeLineID first, TimeLineID last)
 										 tli)));
 
 			/*
-			 * Write the file to pg_xlog.
+			 * Write the file to pg_wal.
 			 */
 			writeTimeLineHistoryFile(tli, content, len);
 

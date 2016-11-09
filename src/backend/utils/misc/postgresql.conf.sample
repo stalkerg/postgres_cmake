@@ -16,9 +16,9 @@
 #
 # This file is read on server startup and when the server receives a SIGHUP
 # signal.  If you edit the file on a running system, you have to SIGHUP the
-# server for the changes to take effect, or use "pg_ctl reload".  Some
-# parameters, which are marked below, require a server shutdown and restart to
-# take effect.
+# server for the changes to take effect, run "pg_ctl reload", or execute
+# "SELECT pg_reload_conf()".  Some parameters, which are marked below,
+# require a server shutdown and restart to take effect.
 #
 # Any parameter can also be given as a command-line option to the server, e.g.,
 # "postgres -c log_connections=on".  Some parameters can be changed at run time
@@ -85,7 +85,7 @@
 #ssl_key_file = 'server.key'		# (change requires restart)
 #ssl_ca_file = ''			# (change requires restart)
 #ssl_crl_file = ''			# (change requires restart)
-#password_encryption = on
+#password_encryption = md5		# md5 or plain
 #db_user_namespace = off
 #row_security = on
 
@@ -165,7 +165,7 @@
 #max_worker_processes = 8		# (change requires restart)
 #max_parallel_workers_per_gather = 2	# taken from max_worker_processes
 #old_snapshot_threshold = -1		# 1min-60d; -1 disables; 0 is immediate
-									# (change requires restart)
+					# (change requires restart)
 #backend_flush_after = 0		# 0 disables, default is 0
 
 
@@ -178,8 +178,8 @@
 #wal_level = minimal			# minimal, replica, or logical
 					# (change requires restart)
 #fsync = on				# flush data to disk for crash safety
-						# (turning this off can cause
-						# unrecoverable data corruption)
+					# (turning this off can cause
+					# unrecoverable data corruption)
 #synchronous_commit = on		# synchronization level;
 					# off, local, remote_write, remote_apply, or on
 #wal_sync_method = fsync		# the default is the first option
@@ -430,7 +430,7 @@
 #log_duration = off
 #log_error_verbosity = default		# terse, default, or verbose messages
 #log_hostname = off
-#log_line_prefix = ''			# special values:
+#log_line_prefix = '%m [%p] '		# special values:
 					#   %a = application name
 					#   %u = user name
 					#   %d = database name
@@ -538,7 +538,7 @@
 #session_replication_role = 'origin'
 #statement_timeout = 0			# in milliseconds, 0 is disabled
 #lock_timeout = 0			# in milliseconds, 0 is disabled
-#idle_in_transaction_session_timeout = 0		# in milliseconds, 0 is disabled
+#idle_in_transaction_session_timeout = 0	# in milliseconds, 0 is disabled
 #vacuum_freeze_min_age = 50000000
 #vacuum_freeze_table_age = 150000000
 #vacuum_multixact_freeze_min_age = 5000000

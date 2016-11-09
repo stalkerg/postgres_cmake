@@ -240,7 +240,8 @@ PLy_cursor_plan(PyObject *ob, PyObject *args)
 					plan->values[j] =
 						plan->args[j].out.d.func(&(plan->args[j].out.d),
 												 -1,
-												 elem);
+												 elem,
+												 false);
 				}
 				PG_CATCH();
 				{
@@ -405,7 +406,7 @@ PLy_cursor_fetch(PyObject *self, PyObject *args)
 	volatile ResourceOwner oldowner;
 	Portal		portal;
 
-	if (!PyArg_ParseTuple(args, "i", &count))
+	if (!PyArg_ParseTuple(args, "i:fetch", &count))
 		return NULL;
 
 	cursor = (PLyCursorObject *) self;

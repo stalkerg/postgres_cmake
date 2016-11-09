@@ -180,7 +180,8 @@ PostgreSQL documentation
             target directory, the tar contents will be written to
             standard output, suitable for piping to for example
             <productname>gzip</productname>. This is only possible if
-            the cluster has no additional tablespaces.
+            the cluster has no additional tablespaces and transaction
+            log streaming is not used.
            </para>
            </listitem>
          </varlistentry>
@@ -323,6 +324,10 @@ PostgreSQL documentation
              If the log has been rotated when it's time to transfer it, the
              backup will fail and be unusable.
            </para>
+           <para>
+            The transaction log files will be written to
+            the <filename>base.tar</filename> file.
+           </para>
           </listitem>
          </varlistentry>
 
@@ -339,6 +344,11 @@ PostgreSQL documentation
              client can keep up with transaction log received, using this mode
              requires no extra transaction logs to be saved on the master.
            </para>
+           <para>
+            The transaction log files are written to a separate file
+            named <filename>pg_wal.tar</filename> (if the server is a version
+            earlier than 10, the file will be named <filename>pg_xlog.tar</filename>).
+           </para>
           </listitem>
          </varlistentry>
         </variablelist>
@@ -353,7 +363,8 @@ PostgreSQL documentation
        <para>
         Enables gzip compression of tar file output, with the default
         compression level. Compression is only available when using
-        the tar format.
+        the tar format, and the suffix <filename>.gz</filename> will
+        automatically be added to all tar filenames.
        </para>
       </listitem>
      </varlistentry>
@@ -366,7 +377,8 @@ PostgreSQL documentation
         Enables gzip compression of tar file output, and specifies the
         compression level (0 through 9, 0 being no compression and 9 being best
         compression). Compression is only available when using the tar
-        format.
+        format, and the suffix <filename>.gz</filename> will
+        automatically be added to all tar filenames.
        </para>
       </listitem>
      </varlistentry>
@@ -400,7 +412,7 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-n</option></term>
-      <term><option>--noclean</option></term>
+      <term><option>--no-clean</option></term>
       <listitem>
        <para>
         By default, when <command>pg_basebackup</command> aborts with an
@@ -434,6 +446,21 @@ PostgreSQL documentation
         the entire database, and then go back and send the actual contents.
         This may make the backup take slightly longer, and in particular it
         will take longer before the first data is sent.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-N</option></term>
+      <term><option>--no-sync</option></term>
+      <listitem>
+       <para>
+        By default, <command>pg_basebackup</command> will wait for all files
+        to be written safely to disk.  This option causes
+        <command>pg_basebackup</command> to return without waiting, which is
+        faster, but means that a subsequent operating system crash can leave
+        the base backup corrupt.  Generally, this option is useful for testing
+        but should not be used when creating a production installation.
        </para>
       </listitem>
      </varlistentry>
@@ -610,10 +637,12 @@ PostgreSQL documentation
   <para>
    The backup will include all files in the data directory and tablespaces,
    including the configuration files and any additional files placed in the
-   directory by third parties. But only regular files and directories are
-   copied.  Symbolic links (other than those used for tablespaces) and special
-   device files are skipped.  (See <xref linkend="protocol-replication"> for
-   the precise details.)
+   directory by third parties, except certain temporary files managed by
+   PostgreSQL.  But only regular files and directories are copied, except that
+   symbolic links used for tablespaces are preserved.  Symbolic links pointing
+   to certain directories known to PostgreSQL are copied as empty directories.
+   Other symbolic links and special device files are skipped.
+   See <xref linkend="protocol-replication"> for the precise details.
   </para>
 
   <para>

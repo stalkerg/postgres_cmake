@@ -243,7 +243,13 @@ sub connstr
 	{
 		return "port=$pgport host=$pghost";
 	}
-	return "port=$pgport host=$pghost dbname=$dbname";
+
+	# Escape properly the database string before using it, only
+	# single quotes and backslashes need to be treated this way.
+	$dbname =~ s#\\#\\\\#g;
+	$dbname =~ s#\'#\\\'#g;
+
+	return "port=$pgport host=$pghost dbname='$dbname'";
 }
 
 =pod
@@ -396,12 +402,14 @@ sub init
 	mkdir $self->backup_dir;
 	mkdir $self->archive_dir;
 
-	TestLib::system_or_bail('initdb', '-D', $pgdata, '-A', 'trust', '-N');
+	TestLib::system_or_bail('initdb', '-D', $pgdata, '-A', 'trust', '-N',
+		@{ $params{extra} });
 	TestLib::system_or_bail($ENV{PG_REGRESS}, '--config-auth', $pgdata);
 
 	open my $conf, ">>$pgdata/postgresql.conf";
 	print $conf "\n# Added by PostgresNode.pm\n";
 	print $conf "fsync = off\n";
+	print $conf "log_line_prefix = '%m [%p] %q%a '\n";
 	print $conf "log_statement = all\n";
 	print $conf "port = $port\n";
 
@@ -476,7 +484,7 @@ sub backup
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
 	TestLib::system_or_bail('pg_basebackup', '-D', $backup_path, '-p', $port,
-		'-x');
+		'-x', '--no-sync');
 	print "# Backup finished\n";
 }
 
@@ -715,7 +723,7 @@ sub restart
 
 =item $node->promote()
 
-Wrapper for pg_ctl promote
+Wrapper for pg_ctl promote -w
 
 =cut
 
@@ -727,7 +735,8 @@ sub promote
 	my $logfile = $self->logfile;
 	my $name    = $self->name;
 	print "### Promoting node \"$name\"\n";
-	TestLib::system_log('pg_ctl', '-D', $pgdata, '-l', $logfile, 'promote');
+	TestLib::system_log('pg_ctl', '-D', $pgdata, '-w', '-l', $logfile,
+		'promote');
 }
 
 # Internal routine to enable streaming replication on a standby node.
@@ -1184,7 +1193,7 @@ sub psql
 =item $node->poll_query_until(dbname, query)
 
 Run a query once a second, until it returns 't' (i.e. SQL boolean true).
-Continues polling if psql returns an error result. Times out after 90 seconds.
+Continues polling if psql returns an error result. Times out after 180 seconds.
 
 =cut
 
@@ -1214,7 +1223,7 @@ sub poll_query_until
 		$attempts++;
 	}
 
-	# The query result didn't change in 90 seconds. Give up. Print the stderr
+	# The query result didn't change in 180 seconds. Give up. Print the stderr
 	# from the last attempt, hopefully that's useful for debugging.
 	diag $stderr;
 	return 0;
@@ -1296,6 +1305,24 @@ sub issues_sql_like
 	ok($result, "@$cmd exit code 0");
 	my $log = TestLib::slurp_file($self->logfile);
 	like($log, $expected_sql, "$test_name: SQL found in server log");
+}
+
+=pod
+
+=item $node->run_log(...)
+
+Runs a shell command like TestLib::run_log, but with PGPORT set so
+that the command will default to connecting to this PostgresNode.
+
+=cut
+
+sub run_log
+{
+	my $self = shift;
+
+	local $ENV{PGPORT} = $self->port;
+
+	TestLib::run_log(@_);
 }
 
 =pod

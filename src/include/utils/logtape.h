@@ -31,7 +31,9 @@ extern size_t LogicalTapeRead(LogicalTapeSet *lts, int tapenum,
 				void *ptr, size_t size);
 extern void LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
 				 void *ptr, size_t size);
-extern void LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite);
+extern void LogicalTapeRewindForRead(LogicalTapeSet *lts, int tapenum,
+						 size_t buffer_size);
+extern void LogicalTapeRewindForWrite(LogicalTapeSet *lts, int tapenum);
 extern void LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum);
 extern bool LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum,
 					 size_t size);

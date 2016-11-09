@@ -694,7 +694,6 @@ STRIP_SHARED_LIB
 STRIP_STATIC_LIB
 STRIP
 RANLIB
-ld_R_works
 with_gnu_ld
 LD
 LDFLAGS_SL
@@ -2867,9 +2866,7 @@ dragonfly*) template=netbsd ;;
    mingw*) template=win32 ;;
   netbsd*) template=netbsd ;;
  openbsd*) template=openbsd ;;
-     sco*) template=sco ;;
  solaris*) template=solaris ;;
-   sysv5*) template=unixware ;;
 esac
 
   if test x"$template" = x"" ; then
@@ -6382,40 +6379,6 @@ with_gnu_ld=$ac_cv_prog_gnu_ld
 
 
 
-case $host_os in sysv5*)
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether ld -R works" >&5
-$as_echo_n "checking whether ld -R works... " >&6; }
-if ${pgac_cv_prog_ld_R+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-
-    pgac_save_LDFLAGS=$LDFLAGS; LDFLAGS="$LDFLAGS -Wl,-R/usr/lib"
-    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  pgac_cv_prog_ld_R=yes
-else
-  pgac_cv_prog_ld_R=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-    LDFLAGS=$pgac_save_LDFLAGS
-
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $pgac_cv_prog_ld_R" >&5
-$as_echo "$pgac_cv_prog_ld_R" >&6; }
-  ld_R_works=$pgac_cv_prog_ld_R
-
-esac
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}ranlib", so it can be a program name with args.
 set dummy ${ac_tool_prefix}ranlib; ac_word=$2
@@ -7622,25 +7585,80 @@ $as_echo_n "checking how to link an embedded Python application... " >&6; }
 
 python_libdir=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('LIBDIR'))))"`
 python_ldlibrary=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('LDLIBRARY'))))"`
-python_so=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('SO'))))"`
-ldlibrary=`echo "${python_ldlibrary}" | sed "s/${python_so}$//"`
-python_enable_shared=`${PYTHON} -c "import distutils.sysconfig; print(distutils.sysconfig.get_config_vars().get('Py_ENABLE_SHARED',0))"`
 
-if test x"${python_libdir}" != x"" -a x"${python_ldlibrary}" != x"" -a x"${python_ldlibrary}" != x"${ldlibrary}"
+# If LDLIBRARY exists and has a shlib extension, use it verbatim.
+ldlibrary=`echo "${python_ldlibrary}" | sed -e 's/\.so$//' -e 's/\.dll$//' -e 's/\.dylib$//' -e 's/\.sl$//'`
+if test -e "${python_libdir}/${python_ldlibrary}" -a x"${python_ldlibrary}" != x"${ldlibrary}"
 then
-	# New way: use the official shared library
 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`
-	python_libspec="-L${python_libdir} -l${ldlibrary}"
+	found_shlib=1
 else
-	# Old way: use libpython from python_configdir
-	python_libdir="${python_configdir}"
-	# LDVERSION was introduced in Python 3.2.
+	# Otherwise, guess the base name of the shlib.
+	# LDVERSION was added in Python 3.2, before that use VERSION,
+	# or failing that, $python_version from _PGAC_CHECK_PYTHON_DIRS.
 	python_ldversion=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('LDVERSION'))))"`
-	if test x"${python_ldversion}" = x""; then
-		python_ldversion=$python_version
+	if test x"${python_ldversion}" != x""; then
+		ldlibrary="python${python_ldversion}"
+	else
+		python_version_var=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('VERSION'))))"`
+		if test x"${python_version_var}" != x""; then
+			ldlibrary="python${python_version_var}"
+		else
+			ldlibrary="python${python_version}"
+		fi
 	fi
-	python_libspec="-L${python_libdir} -lpython${python_ldversion}"
+	# Search for a likely-looking file.
+	found_shlib=0
+	for d in "${python_libdir}" "${python_configdir}" /usr/lib64 /usr/lib
+	do
+		# We don't know the platform DLSUFFIX here, so check 'em all.
+		for e in .so .dll .dylib .sl; do
+			if test -e "$d/lib${ldlibrary}$e"; then
+				python_libdir="$d"
+				found_shlib=1
+				break 2
+			fi
+		done
+	done
+	# Some platforms (OpenBSD) require us to accept a bare versioned shlib
+	# (".so.n.n") as well. However, check this only after failing to find
+	# ".so" anywhere, because yet other platforms (Debian) put the .so
+	# symlink in a different directory from the underlying versioned shlib.
+	if test "$found_shlib" != 1; then
+		for d in "${python_libdir}" "${python_configdir}" /usr/lib64 /usr/lib
+		do
+			for f in "$d/lib${ldlibrary}.so."* ; do
+				if test -e "$f"; then
+					python_libdir="$d"
+					found_shlib=1
+					break 2
+				fi
+			done
+		done
+	fi
+	# As usual, Windows has its own ideas.  Possible default library
+	# locations include c:/Windows/System32 and (for Cygwin) /usr/bin,
+	# and the "lib" prefix might not be there.
+	if test "$found_shlib" != 1 -a \( "$PORTNAME" = win32 -o "$PORTNAME" = cygwin \); then
+		for d in "${python_libdir}" "${python_configdir}" c:/Windows/System32 /usr/bin
+		do
+			for f in "$d/lib${ldlibrary}.dll" "$d/${ldlibrary}.dll" ; do
+				if test -e "$f"; then
+					python_libdir="$d"
+					found_shlib=1
+					break 2
+				fi
+			done
+		done
+	fi
 fi
+if test "$found_shlib" != 1; then
+	as_fn_error $? "could not find shared library for Python
+You might have to rebuild your Python installation.  Refer to the
+documentation for details.  Use --without-python to disable building
+PL/Python." "$LINENO" 5
+fi
+python_libspec="-L${python_libdir} -l${ldlibrary}"
 
 python_additional_libs=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('LIBS','LIBC','LIBM','BASEMODLIBS'))))"`
 
@@ -7649,40 +7667,6 @@ $as_echo "${python_libspec} ${python_additional_libs}" >&6; }
 
 
 
-
-  # We need libpython as a shared library.  With Python >=2.5, we
-  # check the Py_ENABLE_SHARED setting.  On Debian, the setting is not
-  # correct before the jessie release (http://bugs.debian.org/695979).
-  # We also want to support older Python versions.  So as a fallback
-  # we see if there is a file that is named like a shared library.
-
-  if test "$python_enable_shared" != 1; then
-    if test "$PORTNAME" = darwin; then
-      # OS X does supply a .dylib even though Py_ENABLE_SHARED does
-      # not get set.  The file detection logic below doesn't succeed
-      # on older OS X versions, so make it explicit.
-      python_enable_shared=1
-    elif test "$PORTNAME" = win32; then
-      # Windows also needs an explicit override.
-      python_enable_shared=1
-    else
-      # We don't know the platform shared library extension here yet,
-      # so we try some candidates.
-      for dlsuffix in .so .sl; do
-        if ls "$python_libdir"/libpython*${dlsuffix}* >/dev/null 2>&1; then
-          python_enable_shared=1
-          break
-        fi
-      done
-    fi
-  fi
-
-  if test "$python_enable_shared" != 1; then
-    as_fn_error $? "cannot build PL/Python because libpython is not a shared library
-You might have to rebuild your Python installation.  Refer to the
-documentation for details.  Use --without-python to disable building
-PL/Python." "$LINENO" 5
-  fi
 fi
 
 if test "$cross_compiling" = yes && test -z "$with_system_tzdata"; then
@@ -9538,9 +9522,9 @@ else
   as_fn_error $? "library 'crypto' is required for OpenSSL" "$LINENO" 5
 fi
 
-     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for SSL_library_init in -lssl" >&5
-$as_echo_n "checking for SSL_library_init in -lssl... " >&6; }
-if ${ac_cv_lib_ssl_SSL_library_init+:} false; then :
+     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for SSL_new in -lssl" >&5
+$as_echo_n "checking for SSL_new in -lssl... " >&6; }
+if ${ac_cv_lib_ssl_SSL_new+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -9554,27 +9538,27 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char SSL_library_init ();
+char SSL_new ();
 int
 main ()
 {
-return SSL_library_init ();
+return SSL_new ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ssl_SSL_library_init=yes
+  ac_cv_lib_ssl_SSL_new=yes
 else
-  ac_cv_lib_ssl_SSL_library_init=no
+  ac_cv_lib_ssl_SSL_new=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_SSL_library_init" >&5
-$as_echo "$ac_cv_lib_ssl_SSL_library_init" >&6; }
-if test "x$ac_cv_lib_ssl_SSL_library_init" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_SSL_new" >&5
+$as_echo "$ac_cv_lib_ssl_SSL_new" >&6; }
+if test "x$ac_cv_lib_ssl_SSL_new" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_LIBSSL 1
 _ACEOF
@@ -9644,9 +9628,9 @@ else
   as_fn_error $? "library 'eay32' or 'crypto' is required for OpenSSL" "$LINENO" 5
 fi
 
-     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing SSL_library_init" >&5
-$as_echo_n "checking for library containing SSL_library_init... " >&6; }
-if ${ac_cv_search_SSL_library_init+:} false; then :
+     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing SSL_new" >&5
+$as_echo_n "checking for library containing SSL_new... " >&6; }
+if ${ac_cv_search_SSL_new+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_func_search_save_LIBS=$LIBS
@@ -9659,11 +9643,11 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char SSL_library_init ();
+char SSL_new ();
 int
 main ()
 {
-return SSL_library_init ();
+return SSL_new ();
   ;
   return 0;
 }
@@ -9676,25 +9660,25 @@ for ac_lib in '' ssleay32 ssl; do
     LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
   fi
   if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_search_SSL_library_init=$ac_res
+  ac_cv_search_SSL_new=$ac_res
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext
-  if ${ac_cv_search_SSL_library_init+:} false; then :
+  if ${ac_cv_search_SSL_new+:} false; then :
   break
 fi
 done
-if ${ac_cv_search_SSL_library_init+:} false; then :
+if ${ac_cv_search_SSL_new+:} false; then :
 
 else
-  ac_cv_search_SSL_library_init=no
+  ac_cv_search_SSL_new=no
 fi
 rm conftest.$ac_ext
 LIBS=$ac_func_search_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_SSL_library_init" >&5
-$as_echo "$ac_cv_search_SSL_library_init" >&6; }
-ac_res=$ac_cv_search_SSL_library_init
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_SSL_new" >&5
+$as_echo "$ac_cv_search_SSL_new" >&6; }
+ac_res=$ac_cv_search_SSL_new
 if test "$ac_res" != no; then :
   test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
 
@@ -9709,6 +9693,37 @@ do :
 if test "x$ac_cv_func_SSL_get_current_compression" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SSL_GET_CURRENT_COMPRESSION 1
+_ACEOF
+
+fi
+done
+
+  # Functions introduced in OpenSSL 1.1.0. We used to check for
+  # OPENSSL_VERSION_NUMBER, but that didn't work with 1.1.0, because LibreSSL
+  # defines OPENSSL_VERSION_NUMBER to claim version 2.0.0, even though it
+  # doesn't have these OpenSSL 1.1.0 functions. So check for individual
+  # functions.
+  for ac_func in OPENSSL_init_ssl BIO_get_data BIO_meth_new ASN1_STRING_get0_data RAND_OpenSSL
+do :
+  as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
+ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
+if eval test \"x\$"$as_ac_var"\" = x"yes"; then :
+  cat >>confdefs.h <<_ACEOF
+#define `$as_echo "HAVE_$ac_func" | $as_tr_cpp` 1
+_ACEOF
+
+fi
+done
+
+  # OpenSSL versions before 1.1.0 required setting callback functions, for
+  # thread-safety. In 1.1.0, it's no longer required, and CRYPTO_lock()
+  # function was removed.
+  for ac_func in CRYPTO_lock
+do :
+  ac_fn_c_check_func "$LINENO" "CRYPTO_lock" "ac_cv_func_CRYPTO_lock"
+if test "x$ac_cv_func_CRYPTO_lock" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_CRYPTO_LOCK 1
 _ACEOF
 
 fi
@@ -10089,7 +10104,7 @@ else
 fi
 
 elif test "$with_uuid" = e2fs ; then
-  # On OS X, the UUID functions are in libc
+  # On macOS, the UUID functions are in libc
   ac_fn_c_check_func "$LINENO" "uuid_generate" "ac_cv_func_uuid_generate"
 if test "x$ac_cv_func_uuid_generate" = xyes; then :
   UUID_LIBS=""
@@ -11538,6 +11553,7 @@ if ${ac_cv_var_tzname+:} false; then :
 else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
+#include <stdlib.h>
 #include <time.h>
 #ifndef tzname /* For SGI.  */
 extern char *tzname[]; /* RS6000 and others reject char **tzname.  */
@@ -12641,7 +12657,7 @@ cat >>confdefs.h <<_ACEOF
 #define HAVE_DECL_STRLCPY $ac_have_decl
 _ACEOF
 
-# This is probably only present on Darwin, but may as well check always
+# This is probably only present on macOS, but may as well check always
 ac_fn_c_check_decl "$LINENO" "F_FULLFSYNC" "ac_cv_have_decl_F_FULLFSYNC" "#include <fcntl.h>
 "
 if test "x$ac_cv_have_decl_F_FULLFSYNC" = xyes; then :
@@ -13563,8 +13579,10 @@ int does_int64_work()
     return 0;
   return 1;
 }
+
+int
 main() {
-  exit(! does_int64_work());
+  return (! does_int64_work());
 }
 _ACEOF
 if ac_fn_c_try_run "$LINENO"; then :
@@ -13645,8 +13663,10 @@ int does_int64_work()
     return 0;
   return 1;
 }
+
+int
 main() {
-  exit(! does_int64_work());
+  return (! does_int64_work());
 }
 _ACEOF
 if ac_fn_c_try_run "$LINENO"; then :
@@ -13719,6 +13739,7 @@ else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <stdio.h>
+#include <string.h>
 typedef long long int ac_int64;
 #define INT64_FORMAT "%${pgac_modifier}d"
 
@@ -13739,8 +13760,10 @@ int does_int64_snprintf_work()
     return 0;			/* either multiply or snprintf is busted */
   return 1;
 }
+
+int
 main() {
-  exit(! does_int64_snprintf_work());
+  return (! does_int64_snprintf_work());
 }
 _ACEOF
 if ac_fn_c_try_run "$LINENO"; then :
@@ -14795,23 +14818,148 @@ fi
 
 # Select semaphore implementation type.
 if test "$PORTNAME" != "win32"; then
+  if test x"$PREFERRED_SEMAPHORES" = x"NAMED_POSIX" ; then
+    # Need sem_open for this
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing sem_open" >&5
+$as_echo_n "checking for library containing sem_open... " >&6; }
+if ${ac_cv_search_sem_open+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char sem_open ();
+int
+main ()
+{
+return sem_open ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' rt pthread; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_sem_open=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_sem_open+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_sem_open+:} false; then :
+
+else
+  ac_cv_search_sem_open=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_sem_open" >&5
+$as_echo "$ac_cv_search_sem_open" >&6; }
+ac_res=$ac_cv_search_sem_open
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+  USE_NAMED_POSIX_SEMAPHORES=1
+fi
+
+  fi
+  if test x"$PREFERRED_SEMAPHORES" = x"UNNAMED_POSIX" ; then
+    # Need sem_init for this
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing sem_init" >&5
+$as_echo_n "checking for library containing sem_init... " >&6; }
+if ${ac_cv_search_sem_init+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char sem_init ();
+int
+main ()
+{
+return sem_init ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' rt pthread; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_sem_init=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_sem_init+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_sem_init+:} false; then :
+
+else
+  ac_cv_search_sem_init=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_sem_init" >&5
+$as_echo "$ac_cv_search_sem_init" >&6; }
+ac_res=$ac_cv_search_sem_init
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+  USE_UNNAMED_POSIX_SEMAPHORES=1
+fi
+
+  fi
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking which semaphore API to use" >&5
+$as_echo_n "checking which semaphore API to use... " >&6; }
   if test x"$USE_NAMED_POSIX_SEMAPHORES" = x"1" ; then
 
 $as_echo "#define USE_NAMED_POSIX_SEMAPHORES 1" >>confdefs.h
 
     SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+    sematype="named POSIX"
   else
     if test x"$USE_UNNAMED_POSIX_SEMAPHORES" = x"1" ; then
 
 $as_echo "#define USE_UNNAMED_POSIX_SEMAPHORES 1" >>confdefs.h
 
       SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+      sematype="unnamed POSIX"
     else
 
 $as_echo "#define USE_SYSV_SEMAPHORES 1" >>confdefs.h
 
       SEMA_IMPLEMENTATION="src/backend/port/sysv_sema.c"
+      sematype="System V"
     fi
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $sematype" >&5
+$as_echo "$sematype" >&6; }
   fi
 else
 

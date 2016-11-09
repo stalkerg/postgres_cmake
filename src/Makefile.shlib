@@ -47,9 +47,8 @@
 # clean-lib             delete the static and shared libraries from the build dir
 # maintainer-clean-lib  delete .def files built for win32
 #
-# Since `all-lib' is the first rule in this file you probably want to
-# have the `all' target before including this file. In the most simple
-# case it would look like this:
+# Typically you would add `all-lib' to the `all' target so that `make all'
+# builds the libraries.  In the most simple case it would look like this:
 #
 #     all: all-lib
 #
@@ -128,7 +127,7 @@ ifeq ($(PORTNAME), darwin)
   else
     # loadable module
     DLSUFFIX		= .so
-    LINK.shared		= $(COMPILER) -bundle -multiply_defined suppress -Wl,-undefined,dynamic_lookup
+    LINK.shared		= $(COMPILER) -bundle -multiply_defined suppress
   endif
   BUILD.exports		= $(AWK) '/^[^\#]/ {printf "_%s\n",$$1}' $< >$@
   exports_file		= $(SHLIB_EXPORTS:%.txt=%.list)
@@ -237,30 +236,6 @@ ifeq ($(PORTNAME), solaris)
   endif
 endif
 
-ifeq ($(PORTNAME), sco)
-  ifeq ($(GCC), yes)
-    LINK.shared		= $(CC) -shared
-  else
-    LINK.shared		= $(CC) -G
-    endif
-  LINK.shared		+= -Wl,-z,text
-  ifdef soname
-    LINK.shared		+= -Wl,-h,$(soname)
-  endif
-endif
-
-ifeq ($(PORTNAME), unixware)
-  ifeq ($(GCC), yes)
-    LINK.shared		= $(CC) -shared
-  else
-    LINK.shared		= $(CC) -G
-  endif
-  LINK.shared		+= -Wl,-z,text
-  ifdef soname
-    LINK.shared		+= -Wl,-h,$(soname)
-  endif
-endif
-
 ifeq ($(PORTNAME), cygwin)
   LINK.shared		= $(CC) -shared
   ifdef SO_MAJOR_VERSION
@@ -323,7 +298,7 @@ endif
 endif # shlib_major
 
 # Where possible, restrict the symbols exported by the library to just the
-# official list, so as to avoid unintentional ABI changes.  On recent Darwin
+# official list, so as to avoid unintentional ABI changes.  On recent macOS
 # this also quiets multiply-defined-symbol warnings in programs that use
 # libpgport along with libpq.
 ifneq (,$(SHLIB_EXPORTS))

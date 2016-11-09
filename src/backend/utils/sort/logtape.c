@@ -52,12 +52,17 @@
  * not clear this helps much, but it can't hurt.  (XXX perhaps a LIFO
  * policy for free blocks would be better?)
  *
+ * To further make the I/Os more sequential, we can use a larger buffer
+ * when reading, and read multiple blocks from the same tape in one go,
+ * whenever the buffer becomes empty.  LogicalTapeAssignReadBufferSize()
+ * can be used to set the size of the read buffer.
+ *
  * To support the above policy of writing to the lowest free block,
  * ltsGetFreeBlock sorts the list of free block numbers into decreasing
  * order each time it is asked for a block and the list isn't currently
  * sorted.  This is an efficient way to handle it because we expect cycles
  * of releasing many blocks followed by re-using many blocks, due to
- * tuplesort.c's "preread" behavior.
+ * the larger read buffer.
  *
  * Since all the bookkeeping and buffer memory is allocated with palloc(),
  * and the underlying file(s) are made with OpenTemporaryFile, all resources
@@ -79,6 +84,7 @@
 
 #include "storage/buffile.h"
 #include "utils/logtape.h"
+#include "utils/memutils.h"
 
 /*
  * Block indexes are "long"s, so we can fit this many per indirect block.
@@ -131,6 +137,7 @@ typedef struct LogicalTape
 	 * reading.
 	 */
 	char	   *buffer;			/* physical buffer (separately palloc'd) */
+	int			buffer_size;	/* allocated size of the buffer */
 	long		curBlockNumber; /* this block's logical blk# within tape */
 	int			pos;			/* next read/write position in buffer */
 	int			nbytes;			/* total # of valid bytes in buffer */
@@ -225,6 +232,53 @@ ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 				(errcode_for_file_access(),
 				 errmsg("could not read block %ld of temporary file: %m",
 						blocknum)));
+}
+
+/*
+ * Read as many blocks as we can into the per-tape buffer.
+ *
+ * The caller can specify the next physical block number to read, in
+ * datablocknum, or -1 to fetch the next block number from the internal block.
+ * If datablocknum == -1, the caller must've already set curBlockNumber.
+ *
+ * Returns true if anything was read, 'false' on EOF.
+ */
+static bool
+ltsReadFillBuffer(LogicalTapeSet *lts, LogicalTape *lt, long datablocknum)
+{
+	lt->pos = 0;
+	lt->nbytes = 0;
+
+	do
+	{
+		/* Fetch next block number (unless provided by caller) */
+		if (datablocknum == -1)
+		{
+			datablocknum = ltsRecallNextBlockNum(lts, lt->indirect, lt->frozen);
+			if (datablocknum == -1L)
+				break;			/* EOF */
+			lt->curBlockNumber++;
+		}
+
+		/* Read the block */
+		ltsReadBlock(lts, datablocknum, (void *) (lt->buffer + lt->nbytes));
+		if (!lt->frozen)
+			ltsReleaseBlock(lts, datablocknum);
+
+		if (lt->curBlockNumber < lt->numFullBlocks)
+			lt->nbytes += BLCKSZ;
+		else
+		{
+			/* EOF */
+			lt->nbytes += lt->lastBlockBytes;
+			break;
+		}
+
+		/* Advance to next block, if we have buffer space left */
+		datablocknum = -1;
+	} while (lt->nbytes < lt->buffer_size);
+
+	return (lt->nbytes > 0);
 }
 
 /*
@@ -546,6 +600,7 @@ LogicalTapeSetCreate(int ntapes)
 		lt->numFullBlocks = 0L;
 		lt->lastBlockBytes = 0;
 		lt->buffer = NULL;
+		lt->buffer_size = 0;
 		lt->curBlockNumber = 0L;
 		lt->pos = 0;
 		lt->nbytes = 0;
@@ -628,7 +683,10 @@ LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
 
 	/* Allocate data buffer and first indirect block on first write */
 	if (lt->buffer == NULL)
+	{
 		lt->buffer = (char *) palloc(BLCKSZ);
+		lt->buffer_size = BLCKSZ;
+	}
 	if (lt->indirect == NULL)
 	{
 		lt->indirect = (IndirectBlock *) palloc(sizeof(IndirectBlock));
@@ -636,6 +694,7 @@ LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
 		lt->indirect->nextup = NULL;
 	}
 
+	Assert(lt->buffer_size == BLCKSZ);
 	while (size > 0)
 	{
 		if (lt->pos >= BLCKSZ)
@@ -671,13 +730,20 @@ LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
 }
 
 /*
- * Rewind logical tape and switch from writing to reading or vice versa.
+ * Rewind logical tape and switch from writing to reading.
  *
- * Unless the tape has been "frozen" in read state, forWrite must be the
- * opposite of the previous tape state.
+ * The tape must currently be in writing state, or "frozen" in read state.
+ *
+ * 'buffer_size' specifies how much memory to use for the read buffer.  It
+ * does not include the memory needed for the indirect blocks.  Regardless
+ * of the argument, the actual amount of memory used is between BLCKSZ and
+ * MaxAllocSize, and is a multiple of BLCKSZ.  The given value is rounded
+ * down and truncated to fit those constraints, if necessary.  If the tape
+ * is frozen, the 'buffer_size' argument is ignored, and a small BLCKSZ byte
+ * buffer is used.
  */
 void
-LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite)
+LogicalTapeRewindForRead(LogicalTapeSet *lts, int tapenum, size_t buffer_size)
 {
 	LogicalTape *lt;
 	long		datablocknum;
@@ -685,75 +751,112 @@ LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite)
 	Assert(tapenum >= 0 && tapenum < lts->nTapes);
 	lt = &lts->tapes[tapenum];
 
-	if (!forWrite)
+	/*
+	 * Round and cap buffer_size if needed.
+	 */
+	if (lt->frozen)
+		buffer_size = BLCKSZ;
+	else
 	{
-		if (lt->writing)
-		{
-			/*
-			 * Completion of a write phase.  Flush last partial data block,
-			 * flush any partial indirect blocks, rewind for normal
-			 * (destructive) read.
-			 */
-			if (lt->dirty)
-				ltsDumpBuffer(lts, lt);
-			lt->lastBlockBytes = lt->nbytes;
-			lt->writing = false;
-			datablocknum = ltsRewindIndirectBlock(lts, lt->indirect, false);
-		}
-		else
-		{
-			/*
-			 * This is only OK if tape is frozen; we rewind for (another) read
-			 * pass.
-			 */
-			Assert(lt->frozen);
-			datablocknum = ltsRewindFrozenIndirectBlock(lts, lt->indirect);
-		}
-		/* Read the first block, or reset if tape is empty */
-		lt->curBlockNumber = 0L;
-		lt->pos = 0;
-		lt->nbytes = 0;
-		if (datablocknum != -1L)
-		{
-			ltsReadBlock(lts, datablocknum, (void *) lt->buffer);
-			if (!lt->frozen)
-				ltsReleaseBlock(lts, datablocknum);
-			lt->nbytes = (lt->curBlockNumber < lt->numFullBlocks) ?
-				BLCKSZ : lt->lastBlockBytes;
-		}
+		/* need at least one block */
+		if (buffer_size < BLCKSZ)
+			buffer_size = BLCKSZ;
+
+		/*
+		 * palloc() larger than MaxAllocSize would fail (a multi-gigabyte
+		 * buffer is unlikely to be helpful, anyway)
+		 */
+		if (buffer_size > MaxAllocSize)
+			buffer_size = MaxAllocSize;
+
+		/* round down to BLCKSZ boundary */
+		buffer_size -= buffer_size % BLCKSZ;
+	}
+
+	if (lt->writing)
+	{
+		/*
+		 * Completion of a write phase.  Flush last partial data block, flush
+		 * any partial indirect blocks, rewind for normal (destructive) read.
+		 */
+		if (lt->dirty)
+			ltsDumpBuffer(lts, lt);
+		lt->lastBlockBytes = lt->nbytes;
+		lt->writing = false;
+		datablocknum = ltsRewindIndirectBlock(lts, lt->indirect, false);
 	}
 	else
 	{
 		/*
-		 * Completion of a read phase.  Rewind and prepare for write.
-		 *
-		 * NOTE: we assume the caller has read the tape to the end; otherwise
-		 * untouched data and indirect blocks will not have been freed. We
-		 * could add more code to free any unread blocks, but in current usage
-		 * of this module it'd be useless code.
+		 * This is only OK if tape is frozen; we rewind for (another) read
+		 * pass.
 		 */
-		IndirectBlock *ib,
-				   *nextib;
+		Assert(lt->frozen);
+		datablocknum = ltsRewindFrozenIndirectBlock(lts, lt->indirect);
+	}
 
-		Assert(!lt->writing && !lt->frozen);
-		/* Must truncate the indirect-block hierarchy down to one level. */
-		if (lt->indirect)
+	/* Allocate a read buffer (unless the tape is empty) */
+	if (lt->buffer)
+		pfree(lt->buffer);
+	lt->buffer = NULL;
+	lt->buffer_size = 0;
+	if (datablocknum != -1L)
+	{
+		lt->buffer = palloc(buffer_size);
+		lt->buffer_size = buffer_size;
+	}
+
+	/* Read the first block, or reset if tape is empty */
+	lt->curBlockNumber = 0L;
+	lt->pos = 0;
+	lt->nbytes = 0;
+	if (datablocknum != -1L)
+		ltsReadFillBuffer(lts, lt, datablocknum);
+}
+
+/*
+ * Rewind logical tape and switch from reading to writing.
+ *
+ * NOTE: we assume the caller has read the tape to the end; otherwise
+ * untouched data and indirect blocks will not have been freed. We
+ * could add more code to free any unread blocks, but in current usage
+ * of this module it'd be useless code.
+ */
+void
+LogicalTapeRewindForWrite(LogicalTapeSet *lts, int tapenum)
+{
+	LogicalTape *lt;
+	IndirectBlock *ib,
+			   *nextib;
+
+	Assert(tapenum >= 0 && tapenum < lts->nTapes);
+	lt = &lts->tapes[tapenum];
+
+	Assert(!lt->writing && !lt->frozen);
+	/* Must truncate the indirect-block hierarchy down to one level. */
+	if (lt->indirect)
+	{
+		for (ib = lt->indirect->nextup; ib != NULL; ib = nextib)
 		{
-			for (ib = lt->indirect->nextup; ib != NULL; ib = nextib)
-			{
-				nextib = ib->nextup;
-				pfree(ib);
-			}
-			lt->indirect->nextSlot = 0;
-			lt->indirect->nextup = NULL;
+			nextib = ib->nextup;
+			pfree(ib);
 		}
-		lt->writing = true;
-		lt->dirty = false;
-		lt->numFullBlocks = 0L;
-		lt->lastBlockBytes = 0;
-		lt->curBlockNumber = 0L;
-		lt->pos = 0;
-		lt->nbytes = 0;
+		lt->indirect->nextSlot = 0;
+		lt->indirect->nextup = NULL;
+	}
+	lt->writing = true;
+	lt->dirty = false;
+	lt->numFullBlocks = 0L;
+	lt->lastBlockBytes = 0;
+	lt->curBlockNumber = 0L;
+	lt->pos = 0;
+	lt->nbytes = 0;
+
+	if (lt->buffer)
+	{
+		pfree(lt->buffer);
+		lt->buffer = NULL;
+		lt->buffer_size = 0;
 	}
 }
 
@@ -779,20 +882,8 @@ LogicalTapeRead(LogicalTapeSet *lts, int tapenum,
 		if (lt->pos >= lt->nbytes)
 		{
 			/* Try to load more data into buffer. */
-			long		datablocknum = ltsRecallNextBlockNum(lts, lt->indirect,
-															 lt->frozen);
-
-			if (datablocknum == -1L)
+			if (!ltsReadFillBuffer(lts, lt, -1))
 				break;			/* EOF */
-			lt->curBlockNumber++;
-			lt->pos = 0;
-			ltsReadBlock(lts, datablocknum, (void *) lt->buffer);
-			if (!lt->frozen)
-				ltsReleaseBlock(lts, datablocknum);
-			lt->nbytes = (lt->curBlockNumber < lt->numFullBlocks) ?
-				BLCKSZ : lt->lastBlockBytes;
-			if (lt->nbytes <= 0)
-				break;			/* EOF (possible here?) */
 		}
 
 		nthistime = lt->nbytes - lt->pos;
@@ -842,6 +933,22 @@ LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum)
 	lt->writing = false;
 	lt->frozen = true;
 	datablocknum = ltsRewindIndirectBlock(lts, lt->indirect, true);
+
+	/*
+	 * The seek and backspace functions assume a single block read buffer.
+	 * That's OK with current usage.  A larger buffer is helpful to make the
+	 * read pattern of the backing file look more sequential to the OS, when
+	 * we're reading from multiple tapes.  But at the end of a sort, when a
+	 * tape is frozen, we only read from a single tape anyway.
+	 */
+	if (!lt->buffer || lt->buffer_size != BLCKSZ)
+	{
+		if (lt->buffer)
+			pfree(lt->buffer);
+		lt->buffer = palloc(BLCKSZ);
+		lt->buffer_size = BLCKSZ;
+	}
+
 	/* Read the first block, or reset if tape is empty */
 	lt->curBlockNumber = 0L;
 	lt->pos = 0;
@@ -875,6 +982,7 @@ LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size)
 	Assert(tapenum >= 0 && tapenum < lts->nTapes);
 	lt = &lts->tapes[tapenum];
 	Assert(lt->frozen);
+	Assert(lt->buffer_size == BLCKSZ);
 
 	/*
 	 * Easy case for seek within current block.
@@ -941,6 +1049,7 @@ LogicalTapeSeek(LogicalTapeSet *lts, int tapenum,
 	lt = &lts->tapes[tapenum];
 	Assert(lt->frozen);
 	Assert(offset >= 0 && offset <= BLCKSZ);
+	Assert(lt->buffer_size == BLCKSZ);
 
 	/*
 	 * Easy case for seek within current block.
@@ -1002,6 +1111,10 @@ LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
 
 	Assert(tapenum >= 0 && tapenum < lts->nTapes);
 	lt = &lts->tapes[tapenum];
+
+	/* With a larger buffer, 'pos' wouldn't be the same as offset within page */
+	Assert(lt->buffer_size == BLCKSZ);
+
 	*blocknum = lt->curBlockNumber;
 	*offset = lt->pos;
 }

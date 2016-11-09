@@ -69,9 +69,7 @@ dragonfly*) template=netbsd ;;
    mingw*) template=win32 ;;
   netbsd*) template=netbsd ;;
  openbsd*) template=openbsd ;;
-     sco*) template=sco ;;
  solaris*) template=solaris ;;
-   sysv5*) template=unixware ;;
 esac
 
   if test x"$template" = x"" ; then
@@ -871,18 +869,6 @@ AC_ARG_VAR(LDFLAGS_SL, [extra linker flags for linking shared libraries only])
 PGAC_PROG_LD
 AC_SUBST(LD)
 AC_SUBST(with_gnu_ld)
-case $host_os in sysv5*)
-  AC_CACHE_CHECK([whether ld -R works], [pgac_cv_prog_ld_R],
-  [
-    pgac_save_LDFLAGS=$LDFLAGS; LDFLAGS="$LDFLAGS -Wl,-R/usr/lib"
-    AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])],
-      [pgac_cv_prog_ld_R=yes],
-      [pgac_cv_prog_ld_R=no])
-    LDFLAGS=$pgac_save_LDFLAGS
-  ])
-  ld_R_works=$pgac_cv_prog_ld_R
-  AC_SUBST(ld_R_works)
-esac
 AC_PROG_RANLIB
 PGAC_CHECK_STRIP
 AC_CHECK_TOOL(AR, ar, ar)
@@ -934,40 +920,6 @@ fi
 if test "$with_python" = yes; then
   PGAC_PATH_PYTHON
   PGAC_CHECK_PYTHON_EMBED_SETUP
-
-  # We need libpython as a shared library.  With Python >=2.5, we
-  # check the Py_ENABLE_SHARED setting.  On Debian, the setting is not
-  # correct before the jessie release (http://bugs.debian.org/695979).
-  # We also want to support older Python versions.  So as a fallback
-  # we see if there is a file that is named like a shared library.
-
-  if test "$python_enable_shared" != 1; then
-    if test "$PORTNAME" = darwin; then
-      # OS X does supply a .dylib even though Py_ENABLE_SHARED does
-      # not get set.  The file detection logic below doesn't succeed
-      # on older OS X versions, so make it explicit.
-      python_enable_shared=1
-    elif test "$PORTNAME" = win32; then
-      # Windows also needs an explicit override.
-      python_enable_shared=1
-    else
-      # We don't know the platform shared library extension here yet,
-      # so we try some candidates.
-      for dlsuffix in .so .sl; do
-        if ls "$python_libdir"/libpython*${dlsuffix}* >/dev/null 2>&1; then
-          python_enable_shared=1
-          break
-        fi
-      done
-    fi
-  fi
-
-  if test "$python_enable_shared" != 1; then
-    AC_MSG_ERROR([cannot build PL/Python because libpython is not a shared library
-You might have to rebuild your Python installation.  Refer to the
-documentation for details.  Use --without-python to disable building
-PL/Python.])
-  fi
 fi
 
 if test "$cross_compiling" = yes && test -z "$with_system_tzdata"; then
@@ -1112,12 +1064,22 @@ if test "$with_openssl" = yes ; then
   dnl Order matters!
   if test "$PORTNAME" != "win32"; then
      AC_CHECK_LIB(crypto, CRYPTO_new_ex_data, [], [AC_MSG_ERROR([library 'crypto' is required for OpenSSL])])
-     AC_CHECK_LIB(ssl,    SSL_library_init, [], [AC_MSG_ERROR([library 'ssl' is required for OpenSSL])])
+     AC_CHECK_LIB(ssl,    SSL_new, [], [AC_MSG_ERROR([library 'ssl' is required for OpenSSL])])
   else
      AC_SEARCH_LIBS(CRYPTO_new_ex_data, eay32 crypto, [], [AC_MSG_ERROR([library 'eay32' or 'crypto' is required for OpenSSL])])
-     AC_SEARCH_LIBS(SSL_library_init, ssleay32 ssl, [], [AC_MSG_ERROR([library 'ssleay32' or 'ssl' is required for OpenSSL])])
+     AC_SEARCH_LIBS(SSL_new, ssleay32 ssl, [], [AC_MSG_ERROR([library 'ssleay32' or 'ssl' is required for OpenSSL])])
   fi
   AC_CHECK_FUNCS([SSL_get_current_compression])
+  # Functions introduced in OpenSSL 1.1.0. We used to check for
+  # OPENSSL_VERSION_NUMBER, but that didn't work with 1.1.0, because LibreSSL
+  # defines OPENSSL_VERSION_NUMBER to claim version 2.0.0, even though it
+  # doesn't have these OpenSSL 1.1.0 functions. So check for individual
+  # functions.
+  AC_CHECK_FUNCS([OPENSSL_init_ssl BIO_get_data BIO_meth_new ASN1_STRING_get0_data RAND_OpenSSL])
+  # OpenSSL versions before 1.1.0 required setting callback functions, for
+  # thread-safety. In 1.1.0, it's no longer required, and CRYPTO_lock()
+  # function was removed.
+  AC_CHECK_FUNCS([CRYPTO_lock])
 fi
 
 if test "$with_pam" = yes ; then
@@ -1172,7 +1134,7 @@ if test "$with_uuid" = bsd ; then
     [UUID_LIBS=""],
     [AC_MSG_ERROR([BSD UUID functions are not present])])
 elif test "$with_uuid" = e2fs ; then
-  # On OS X, the UUID functions are in libc
+  # On macOS, the UUID functions are in libc
   AC_CHECK_FUNC(uuid_generate,
     [UUID_LIBS=""],
     [AC_CHECK_LIB(uuid, uuid_generate,
@@ -1415,8 +1377,8 @@ esac
 if test "$PORTNAME" != "win32"; then
    AC_SYS_LARGEFILE
    dnl Autoconf 2.69's AC_SYS_LARGEFILE believes it's a good idea to #define
-   dnl _DARWIN_USE_64_BIT_INODE, but it isn't: on OS X 10.5 that activates a
-   dnl bug that causes readdir() to sometimes return EINVAL.  On later OS X
+   dnl _DARWIN_USE_64_BIT_INODE, but it isn't: on macOS 10.5 that activates a
+   dnl bug that causes readdir() to sometimes return EINVAL.  On later macOS
    dnl versions where the feature actually works, it's on by default anyway.
    AH_VERBATIM([_DARWIN_USE_64_BIT_INODE],[])
 fi
@@ -1469,7 +1431,7 @@ fi
 
 AC_CHECK_DECLS(fdatasync, [], [], [#include <unistd.h>])
 AC_CHECK_DECLS([strlcat, strlcpy])
-# This is probably only present on Darwin, but may as well check always
+# This is probably only present on macOS, but may as well check always
 AC_CHECK_DECLS(F_FULLFSYNC, [], [], [#include <fcntl.h>])
 
 HAVE_IPV6=no
@@ -1963,17 +1925,30 @@ AC_SUBST(PG_CRC32C_OBJS)
 
 # Select semaphore implementation type.
 if test "$PORTNAME" != "win32"; then
+  if test x"$PREFERRED_SEMAPHORES" = x"NAMED_POSIX" ; then
+    # Need sem_open for this
+    AC_SEARCH_LIBS(sem_open, [rt pthread], [USE_NAMED_POSIX_SEMAPHORES=1])
+  fi
+  if test x"$PREFERRED_SEMAPHORES" = x"UNNAMED_POSIX" ; then
+    # Need sem_init for this
+    AC_SEARCH_LIBS(sem_init, [rt pthread], [USE_UNNAMED_POSIX_SEMAPHORES=1])
+  fi
+  AC_MSG_CHECKING([which semaphore API to use])
   if test x"$USE_NAMED_POSIX_SEMAPHORES" = x"1" ; then
     AC_DEFINE(USE_NAMED_POSIX_SEMAPHORES, 1, [Define to select named POSIX semaphores.])
     SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+    sematype="named POSIX"
   else
     if test x"$USE_UNNAMED_POSIX_SEMAPHORES" = x"1" ; then
       AC_DEFINE(USE_UNNAMED_POSIX_SEMAPHORES, 1, [Define to select unnamed POSIX semaphores.])
       SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+      sematype="unnamed POSIX"
     else
       AC_DEFINE(USE_SYSV_SEMAPHORES, 1, [Define to select SysV-style semaphores.])
       SEMA_IMPLEMENTATION="src/backend/port/sysv_sema.c"
+      sematype="System V"
     fi
+  AC_MSG_RESULT([$sematype])
   fi
 else
   AC_DEFINE(USE_WIN32_SEMAPHORES, 1, [Define to select Win32-style semaphores.])
