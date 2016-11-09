@@ -18,6 +18,7 @@ set(pgcommon_srv_SRCS
 set(pgcommon_SRCS
 	${pgcommon_srv_SRCS}
 	fe_memutils.c
+	file_utils.c
 	restricted_token.c
 	${PROJECT_SOURCE_DIR}/src/include/parser/gram.h
 )

@@ -12,6 +12,7 @@ endif()
 add_library(common_basebackup STATIC
 	receivelog.c
 	streamutil.c
+	walmethods.c
 )
 
 target_link_libraries(common_basebackup
@@ -32,9 +33,9 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 		pgfeutils
 		pgport
 		pq
+		common_basebackup
 		pgcommon
 		${M_LIB}
-		common_basebackup
 	)
 	CMAKE_SET_TARGET_FOLDER(${loop_var} bin)
 	if(ZLIB_FOUND)
