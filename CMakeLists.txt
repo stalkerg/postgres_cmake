@@ -366,6 +366,8 @@ check_c_source_compiles("
 	}
 " HAVE_ISINF)
 
+# Check common include files
+
 check_include_files(ieeefp.h HAVE_IEEEFP_H)
 if(NOT HAVE_IEEEFP_H)
 	set(HAVE_IEEEFP_H 0)
@@ -380,8 +382,70 @@ if (HAVE_FP_CLASS_H)
 endif()
 set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};float.h;math.h")
 
-# Need for isinf implementation
-check_function_exists(fpclass HAVE_FPCLASS)
+check_include_files(sys/un.h HAVE_SYS_UN_H)
+check_include_files(ucred.h HAVE_UCRED_H)
+check_include_files(sys/ucred.h HAVE_SYS_UCRED_H)
+check_include_files(sys/types.h HAVE_SYS_TYPES_H)
+check_include_files(sys/socket.h HAVE_SYS_SOCKET_H)
+check_include_files(sys/sockio.h HAVE_SYS_SOCKIO_H)
+check_include_files(stdint.h HAVE_STDINT_H)
+
+check_include_files(sys/select.h HAVE_SYS_SELECT_H)
+check_include_files(sys/poll.h HAVE_SYS_POLL_H)
+check_include_files(sys/epoll.h HAVE_SYS_EPOLL_H)
+check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
+check_include_files(sys/tas.h HAVE_SYS_TAS_H)
+check_include_files(dld.h HAVE_DLD_H)
+check_include_files(langinfo.h HAVE_LANGINFO_H)
+check_include_files(poll.h HAVE_POLL_H)
+
+check_include_files(wchar.h HAVE_WCHAR_H)
+check_include_files(wctype.h HAVE_WCTYPE_H)
+check_include_files(winldap.h HAVE_WINLDAP_H)
+check_include_files(pwd.h HAVE_PWD_H)
+check_include_files(crtdefs.h HAVE_CRTDEFS_H)
+
+check_include_files(nbtool_config.h HAVE_NBTOOL_CONFIG_H)
+
+check_include_files(mbarrier.h HAVE_MBARRIER_H)
+check_include_files(atomic.h HAVE_ATOMIC_H)
+
+check_include_files(netinet/tcp.h HAVE_NETINET_TCP_H)
+check_include_files(net/if.h HAVE_NET_IF_H)
+
+check_include_files(pam/pam_appl.h HAVE_PAM_PAM_APPL_H)
+check_include_files(security/pam_appl.h HAVE_SECURITY_PAM_APPL_H)
+if(USE_PAM AND NOT (HAVE_PAM_PAM_APPL_H OR HAVE_SECURITY_PAM_APPL_H))
+	message(FATAL_ERROR "header file <security/pam_appl.h> or <pam/pam_appl.h> is required for PAM.")
+endif()
+
+check_include_files(syslog.h HAVE_SYSLOG)
+check_include_files(termios.h HAVE_TERMIOS_H)
+
+check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
+check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
+check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
+check_include_files("sys/ioctl.h" HAVE_SYS_IOCTL_H)
+
+check_include_files(ifaddrs.h HAVE_IFADDRS_H)
+check_include_files(crypt.h HAVE_CRYPT_H)
+check_include_files(unistd.h HAVE_UNISTD_H)
+
+check_include_files("locale.h" HAVE_LOCALE_H)
+check_include_files("xlocale.h" HAVE_XLOCALE_H)
+
+check_include_files(bsd_auth.h HAVE_BSD_AUTH_H)
+check_include_files(strings.h HAVE_STRINGS_H)
+check_include_files(string.h HAVE_STRING_H)
+check_include_files(getopt.h HAVE_GETOPT_H)
+check_include_files(sys/mman.h HAVE_SYS_MMAN_H)
+check_include_files(sys/time.h HAVE_SYS_TIME_H)
+check_include_files(sys/resource.h HAVE_SYS_RESOURCE_H)
+check_include_files(utime.h HAVE_UTIME_H)
+
+# Check functions
+
+check_function_exists(fpclass HAVE_FPCLASS) # Need for isinf implementation
 check_function_exists(fp_class HAVE_FP_CLASS)
 check_function_exists(fp_class_d HAVE_FP_CLASS_D)
 check_function_exists(class HAVE_CLASS)
@@ -412,7 +476,6 @@ check_function_exists(sync_file_range HAVE_SYNC_FILE_RANGE)
 #So strange
 check_function_exists(pstat HAVE_PSTAT)
 
-check_include_files(ifaddrs.h HAVE_IFADDRS_H)
 if(HAVE_IFADDRS_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};ifaddrs.h")
 endif()
@@ -434,13 +497,12 @@ find_library(CRYPT_LIB crypt)
 if(CRYPT_LIB)
 	set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${CRYPT_LIB}")
 endif()
-check_include_files(crypt.h HAVE_CRYPT_H)
+
 if(HAVE_CRYPT_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};crypt.h")
 endif()
 check_function_exists(crypt HAVE_CRYPT)
 
-check_include_files(unistd.h HAVE_UNISTD_H)
 if(HAVE_UNISTD_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};unistd.h")
 endif()
@@ -475,8 +537,7 @@ if(NOT MSVC)
 endif()
 
 set(CMAKE_REQUIRED_LIBRARIES "")
-check_include_files(strings.h HAVE_STRINGS_H)
-check_include_files(string.h HAVE_STRING_H)
+
 if(HAVE_STRINGS_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};strings.h")
 endif()
@@ -485,7 +546,6 @@ if(HAVE_STRING_H)
 endif()
 check_function_exists(fls HAVE_FLS)
 
-check_include_files(getopt.h HAVE_GETOPT_H)
 if(HAVE_GETOPT_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};getopt.h")
 endif()
@@ -534,7 +594,6 @@ return 0;
 }
 " HAVE_PS_STRINGS)
 
-check_include_files(sys/mman.h HAVE_SYS_MMAN_H)
 if(HAVE_SYS_MMAN_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/mman.h")
 endif()
@@ -543,8 +602,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 check_function_exists(shm_open HAVE_SHM_OPEN)
 
-check_include_files(sys/time.h HAVE_SYS_TIME_H)
-check_include_files(sys/resource.h HAVE_SYS_RESOURCE_H)
+
 if(HAVE_SYS_TIME_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};sys/time.h")
 endif()
@@ -554,7 +612,6 @@ endif()
 check_function_exists(getrusage HAVE_GETRUSAGE)
 check_function_exists(gettimeofday HAVE_GETTIMEOFDAY)
 
-check_include_files(utime.h HAVE_UTIME_H)
 if(HAVE_UTIME_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};utime.h")
 endif()
@@ -573,47 +630,6 @@ if(OPENSSL_FOUND)
 	check_function_exists(SSL_get_current_compression HAVE_SSL_GET_CURRENT_COMPRESSION)
 endif(OPENSSL_FOUND)
 
-
-check_include_files(sys/un.h HAVE_SYS_UN_H)
-check_include_files(ucred.h HAVE_UCRED_H)
-check_include_files(sys/ucred.h HAVE_SYS_UCRED_H)
-check_include_files(sys/types.h HAVE_SYS_TYPES_H)
-check_include_files(sys/socket.h HAVE_SYS_SOCKET_H)
-check_include_files(sys/sockio.h HAVE_SYS_SOCKIO_H)
-check_include_files(stdint.h HAVE_STDINT_H)
-
-check_include_files(sys/select.h HAVE_SYS_SELECT_H)
-check_include_files(sys/poll.h HAVE_SYS_POLL_H)
-check_include_files(sys/epoll.h HAVE_SYS_EPOLL_H)
-check_include_files(sys/pstat.h HAVE_SYS_PSTAT_H)
-check_include_files(sys/tas.h HAVE_SYS_TAS_H)
-check_include_files(dld.h HAVE_DLD_H)
-check_include_files(langinfo.h HAVE_LANGINFO_H)
-check_include_files(poll.h HAVE_POLL_H)
-
-check_include_files(wchar.h HAVE_WCHAR_H)
-check_include_files(wctype.h HAVE_WCTYPE_H)
-check_include_files(winldap.h HAVE_WINLDAP_H)
-check_include_files(pwd.h HAVE_PWD_H)
-check_include_files(crtdefs.h HAVE_CRTDEFS_H)
-
-check_include_files(nbtool_config.h HAVE_NBTOOL_CONFIG_H)
-
-check_include_files(mbarrier.h HAVE_MBARRIER_H)
-check_include_files(atomic.h HAVE_ATOMIC_H)
-
-check_include_files(netinet/tcp.h HAVE_NETINET_TCP_H)
-check_include_files(net/if.h HAVE_NET_IF_H)
-
-check_include_files(pam/pam_appl.h HAVE_PAM_PAM_APPL_H)
-check_include_files(security/pam_appl.h HAVE_SECURITY_PAM_APPL_H)
-if(USE_PAM AND NOT (HAVE_PAM_PAM_APPL_H OR HAVE_SECURITY_PAM_APPL_H))
-	message(FATAL_ERROR "header file <security/pam_appl.h> or <pam/pam_appl.h> is required for PAM.")
-endif()
-
-check_include_files(syslog.h HAVE_SYSLOG)
-check_include_files(termios.h HAVE_TERMIOS_H)
-
 if(USE_SYSTEMD)
 	check_include_files(systemd/sd-daemon.h HAVE_SYSTEMD_SD_DAEMON_H)
 	if(NOT HAVE_SYSTEMD_SD_DAEMON_H)
@@ -621,13 +637,12 @@ if(USE_SYSTEMD)
 	endif()
 endif()
 
-check_include_files(bsd_auth.h HAVE_BSD_AUTH_H)
+
 if(USE_BSD_AUTH AND NOT HAVE_BSD_AUTH_H)
 	message(FATAL_ERROR "header file <bsd_auth.h> is required for BSD Authentication support")
 endif()
 
-
-#Check ReadLine includes
+# Check ReadLine includes
 option(WITH_READLINE "do not use GNU Readline nor BSD Libedit for editing" ON)
 if(WITH_READLINE AND NOT MSVC)
 	find_package(Readline)
@@ -645,7 +660,6 @@ if(WITH_READLINE AND NOT MSVC)
 		check_include_files("stdio.h;readline/readline.h" HAVE_READLINE_READLINE_H)
 		check_include_files("stdio.h;editline/history.h" HAVE_EDITLINE_HISTORY_H)
 		check_include_files("stdio.h;editline/readline.h" HAVE_EDITLINE_READLINE_H)
-
 
 		set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} ${READLINE_LIBRARY})
 		if(CURSES_FOUND)
@@ -667,11 +681,6 @@ else()
 	set(READLINE_LIBRARY "")
 	set(HAVE_LIBREADLINE FALSE)
 endif()
-
-check_include_files("sys/ipc.h" HAVE_SYS_IPC_H)
-check_include_files("sys/sem.h" HAVE_SYS_SEM_H)
-check_include_files("sys/shm.h" HAVE_SYS_SHM_H)
-check_include_files("sys/ioctl.h" HAVE_SYS_IOCTL_H)
 
 # Check if _GNU_SOURCE is available.
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -719,8 +728,7 @@ if(PG_INT128_TYPE AND NOT WIN32)
 	set(PG_INT128_TYPE __int128)
 endif()
 
-check_include_files("locale.h" HAVE_LOCALE_H)
-check_include_files("xlocale.h" HAVE_XLOCALE_H)
+
 if(HAVE_LOCALE_H)
 	set(CMAKE_EXTRA_INCLUDE_FILES "${CMAKE_EXTRA_INCLUDE_FILES};locale.h")
 endif()
