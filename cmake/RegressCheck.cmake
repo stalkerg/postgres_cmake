@@ -4,36 +4,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	set(env_cmd
 		${CMAKE_COMMAND} -E env
 		"DYLD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$DYLD_LIBRARY_PATH"
+		"PATH=$ENV{DESTDIR}${PGBINDIR}:$$PATH"
 	)
 	set(tmp_env_cmd
 		${CMAKE_COMMAND} -E env
 		"DYLD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$DYLD_LIBRARY_PATH"
+		"PATH=${tmp_check_folder}${PGBINDIR}:$$PATH"
 	)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
 	set(env_cmd
 		${CMAKE_COMMAND} -E env
 		"LIBPATH=$ENV{DESTDIR}${LIBDIR}:$LIBPATH"
+		"PATH=$ENV{DESTDIR}${PGBINDIR}:$$PATH"
 	)
 	set(tmp_env_cmd
 		${CMAKE_COMMAND} -E env
 		"LIBPATH=${tmp_check_folder}${LIBDIR}:$LIBPATH"
+		"PATH=${tmp_check_folder}${PGBINDIR}:$$PATH"
 	)
 else()
 	if (CMAKE_VERSION VERSION_GREATER "3.2.0")
 		set(env_cmd
 			${CMAKE_COMMAND} -E env
 			"LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$LD_LIBRARY_PATH"
+			"PATH=$ENV{DESTDIR}${PGBINDIR}:$$PATH"
 		)
 		set(tmp_env_cmd
 			${CMAKE_COMMAND} -E env
 			"LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$LD_LIBRARY_PATH"
+			"PATH=${tmp_check_folder}${PGBINDIR}:$$PATH"
 		)
 	else()
 		set(env_cmd
-			export "LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$LD_LIBRARY_PATH" &&
+			export "LD_LIBRARY_PATH=$ENV{DESTDIR}${LIBDIR}:$$LD_LIBRARY_PATH"
+				   "PATH=$ENV{DESTDIR}${PGBINDIR}:$$PATH" &&
 		)
 		set(tmp_env_cmd
-			export "LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$LD_LIBRARY_PATH" &&
+			export "LD_LIBRARY_PATH=${tmp_check_folder}${LIBDIR}:$$LD_LIBRARY_PATH"
+				   "PATH=${tmp_check_folder}${PGBINDIR}:$$PATH" &&
 		)
 	endif()
 endif()
