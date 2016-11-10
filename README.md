@@ -99,6 +99,12 @@ CMake build options
 
 **-DWITH_TAP** default OFF, experemental support TAP tests
 
+Not Common CMake Examples
+==============
+
+Solaris 10, Sun-Fire-V210:
+
+CFLAGS="-m64 -mcpu=v9" cmake .. -DFIND_LIBRARY_USE_LIB64_PATHS=ON  -DWITH_OPENSSL=OFF -DCURSES_LIBRARY=/usr/ccs/lib/sparcv9/libcurses.so -DCURSES_FORM_LIBRARY=/usr/ccs/lib/sparcv9/libform.so -DCMAKE_INSTALL_PREFIX="/home/stalkerg/postgresql_bin"
 
 
 PostgreSQL Database Management System
