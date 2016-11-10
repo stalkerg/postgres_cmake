@@ -617,7 +617,7 @@ typedef struct XLogCtlData
 	 * During recovery, we keep a copy of the latest checkpoint record here.
 	 * lastCheckPointRecPtr points to start of checkpoint record and
 	 * lastCheckPointEndPtr points to end+1 of checkpoint record.  Used by the
-	 * background writer when it wants to create a restartpoint.
+	 * checkpointer when it wants to create a restartpoint.
 	 *
 	 * Protected by info_lck.
 	 */
@@ -903,8 +903,9 @@ XLogInsertRecord(XLogRecData *rdata, XLogRecPtr fpw_lsn)
 	pg_crc32c	rdata_crc;
 	bool		inserted;
 	XLogRecord *rechdr = (XLogRecord *) rdata->data;
+	uint8		info = rechdr->xl_info & ~XLR_INFO_MASK;
 	bool		isLogSwitch = (rechdr->xl_rmid == RM_XLOG_ID &&
-							   rechdr->xl_info == XLOG_SWITCH);
+							   info == XLOG_SWITCH);
 	XLogRecPtr	StartPos;
 	XLogRecPtr	EndPos;
 
@@ -6170,7 +6171,7 @@ StartupXLOG(void)
 		if (record != NULL)
 		{
 			memcpy(&checkPoint, XLogRecGetData(xlogreader), sizeof(CheckPoint));
-			wasShutdown = (record->xl_info == XLOG_CHECKPOINT_SHUTDOWN);
+			wasShutdown = ((record->xl_info & ~XLR_INFO_MASK) == XLOG_CHECKPOINT_SHUTDOWN);
 			ereport(DEBUG1,
 					(errmsg("checkpoint record is at %X/%X",
 				   (uint32) (checkPointLoc >> 32), (uint32) checkPointLoc)));
@@ -6328,7 +6329,7 @@ StartupXLOG(void)
 					 (errmsg("could not locate a valid checkpoint record")));
 		}
 		memcpy(&checkPoint, XLogRecGetData(xlogreader), sizeof(CheckPoint));
-		wasShutdown = (record->xl_info == XLOG_CHECKPOINT_SHUTDOWN);
+		wasShutdown = ((record->xl_info & ~XLR_INFO_MASK) == XLOG_CHECKPOINT_SHUTDOWN);
 	}
 
 	/*
@@ -7785,6 +7786,7 @@ ReadCheckpointRecord(XLogReaderState *xlogreader, XLogRecPtr RecPtr,
 					 int whichChkpt, bool report)
 {
 	XLogRecord *record;
+	uint8		info;
 
 	if (!XRecOffIsValid(RecPtr))
 	{
@@ -7852,8 +7854,9 @@ ReadCheckpointRecord(XLogReaderState *xlogreader, XLogRecPtr RecPtr,
 		}
 		return NULL;
 	}
-	if (record->xl_info != XLOG_CHECKPOINT_SHUTDOWN &&
-		record->xl_info != XLOG_CHECKPOINT_ONLINE)
+	info = record->xl_info & ~XLR_INFO_MASK;
+	if (info != XLOG_CHECKPOINT_SHUTDOWN &&
+		info != XLOG_CHECKPOINT_ONLINE)
 	{
 		switch (whichChkpt)
 		{

@@ -2242,6 +2242,7 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("tsvector column \"%s\" does not exist",
 						trigger->tgargs[0])));
+	/* This will effectively reject system columns, so no separate test: */
 	if (!IsBinaryCoercible(SPI_gettypeid(rel->rd_att, tsvector_attr_num),
 						   TSVECTOROID))
 		ereport(ERROR,
@@ -2328,8 +2329,10 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 	if (prs.curwords)
 	{
 		datum = PointerGetDatum(make_tsvector(&prs));
-		rettuple = SPI_modifytuple(rel, rettuple, 1, &tsvector_attr_num,
-								   &datum, NULL);
+		isnull = false;
+		rettuple = heap_modify_tuple_by_cols(rettuple, rel->rd_att,
+											 1, &tsvector_attr_num,
+											 &datum, &isnull);
 		pfree(DatumGetPointer(datum));
 	}
 	else
@@ -2339,14 +2342,12 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 		SET_VARSIZE(out, CALCDATASIZE(0, 0));
 		out->size = 0;
 		datum = PointerGetDatum(out);
-		rettuple = SPI_modifytuple(rel, rettuple, 1, &tsvector_attr_num,
-								   &datum, NULL);
+		isnull = false;
+		rettuple = heap_modify_tuple_by_cols(rettuple, rel->rd_att,
+											 1, &tsvector_attr_num,
+											 &datum, &isnull);
 		pfree(prs.words);
 	}
-
-	if (rettuple == NULL)		/* internal error */
-		elog(ERROR, "tsvector_update_trigger: %d returned by SPI_modifytuple",
-			 SPI_result);
 
 	return PointerGetDatum(rettuple);
 }

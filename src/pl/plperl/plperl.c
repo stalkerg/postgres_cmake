@@ -1062,10 +1062,15 @@ plperl_build_tuple_result(HV *perlhash, TupleDesc td)
 		char	   *key = hek2cstr(he);
 		int			attn = SPI_fnumber(td, key);
 
-		if (attn <= 0 || td->attrs[attn - 1]->attisdropped)
+		if (attn == SPI_ERROR_NOATTRIBUTE)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("Perl hash contains nonexistent column \"%s\"",
+							key)));
+		if (attn <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot set system attribute \"%s\"",
 							key)));
 
 		values[attn - 1] = plperl_sv_to_datum(val,
@@ -1670,8 +1675,7 @@ plperl_event_trigger_build_args(FunctionCallInfo fcinfo)
 	return newRV_noinc((SV *) hv);
 }
 
-/* Set up the new tuple returned from a trigger. */
-
+/* Construct the modified new tuple to be returned from a trigger. */
 static HeapTuple
 plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 {
@@ -1679,14 +1683,11 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 	HV		   *hvNew;
 	HE		   *he;
 	HeapTuple	rtup;
-	int			slotsused;
-	int		   *modattrs;
-	Datum	   *modvalues;
-	char	   *modnulls;
-
 	TupleDesc	tupdesc;
-
-	tupdesc = tdata->tg_relation->rd_att;
+	int			natts;
+	Datum	   *modvalues;
+	bool	   *modnulls;
+	bool	   *modrepls;
 
 	svp = hv_fetch_string(hvTD, "new");
 	if (!svp)
@@ -1699,51 +1700,49 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 				 errmsg("$_TD->{new} is not a hash reference")));
 	hvNew = (HV *) SvRV(*svp);
 
-	modattrs = palloc(tupdesc->natts * sizeof(int));
-	modvalues = palloc(tupdesc->natts * sizeof(Datum));
-	modnulls = palloc(tupdesc->natts * sizeof(char));
-	slotsused = 0;
+	tupdesc = tdata->tg_relation->rd_att;
+	natts = tupdesc->natts;
+
+	modvalues = (Datum *) palloc0(natts * sizeof(Datum));
+	modnulls = (bool *) palloc0(natts * sizeof(bool));
+	modrepls = (bool *) palloc0(natts * sizeof(bool));
 
 	hv_iterinit(hvNew);
 	while ((he = hv_iternext(hvNew)))
 	{
-		bool		isnull;
 		char	   *key = hek2cstr(he);
 		SV		   *val = HeVAL(he);
 		int			attn = SPI_fnumber(tupdesc, key);
 
-		if (attn <= 0 || tupdesc->attrs[attn - 1]->attisdropped)
+		if (attn == SPI_ERROR_NOATTRIBUTE)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("Perl hash contains nonexistent column \"%s\"",
 							key)));
+		if (attn <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot set system attribute \"%s\"",
+							key)));
 
-		modvalues[slotsused] = plperl_sv_to_datum(val,
+		modvalues[attn - 1] = plperl_sv_to_datum(val,
 										  tupdesc->attrs[attn - 1]->atttypid,
 										 tupdesc->attrs[attn - 1]->atttypmod,
-												  NULL,
-												  NULL,
-												  InvalidOid,
-												  &isnull);
-
-		modnulls[slotsused] = isnull ? 'n' : ' ';
-		modattrs[slotsused] = attn;
-		slotsused++;
+												 NULL,
+												 NULL,
+												 InvalidOid,
+												 &modnulls[attn - 1]);
+		modrepls[attn - 1] = true;
 
 		pfree(key);
 	}
 	hv_iterinit(hvNew);
 
-	rtup = SPI_modifytuple(tdata->tg_relation, otup, slotsused,
-						   modattrs, modvalues, modnulls);
+	rtup = heap_modify_tuple(otup, tupdesc, modvalues, modnulls, modrepls);
 
-	pfree(modattrs);
 	pfree(modvalues);
 	pfree(modnulls);
-
-	if (rtup == NULL)
-		elog(ERROR, "SPI_modifytuple failed: %s",
-			 SPI_result_code_string(SPI_result));
+	pfree(modrepls);
 
 	return rtup;
 }
@@ -3058,12 +3057,6 @@ plperl_spi_exec(char *query, int limit)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3078,13 +3071,6 @@ plperl_spi_exec(char *query, int limit)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);
@@ -3297,12 +3283,6 @@ plperl_spi_query(char *query)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3317,13 +3297,6 @@ plperl_spi_query(char *query)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);
@@ -3383,12 +3356,6 @@ plperl_spi_fetchrow(char *cursor)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3403,13 +3370,6 @@ plperl_spi_fetchrow(char *cursor)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);
@@ -3544,12 +3504,6 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3574,13 +3528,6 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);
@@ -3695,12 +3642,6 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3715,13 +3656,6 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);
@@ -3824,12 +3758,6 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * AtEOSubXact_SPI() should not have popped any SPI context, but just
-		 * in case it did, make sure we remain connected.
-		 */
-		SPI_restore_connection();
 	}
 	PG_CATCH();
 	{
@@ -3844,13 +3772,6 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
-
-		/*
-		 * If AtEOSubXact_SPI() popped any SPI context of the subxact, it will
-		 * have left us in a disconnected state.  We need this hack to return
-		 * to connected state.
-		 */
-		SPI_restore_connection();
 
 		/* Punt the error to Perl */
 		croak_cstr(edata->message);

@@ -523,11 +523,12 @@ ttdummy(PG_FUNCTION_ARGS)
 	for (i = 0; i < 2; i++)
 	{
 		attnum[i] = SPI_fnumber(tupdesc, args[i]);
-		if (attnum[i] < 0)
-			elog(ERROR, "ttdummy (%s): there is no attribute %s", relname, args[i]);
+		if (attnum[i] <= 0)
+			elog(ERROR, "ttdummy (%s): there is no attribute %s",
+				 relname, args[i]);
 		if (SPI_gettypeid(tupdesc, attnum[i]) != INT4OID)
-			elog(ERROR, "ttdummy (%s): attributes %s and %s must be of abstime type",
-				 relname, args[0], args[1]);
+			elog(ERROR, "ttdummy (%s): attribute %s must be of integer type",
+				 relname, args[i]);
 	}
 
 	oldon = SPI_getbinval(trigtuple, tupdesc, attnum[0], &isnull);
@@ -638,15 +639,8 @@ ttdummy(PG_FUNCTION_ARGS)
 
 	/* Tuple to return to upper Executor ... */
 	if (newtuple)				/* UPDATE */
-	{
-		HeapTuple	tmptuple;
-
-		tmptuple = SPI_copytuple(trigtuple);
-		rettuple = SPI_modifytuple(rel, tmptuple, 1, &(attnum[1]), &newoff, NULL);
-		SPI_freetuple(tmptuple);
-	}
-	else
-		/* DELETE */
+		rettuple = SPI_modifytuple(rel, trigtuple, 1, &(attnum[1]), &newoff, NULL);
+	else	/* DELETE */
 		rettuple = trigtuple;
 
 	SPI_finish();				/* don't forget say Bye to SPI mgr */

@@ -4156,7 +4156,7 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 	 * other remote clauses. For LEFT and RIGHT OUTER join, the clauses from
 	 * the outer side are added to remote_conds since those can be evaluated
 	 * after the join is evaluated. The clauses from inner side are added to
-	 * the joinclauses, since they need to evaluated while constructing the
+	 * the joinclauses, since they need to be evaluated while constructing the
 	 * join.
 	 *
 	 * For a FULL OUTER JOIN, the other clauses from either relation can not
@@ -4431,7 +4431,7 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 									   NIL,		/* no pathkeys */
 									   NULL,	/* no required_outer */
 									   epq_path,
-									   NULL);	/* no fdw_private */
+									   NIL);	/* no fdw_private */
 
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
@@ -4748,7 +4748,7 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										NIL,	/* no pathkeys */
 										NULL,	/* no required_outer */
 										NULL,
-										NULL);	/* no fdw_private */
+										NIL);	/* no fdw_private */
 
 	/* Add generated path into grouped_rel by add_path(). */
 	add_path(grouped_rel, (Path *) grouppath);
