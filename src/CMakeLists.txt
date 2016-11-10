@@ -10,6 +10,7 @@ set(gen_errorcodes_output
 
 add_custom_command(
 	MAIN_DEPENDENCY ${gen_errorcodes_depend}
+	DEPENDS ${gen_errorcodes_depend}
 	OUTPUT ${gen_errorcodes_output}
 	COMMAND ${PERL_EXECUTABLE} generate-errcodes.pl errcodes.txt > ${gen_errorcodes_output}
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/backend/utils
