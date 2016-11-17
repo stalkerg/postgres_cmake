@@ -16,6 +16,8 @@ add_library(common_basebackup STATIC
 )
 
 target_link_libraries(common_basebackup
+	pgfeutils
+	pgcommon
 	pgport
 	pq
 )
@@ -30,11 +32,7 @@ foreach(loop_var IN ITEMS ${basebackup_list})
 	add_executable(${loop_var} ${loop_var}.c)
 
 	target_link_libraries(${loop_var}
-		pgfeutils
-		pgport
-		pq
 		common_basebackup
-		pgcommon
 		${M_LIB}
 	)
 	CMAKE_SET_TARGET_FOLDER(${loop_var} bin)
