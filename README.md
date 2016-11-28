@@ -8,7 +8,7 @@ cd ./postgres_cmake
 #build dir is optional but best way for CMake
 mkdir build
 cd build
-CFLAGS="-s -O2" cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local"
+CFLAGS="-s -O2" cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local" -DWITH_PERL=ON -DWITH_LIBXML=ON
 #strip binary + O2 optimisation, for CLang you must use -strip-all insted -s
 #also you can use -G Ninja for Ninja make system
 make -j2
@@ -49,17 +49,17 @@ make installcheck
 
 CMake build options
 ===================
-**-DWITH_PERL** default ON, optional
+**-DWITH_PERL** default OFF, optional
 
-**-DWITH_OPENSSL** default ON, optional
+**-DWITH_OPENSSL** default OFF, optional
 
 **-DOPENSSL_ROOT_DIR** Set this variable to the root installation of OpenSSL
 
-**-DWITH_PYTHON** default ON, optional
+**-DWITH_PYTHON** default OFF, optional
 
-**-DWITH_LIBXML** default ON, optional
+**-DWITH_LIBXML** default OFF, optional
 
-**-DWITH_TCL** default ON, optional
+**-DWITH_TCL** default OFF, optional
 
 **-DENABLE_NLS** default OFF
 
