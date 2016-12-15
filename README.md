@@ -108,7 +108,7 @@ CFLAGS="-m64 -mcpu=v9" cmake .. -DFIND_LIBRARY_USE_LIB64_PATHS=ON  -DWITH_OPENSS
 
 AIX 7.1, Power8, gcc 4.8:
 
-CFLAGS="-std=c11 -mcpu=power8 -mtune=power8" LDFLAGS="-Wl,-bbigtoc"  cmake ..
+CFLAGS="-std=c11 -mcpu=power8 -mtune=power8 -mveclibabi=mass -maix64" LDFLAGS="-Wl,-bbigtoc"  cmake ..
 
 
 PostgreSQL Database Management System
