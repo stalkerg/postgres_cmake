@@ -22,7 +22,7 @@ macro(GEN_DEF NAME)
 		add_custom_command(
 			TARGET ${NAME}
 			PRE_LINK
-			COMMAND ${NM_EXECUTABLE} ${FLAG_64} -BCg ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${NAME}.dir/*.o | egrep ' [TDB] ' | sed -e 's/.* //' | egrep -v '\$$' | sed -e 's/^[.]//' | sort | uniq > ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.exp
+			COMMAND ${NM_EXECUTABLE} ${FLAG_64} -BCg ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${NAME}.dir/*.o | egrep ' [TDB] ' | sed -e 's/.* //' | egrep -v '\\$$' | sed -e 's/^[.]//' | sort | uniq > ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.exp
 			COMMENT " Gen exports "
 		)
 	endif()
