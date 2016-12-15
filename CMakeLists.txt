@@ -362,11 +362,10 @@ else()
 	set(LIB_M m)
 endif()
 set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${LIB_M}")
-check_c_source_compiles("
+check_c_source_runs("
 	#include <math.h>
-	double glob_double;
 	int main(void){
-		return isinf(glob_double) ? 0 : 1;
+		return isinf(1.0/0.0) ? 0 : 1;
 	}
 " HAVE_ISINF)
 

@@ -106,6 +106,10 @@ Solaris 10, Sun-Fire-V210:
 
 CFLAGS="-m64 -mcpu=v9" cmake .. -DFIND_LIBRARY_USE_LIB64_PATHS=ON  -DWITH_OPENSSL=OFF -DCURSES_LIBRARY=/usr/ccs/lib/sparcv9/libcurses.so -DCURSES_FORM_LIBRARY=/usr/ccs/lib/sparcv9/libform.so -DCMAKE_INSTALL_PREFIX="/home/stalkerg/postgresql_bin"
 
+AIX 7.1, Power8, gcc 4.8:
+
+CFLAGS="-std=c11 -mcpu=power8 -mtune=power8" LDFLAGS="-Wl,-bbigtoc"  cmake ..
+
 
 PostgreSQL Database Management System
 =====================================
