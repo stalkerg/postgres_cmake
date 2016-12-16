@@ -24,7 +24,7 @@ add_library(${extension_name} MODULE
 	btree_bit.c
 	btree_numeric.c
 )
-target_link_libraries(${extension_name} ${contrib_libs})
+target_link_libraries(${extension_name} ${contrib_libs} ${LIB_M)})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 gen_def(${extension_name})
