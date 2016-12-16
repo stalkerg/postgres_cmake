@@ -3,7 +3,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 set(extension_name tsm_system_time)
 
 add_library(${extension_name} MODULE ${extension_name}.c)
-target_link_libraries(${extension_name} ${contrib_libs})
+target_link_libraries(${extension_name} ${contrib_libs} ${LIB_M})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)
 if(MSVC)
