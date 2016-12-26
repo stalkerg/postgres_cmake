@@ -22,6 +22,11 @@ install(FILES
 	test_ext5.control
 	test_ext6--1.0.sql
 	test_ext6.control
+	test_ext7--1.0.sql
+	test_ext7--1.0--2.0.sql
+	test_ext7.control
+	test_ext8--1.0.sql
+	test_ext8.control
 	test_ext_cyclic1--1.0.sql
 	test_ext_cyclic1.control
 	test_ext_cyclic2--1.0.sql

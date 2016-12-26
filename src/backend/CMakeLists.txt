@@ -170,7 +170,6 @@ set(access_SRCS
 	access/hash/hashinsert.c
 	access/hash/hashovfl.c
 	access/hash/hashpage.c
-	access/hash/hashscan.c
 	access/hash/hashsearch.c
 	access/hash/hashsort.c
 	access/hash/hashutil.c
@@ -306,8 +305,10 @@ set(POSTGRES_BKI_SRCS
 	${postgres_include_catalog}/pg_seclabel.h
 	${postgres_include_catalog}/pg_shseclabel.h
 	${postgres_include_catalog}/pg_collation.h
+	${postgres_include_catalog}/pg_partitioned_table.h
 	${postgres_include_catalog}/pg_range.h
 	${postgres_include_catalog}/pg_transform.h
+	${postgres_include_catalog}/pg_sequence.h
 	${postgres_include_catalog}/toasting.h
 	${postgres_include_catalog}/indexing.h
 )
@@ -339,6 +340,7 @@ set(catalog_SRCS
 	catalog/pg_type.c
 	catalog/storage.c
 	catalog/toasting.c
+	catalog/partition.c
 )
 
 set(catalog_include
@@ -504,8 +506,10 @@ set(utils_SRCS
 	utils/cache/typcache.c
 	utils/cache/ts_cache.c
 	utils/mmgr/aset.c
+	utils/mmgr/dsa.c
 	utils/mmgr/mcxt.c
 	utils/mmgr/portalmem.c
+	utils/mmgr/freepage.c
 	utils/adt/acl.c
 	utils/adt/arrayfuncs.c
 	utils/adt/array_expanded.c
@@ -628,6 +632,7 @@ set(utils_SRCS
 	utils/misc/superuser.c
 	utils/misc/timeout.c
 	utils/misc/tzparser.c
+	utils/misc/backend_random.c
 	utils/mb/encnames.c
 	utils/mb/conv.c
 	utils/mb/mbutils.c
@@ -890,6 +895,7 @@ set(storage_SRCS
 	storage/lmgr/spin.c
 	storage/lmgr/s_lock.c
 	storage/lmgr/predicate.c
+	storage/lmgr/condition_variable.c
 	storage/page/bufpage.c
 	storage/page/checksum.c
 	storage/page/itemptr.c
@@ -1061,6 +1067,7 @@ add_custom_target(duplicate_oids
 )
 
 add_library(pqwalreceiver MODULE
+	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
 	replication/libpqwalreceiver/libpqwalreceiver.c
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
