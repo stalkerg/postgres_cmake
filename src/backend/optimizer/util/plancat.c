@@ -27,6 +27,7 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
+#include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
@@ -78,6 +79,7 @@ static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
  *	fdwroutine	if it's a foreign table, the FDW function pointers
  *	pages		number of pages
  *	tuples		number of tuples
+ *	rel_parallel_workers user-defined number of parallel workers
  *
  * Also, add information about the relation's foreign keys to root->fkey_list.
  *
@@ -1139,6 +1141,7 @@ get_relation_constraints(PlannerInfo *root,
 	Index		varno = rel->relid;
 	Relation	relation;
 	TupleConstr *constr;
+	List		*pcqual;
 
 	/*
 	 * We assume the relation has already been safely locked.
@@ -1222,6 +1225,24 @@ get_relation_constraints(PlannerInfo *root,
 				}
 			}
 		}
+	}
+
+	/* Append partition predicates, if any */
+	pcqual = RelationGetPartitionQual(relation, true);
+	if (pcqual)
+	{
+		/*
+		 * Run each expression through const-simplification and
+		 * canonicalization similar to check constraints.
+		 */
+		pcqual = (List *) eval_const_expressions(root, (Node *) pcqual);
+		pcqual = (List *) canonicalize_qual((Expr *) pcqual);
+
+		/* Fix Vars to have the desired varno */
+		if (varno != 1)
+			ChangeVarNodes((Node *) pcqual, 1, varno, 0);
+
+		result = list_concat(result, pcqual);
 	}
 
 	heap_close(relation, NoLock);

@@ -118,6 +118,7 @@ typedef struct _restoreOptions
 
 	bool	   *idWanted;		/* array showing which dump IDs to emit */
 	int			enable_row_security;
+	int			sequence_data;	/* dump sequence data even in schema-only mode */
 } RestoreOptions;
 
 typedef struct _dumpOptions
@@ -158,8 +159,11 @@ typedef struct _dumpOptions
 	int			outputClean;
 	int			outputCreateDB;
 	bool		outputBlobs;
+	bool		dontOutputBlobs;
 	int			outputNoOwner;
 	char	   *outputSuperuser;
+
+	int			sequence_data;	/* dump sequence data even in schema-only mode */
 } DumpOptions;
 
 /*

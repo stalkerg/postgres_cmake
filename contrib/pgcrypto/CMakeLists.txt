@@ -81,8 +81,6 @@ else()
 		blf.c
 		rijndael.tbl
 		rijndael.c
-		fortuna.c
-		random.c
 		pgp-mpi-internal.c
 		imath.c
 	)

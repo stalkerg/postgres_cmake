@@ -38,7 +38,7 @@ volatile uint32 CritSectionCount = 0;
 int			MyProcPid;
 pg_time_t	MyStartTime;
 struct Port *MyProcPort;
-long		MyCancelKey;
+int32		MyCancelKey;
 int			MyPMChildSlot;
 
 /*
@@ -122,6 +122,7 @@ int			replacement_sort_tuples = 150000;
 int			NBuffers = 1000;
 int			MaxConnections = 90;
 int			max_worker_processes = 8;
+int			max_parallel_workers = 8;
 int			MaxBackends = 0;
 
 int			VacuumCostPageHit = 1;		/* GUC parameters for vacuum */

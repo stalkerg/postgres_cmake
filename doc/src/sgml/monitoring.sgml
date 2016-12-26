@@ -646,18 +646,11 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
        <itemizedlist>
         <listitem>
          <para>
-          <literal>LWLockNamed</>: The backend is waiting for a specific named
-          lightweight lock.  Each such lock protects a particular data
-          structure in shared memory.  <literal>wait_event</> will contain
-          the name of the lightweight lock.
-         </para>
-        </listitem>
-        <listitem>
-         <para>
-          <literal>LWLockTranche</>: The backend is waiting for one of a
-          group of related lightweight locks.  All locks in the group perform
-          a similar function; <literal>wait_event</> will identify the general
-          purpose of locks in that group.
+          <literal>LWLock</>: The backend is waiting for a lightweight lock.
+          Each such lock protects a particular data structure in shared memory.
+          <literal>wait_event</> will contain a name identifying the purpose
+          of the lightweight lock.  (Some locks have specific names; others
+          are part of a group of locks each with a similar purpose.)
          </para>
         </listitem>
         <listitem>
@@ -785,7 +778,9 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
      <entry>Text of this backend's most recent query. If
       <structfield>state</> is <literal>active</> this field shows the
       currently executing query. In all other states, it shows the last query
-      that was executed.
+      that was executed. By default the query text is truncated at 1024
+      characters; this value can be changed via the parameter
+      <xref linkend="guc-track-activity-query-size">.
      </entry>
     </row>
    </tbody>
@@ -823,7 +818,7 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
 
       <tbody>
        <row>
-        <entry morerows="41"><literal>LWLockNamed</></entry>
+        <entry morerows="58"><literal>LWLock</></entry>
         <entry><literal>ShmemIndexLock</></entry>
         <entry>Waiting to find or allocate space in shared memory.</entry>
        </row>
@@ -1009,7 +1004,6 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
          <entry>Waiting to read or update old snapshot control information.</entry>
         </row>
         <row>
-         <entry morerows="15"><literal>LWLockTranche</></entry>
          <entry><literal>clog</></entry>
          <entry>Waiting for I/O on a clog (transaction status) buffer.</entry>
         </row>
@@ -1074,6 +1068,10 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
         <row>
          <entry><literal>predicate_lock_manager</></entry>
          <entry>Waiting to add or examine predicate lock information.</entry>
+        </row>
+        <row>
+         <entry><literal>parallel_query_dsa</></entry>
+         <entry>Waiting for parallel query dynamic shared memory allocation lock.</entry>
         </row>
         <row>
          <entry morerows="9"><literal>Lock</></entry>
@@ -1277,7 +1275,7 @@ SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE wait_event i
  pid  | wait_event_type |  wait_event
 ------+-----------------+---------------
  2540 | Lock            | relation
- 6644 | LWLockNamed     | ProcArrayLock
+ 6644 | LWLock          | ProcArrayLock
 (2 rows)
 </programlisting>
    </para>
@@ -1355,7 +1353,33 @@ SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE wait_event i
     <row>
      <entry><structfield>state</></entry>
      <entry><type>text</></entry>
-     <entry>Current WAL sender state</entry>
+     <entry>Current WAL sender state.
+       Possible values are:
+       <itemizedlist>
+         <listitem>
+          <para>
+           <literal>startup</>: This WAL sender is starting up.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>catchup</>: This WAL sender's connected standby is
+           catching up with the primary.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>streaming</>: This WAL sender is streaming changes
+           after its connected standby server has caught up with the primary.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>backup</>: This WAL sender is sending a backup.
+          </para>
+         </listitem>
+       </itemizedlist>
+     </entry>
     </row>
     <row>
      <entry><structfield>sent_location</></entry>
@@ -1384,12 +1408,40 @@ SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE wait_event i
      <entry><structfield>sync_priority</></entry>
      <entry><type>integer</></entry>
      <entry>Priority of this standby server for being chosen as the
-      synchronous standby</entry>
+      synchronous standby in a priority-based synchronous replication.
+      This has no effect in a quorum-based synchronous replication.</entry>
     </row>
     <row>
      <entry><structfield>sync_state</></entry>
      <entry><type>text</></entry>
-     <entry>Synchronous state of this standby server</entry>
+     <entry>Synchronous state of this standby server.
+       Possible values are:
+       <itemizedlist>
+         <listitem>
+          <para>
+           <literal>async</>: This standby server is asynchronous.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>potential</>: This standby server is now asynchronous,
+           but can potentially become synchronous if one of current
+           synchronous ones fails.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>sync</>: This standby server is synchronous.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>quorum</>: This standby server is considered as a candidate
+           for quorum standbys.
+          </para>
+         </listitem>
+       </itemizedlist>
+     </entry>
     </row>
    </tbody>
    </tgroup>
@@ -3298,55 +3350,49 @@ SELECT pg_stat_get_backend_pid(s.backendid) AS pid,
     </row>
     <row>
      <entry><literal>lwlock-acquire</literal></entry>
-     <entry><literal>(char *, int, LWLockMode)</literal></entry>
+     <entry><literal>(char *, LWLockMode)</literal></entry>
      <entry>Probe that fires when an LWLock has been acquired.
       arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.
-      arg2 is the requested lock mode, either exclusive or shared.</entry>
+      arg1 is the requested lock mode, either exclusive or shared.</entry>
     </row>
     <row>
      <entry><literal>lwlock-release</literal></entry>
-     <entry><literal>(char *, int)</literal></entry>
+     <entry><literal>(char *)</literal></entry>
      <entry>Probe that fires when an LWLock has been released (but note
       that any released waiters have not yet been awakened).
-      arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.</entry>
+      arg0 is the LWLock's tranche.</entry>
     </row>
     <row>
      <entry><literal>lwlock-wait-start</literal></entry>
-     <entry><literal>(char *, int, LWLockMode)</literal></entry>
+     <entry><literal>(char *, LWLockMode)</literal></entry>
      <entry>Probe that fires when an LWLock was not immediately available and
       a server process has begun to wait for the lock to become available.
       arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.
-      arg2 is the requested lock mode, either exclusive or shared.</entry>
+      arg1 is the requested lock mode, either exclusive or shared.</entry>
     </row>
     <row>
      <entry><literal>lwlock-wait-done</literal></entry>
-     <entry><literal>(char *, int, LWLockMode)</literal></entry>
+     <entry><literal>(char *, LWLockMode)</literal></entry>
      <entry>Probe that fires when a server process has been released from its
       wait for an LWLock (it does not actually have the lock yet).
       arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.
-      arg2 is the requested lock mode, either exclusive or shared.</entry>
+      arg1 is the requested lock mode, either exclusive or shared.</entry>
     </row>
     <row>
      <entry><literal>lwlock-condacquire</literal></entry>
-     <entry><literal>(char *, int, LWLockMode)</literal></entry>
+     <entry><literal>(char *, LWLockMode)</literal></entry>
      <entry>Probe that fires when an LWLock was successfully acquired when the
       caller specified no waiting.
       arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.
-      arg2 is the requested lock mode, either exclusive or shared.</entry>
+      arg1 is the requested lock mode, either exclusive or shared.</entry>
     </row>
     <row>
      <entry><literal>lwlock-condacquire-fail</literal></entry>
-     <entry><literal>(char *, int, LWLockMode)</literal></entry>
+     <entry><literal>(char *, LWLockMode)</literal></entry>
      <entry>Probe that fires when an LWLock was not successfully acquired when
       the caller specified no waiting.
       arg0 is the LWLock's tranche.
-      arg1 is the LWLock's offset within its tranche.
-      arg2 is the requested lock mode, either exclusive or shared.</entry>
+      arg1 is the requested lock mode, either exclusive or shared.</entry>
     </row>
     <row>
      <entry><literal>lock-wait-start</literal></entry>

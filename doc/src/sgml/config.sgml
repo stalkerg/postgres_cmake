@@ -1048,7 +1048,8 @@ include_dir 'conf.d'
         in the <application>OpenSSL</> package for the syntax of this setting
         and a list of supported values.  The default value is
         <literal>HIGH:MEDIUM:+3DES:!aNULL</>.  It is usually reasonable,
-        unless you have specific security requirements.
+        unless you have specific security requirements.  This parameter can only
+        be set at server start.
        </para>
 
        <para>
@@ -1120,7 +1121,8 @@ include_dir 'conf.d'
       <listitem>
        <para>
         Specifies whether to use the server's SSL cipher preferences, rather
-        than the client's.  The default is true.
+        than the client's.  The default is true.  This parameter can only be
+        set at server start.
        </para>
 
        <para>
@@ -1144,7 +1146,8 @@ include_dir 'conf.d'
         Specifies the name of the curve to use in <acronym>ECDH</> key
         exchange.  It needs to be supported by all clients that connect.
         It does not need to be same curve as used by server's Elliptic
-        Curve key.  The default is <literal>prime256v1</>.
+        Curve key.  The default is <literal>prime256v1</>.  This parameter
+        can only be set at server start.
        </para>
 
        <para>
@@ -1178,7 +1181,7 @@ include_dir 'conf.d'
         it in plaintext. <literal>on</> and <literal>off</> are also accepted, as
         aliases for <literal>md5</> and <literal>plain</>, respectively.
        </para>
-       
+
       </listitem>
      </varlistentry>
 
@@ -1299,7 +1302,7 @@ include_dir 'conf.d'
         If you have a dedicated database server with 1GB or more of RAM, a
         reasonable starting value for <varname>shared_buffers</varname> is 25%
         of the memory in your system.  There are some workloads where even
-        large settings for <varname>shared_buffers</varname> are effective, but
+        larger settings for <varname>shared_buffers</varname> are effective, but
         because <productname>PostgreSQL</productname> also relies on the
         operating system cache, it is unlikely that an allocation of more than
         40% of RAM to <varname>shared_buffers</varname> will work better than a
@@ -1313,11 +1316,6 @@ include_dir 'conf.d'
        <para>
         On systems with less than 1GB of RAM, a smaller percentage of RAM is
         appropriate, so as to leave adequate space for the operating system.
-        Also, on Windows, large values for <varname>shared_buffers</varname>
-        aren't as effective.  You may find better results keeping the setting
-        relatively low and using the operating system cache more instead.  The
-        useful range for <varname>shared_buffers</varname> on Windows systems
-        is generally from 64MB to 512MB.
        </para>
 
       </listitem>
@@ -1903,10 +1901,10 @@ include_dir 'conf.d'
          <xref linkend="guc-shared-buffers">, but smaller than the OS's page
          cache, where performance might degrade.  This setting may have no
          effect on some platforms.  The valid range is between
-         <literal>0</literal>, which disables controlled writeback, and
+         <literal>0</literal>, which disables forced writeback, and
          <literal>2MB</literal>.  The default is <literal>512kB</> on Linux,
-         <literal>0</> elsewhere.  (Non-default values of
-         <symbol>BLCKSZ</symbol> change the default and maximum.)
+         <literal>0</> elsewhere.  (If <symbol>BLCKSZ</symbol> is not 8kB,
+         the default and maximum values scale proportionally to it.)
          This parameter can only be set in the <filename>postgresql.conf</>
          file or on the server command line.
         </para>
@@ -1992,6 +1990,12 @@ include_dir 'conf.d'
          same or higher value than on the master server. Otherwise, queries
          will not be allowed in the standby server.
         </para>
+
+        <para>
+         When changing this value, consider also adjusting
+         <xref linkend="guc-max-parallel-workers"> and
+         <xref linkend="guc-max-parallel-workers-per-gather">.
+        </para>
        </listitem>
       </varlistentry>
 
@@ -2006,8 +2010,9 @@ include_dir 'conf.d'
          Sets the maximum number of workers that can be started by a single
          <literal>Gather</literal> node.  Parallel workers are taken from the
          pool of processes established by
-         <xref linkend="guc-max-worker-processes">.  Note that the requested
-         number of workers may not actually be available at run time.  If this
+         <xref linkend="guc-max-worker-processes">, limited by
+         <xref linkend="guc-max-parallel-workers">.  Note that the requested
+         number of workers may not actually be available at runtime.  If this
          occurs, the plan will run with fewer workers than expected, which may
          be inefficient.  The default value is 2.  Setting this value to 0
          disables parallel query execution.
@@ -2036,6 +2041,26 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
 
+      <varlistentry id="guc-max-parallel-workers" xreflabel="max_parallel_workers">
+       <term><varname>max_parallel_workers</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>max_parallel_workers</> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the maximum number of workers that the system can support for
+         parallel queries.  The default value is 8.  When increasing or
+         decreasing this value, consider also adjusting
+         <xref linkend="guc-max-parallel-workers-per-gather">.
+         Also, note that a setting for this value which is higher than
+         <xref linkend="guc-max-worker-processes"> will have no effect,
+         since parallel workers are taken from the pool of worker processes
+         established by that setting.
+        </para>
+       </listitem>
+      </varlistentry>
+
       <varlistentry id="guc-backend-flush-after" xreflabel="backend_flush_after">
        <term><varname>backend_flush_after</varname> (<type>integer</type>)
        <indexterm>
@@ -2055,10 +2080,10 @@ include_dir 'conf.d'
          that are bigger than <xref linkend="guc-shared-buffers">, but smaller
          than the OS's page cache, where performance might degrade.  This
          setting may have no effect on some platforms.  The valid range is
-         between <literal>0</literal>, which disables controlled writeback,
-         and <literal>2MB</literal>.  The default is <literal>0</> (i.e. no
-         flush control).  (Non-default values of <symbol>BLCKSZ</symbol>
-         change the maximum.)
+         between <literal>0</literal>, which disables forced writeback,
+         and <literal>2MB</literal>.  The default is <literal>0</>, i.e., no
+         forced writeback.  (If <symbol>BLCKSZ</symbol> is not 8kB,
+         the maximum value scales proportionally to it.)
         </para>
        </listitem>
       </varlistentry>
@@ -2518,10 +2543,11 @@ include_dir 'conf.d'
       <para>
         Specifies how often the WAL writer flushes WAL. After flushing WAL it
         sleeps for <varname>wal_writer_delay</> milliseconds, unless woken up
-        by an asynchronously committing transaction. In case the last flush
+        by an asynchronously committing transaction. If the last flush
         happened less than <varname>wal_writer_delay</> milliseconds ago and
         less than <varname>wal_writer_flush_after</> bytes of WAL have been
-        produced since, WAL is only written to the OS, not flushed to disk.
+        produced since, then WAL is only written to the operating system, not
+        flushed to disk.
         The default value is 200 milliseconds (<literal>200ms</>).  Note that
         on many systems, the effective resolution of sleep delays is 10
         milliseconds; setting <varname>wal_writer_delay</> to a value that is
@@ -2540,12 +2566,12 @@ include_dir 'conf.d'
       </term>
       <listitem>
       <para>
-        Specifies how often the WAL writer flushes WAL. In case the last flush
+        Specifies how often the WAL writer flushes WAL. If the last flush
         happened less than <varname>wal_writer_delay</> milliseconds ago and
         less than <varname>wal_writer_flush_after</> bytes of WAL have been
-        produced since, WAL is only written to the OS, not flushed to disk.
-        If <varname>wal_writer_flush_after</> is set to <literal>0</> WAL is
-        flushed every time the WAL writer has written WAL.  The default is
+        produced since, then WAL is only written to the operating system, not
+        flushed to disk.  If <varname>wal_writer_flush_after</> is set
+        to <literal>0</> then WAL data is flushed immediately.  The default is
         <literal>1MB</literal>. This parameter can only be set in the
         <filename>postgresql.conf</> file or on the server command line.
        </para>
@@ -2665,10 +2691,10 @@ include_dir 'conf.d'
         that are bigger than <xref linkend="guc-shared-buffers">, but smaller
         than the OS's page cache, where performance might degrade.  This
         setting may have no effect on some platforms.  The valid range is
-        between <literal>0</literal>, which disables controlled writeback,
+        between <literal>0</literal>, which disables forced writeback,
         and <literal>2MB</literal>.  The default is <literal>256kB</> on
-        Linux, <literal>0</> elsewhere.  (Non-default values of
-        <symbol>BLCKSZ</symbol> change the default and maximum.)
+        Linux, <literal>0</> elsewhere.  (If <symbol>BLCKSZ</symbol> is not
+        8kB, the default and maximum values scale proportionally to it.)
         This parameter can only be set in the <filename>postgresql.conf</>
         file or on the server command line.
        </para>
@@ -2826,12 +2852,10 @@ include_dir 'conf.d'
         parameter is greater than zero, the server will switch to a new
         segment file whenever this many seconds have elapsed since the last
         segment file switch, and there has been any database activity,
-        including a single checkpoint.  (Increasing
-        <varname>checkpoint_timeout</> will reduce unnecessary
-        checkpoints on an idle system.)
-        Note that archived files that are closed early
-        due to a forced switch are still the same length as completely full
-        files.  Therefore, it is unwise to use a very short
+        including a single checkpoint (checkpoints are skipped if there is
+        no database activity).  Note that archived files that are closed
+        early due to a forced switch are still the same length as completely
+        full files.  Therefore, it is unwise to use a very short
         <varname>archive_timeout</> &mdash; it will bloat your archive
         storage.  <varname>archive_timeout</> settings of a minute or so are
         usually reasonable.  You should consider using streaming replication,
@@ -3028,41 +3052,71 @@ include_dir 'conf.d'
         transactions waiting for commit will be allowed to proceed after
         these standby servers confirm receipt of their data.
         The synchronous standbys will be those whose names appear
-        earlier in this list, and
+        in this list, and
         that are both currently connected and streaming data in real-time
         (as shown by a state of <literal>streaming</literal> in the
         <link linkend="monitoring-stats-views-table">
         <literal>pg_stat_replication</></link> view).
-        Other standby servers appearing later in this list represent potential
-        synchronous standbys. If any of the current synchronous
-        standbys disconnects for whatever reason,
-        it will be replaced immediately with the next-highest-priority standby.
-        Specifying more than one standby name can allow very high availability.
+        Specifying more than one standby names can allow very high availability.
        </para>
        <para>
         This parameter specifies a list of standby servers using
         either of the following syntaxes:
 <synopsis>
-<replaceable class="parameter">num_sync</replaceable> ( <replaceable class="parameter">standby_name</replaceable> [, ...] )
+[FIRST] <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="parameter">standby_name</replaceable> [, ...] )
+ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="parameter">standby_name</replaceable> [, ...] )
 <replaceable class="parameter">standby_name</replaceable> [, ...]
 </synopsis>
         where <replaceable class="parameter">num_sync</replaceable> is
         the number of synchronous standbys that transactions need to
         wait for replies from,
         and <replaceable class="parameter">standby_name</replaceable>
-        is the name of a standby server. For example, a setting of
-        <literal>3 (s1, s2, s3, s4)</> makes transaction commits wait
-        until their WAL records are received by three higher-priority standbys
-        chosen from standby servers <literal>s1</>, <literal>s2</>,
-        <literal>s3</> and <literal>s4</>.
-        </para>
-        <para>
-        The second syntax was used before <productname>PostgreSQL</>
+        is the name of a standby server.
+        <literal>FIRST</> and <literal>ANY</> specify the method to choose
+        synchronous standbys from the listed servers.
+       </para>
+       <para>
+        The keyword <literal>FIRST</>, coupled with
+        <replaceable class="parameter">num_sync</replaceable>, specifies a
+        priority-based synchronous replication and makes transaction commits
+        wait until their WAL records are replicated to
+        <replaceable class="parameter">num_sync</replaceable> synchronous
+        standbys chosen based on their priorities. For example, a setting of
+        <literal>FIRST 3 (s1, s2, s3, s4)</> will cause each commit to wait for
+        replies from three higher-priority standbys chosen from standby servers
+        <literal>s1</>, <literal>s2</>, <literal>s3</> and <literal>s4</>.
+        The standbys whose names appear earlier in the list are given higher
+        priority and will be considered as synchronous. Other standby servers
+        appearing later in this list represent potential synchronous standbys.
+        If any of the current synchronous standbys disconnects for whatever
+        reason, it will be replaced immediately with the next-highest-priority
+        standby. The keyword <literal>FIRST</> is optional.
+       </para>
+       <para>
+        The keyword <literal>ANY</>, coupled with
+        <replaceable class="parameter">num_sync</replaceable>, specifies a
+        quorum-based synchronous replication and makes transaction commits
+        wait until their WAL records are replicated to <emphasis>at least</>
+        <replaceable class="parameter">num_sync</replaceable> listed standbys.
+        For example, a setting of <literal>ANY 3 (s1, s2, s3, s4)</> will cause
+        each commit to proceed as soon as at least any three standbys of
+        <literal>s1</>, <literal>s2</>, <literal>s3</> and <literal>s4</>
+        reply.
+       </para>
+       <para>
+        <literal>FIRST</> and <literal>ANY</> are case-insensitive. If these
+        keywords are used as the name of a standby server,
+        its <replaceable class="parameter">standby_name</replaceable> must
+        be double-quoted.
+       </para>
+       <para>
+        The third syntax was used before <productname>PostgreSQL</>
         version 9.6 and is still supported. It's the same as the first syntax
-        with <replaceable class="parameter">num_sync</replaceable> equal to 1.
-        For example, <literal>1 (s1, s2)</> and
-        <literal>s1, s2</> have the same meaning: either <literal>s1</>
-        or <literal>s2</> is chosen as a synchronous standby.
+        with <literal>FIRST</> and
+        <replaceable class="parameter">num_sync</replaceable> equal to 1.
+        For example, <literal>FIRST 1 (s1, s2)</> and <literal>s1, s2</> have
+        the same meaning: either <literal>s1</> or <literal>s2</> is chosen
+        as a synchronous standby.
        </para>
        <para>
         The name of a standby server for this purpose is the
@@ -7336,36 +7390,6 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         like <function>pg_get_viewdef</>.  See also the
         <option>--quote-all-identifiers</option> option of
         <xref linkend="app-pgdump"> and <xref linkend="app-pg-dumpall">.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-sql-inheritance" xreflabel="sql_inheritance">
-      <term><varname>sql_inheritance</varname> (<type>boolean</type>)
-      <indexterm>
-       <primary><varname>sql_inheritance</> configuration parameter</primary>
-      </indexterm>
-      <indexterm><primary>inheritance</></>
-      </term>
-      <listitem>
-       <para>
-        This setting controls whether undecorated table references are
-        considered to include inheritance child tables.  The default is
-        <literal>on</>, which means child tables are included (thus,
-        a <literal>*</> suffix is assumed by default).  If turned
-        <literal>off</>, child tables are not included (thus, an
-        <literal>ONLY</literal> prefix is assumed).  The SQL standard
-        requires child tables to be included, so the <literal>off</> setting
-        is not spec-compliant, but it is provided for compatibility with
-        <productname>PostgreSQL</> releases prior to 7.1.
-        See <xref linkend="ddl-inherit"> for more information.
-       </para>
-
-       <para>
-        Turning <varname>sql_inheritance</> off is deprecated, because that
-        behavior has been found to be error-prone as well as contrary to SQL
-        standard.  Discussions of inheritance behavior elsewhere in this
-        manual generally assume that it is <literal>on</>.
        </para>
       </listitem>
      </varlistentry>

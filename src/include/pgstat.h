@@ -14,9 +14,9 @@
 #include "datatype/timestamp.h"
 #include "fmgr.h"
 #include "libpq/pqcomm.h"
+#include "port/atomics.h"
 #include "portability/instr_time.h"
 #include "postmaster/pgarch.h"
-#include "storage/barrier.h"
 #include "storage/proc.h"
 #include "utils/hsearch.h"
 #include "utils/relcache.h"
@@ -715,8 +715,7 @@ typedef enum BackendState
  * Wait Classes
  * ----------
  */
-#define PG_WAIT_LWLOCK_NAMED		0x01000000U
-#define PG_WAIT_LWLOCK_TRANCHE		0x02000000U
+#define PG_WAIT_LWLOCK				0x01000000U
 #define PG_WAIT_LOCK				0x03000000U
 #define PG_WAIT_BUFFER_PIN			0x04000000U
 #define PG_WAIT_ACTIVITY			0x05000000U
@@ -763,6 +762,7 @@ typedef enum
 	WAIT_EVENT_CLIENT_WRITE,
 	WAIT_EVENT_SSL_OPEN_SERVER,
 	WAIT_EVENT_WAL_RECEIVER_WAIT_START,
+	WAIT_EVENT_LIBPQWALRECEIVER_READ,
 	WAIT_EVENT_WAL_SENDER_WAIT_WAL,
 	WAIT_EVENT_WAL_SENDER_WRITE_DATA
 } WaitEventClient;

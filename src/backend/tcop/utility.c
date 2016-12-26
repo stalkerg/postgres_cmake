@@ -987,7 +987,8 @@ ProcessUtilitySlow(ParseState *pstate,
 							/* Create the table itself */
 							address = DefineRelation((CreateStmt *) stmt,
 													 RELKIND_RELATION,
-													 InvalidOid, NULL);
+													 InvalidOid, NULL,
+													 queryString);
 							EventTriggerCollectSimpleCommand(address,
 															 secondaryObject,
 															 stmt);
@@ -1020,7 +1021,8 @@ ProcessUtilitySlow(ParseState *pstate,
 							/* Create the table itself */
 							address = DefineRelation((CreateStmt *) stmt,
 													 RELKIND_FOREIGN_TABLE,
-													 InvalidOid, NULL);
+													 InvalidOid, NULL,
+													 queryString);
 							CreateForeignTable((CreateForeignTableStmt *) stmt,
 											   address.objectId);
 							EventTriggerCollectSimpleCommand(address,
@@ -1477,7 +1479,13 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterTSConfigurationStmt:
-				address = AlterTSConfiguration((AlterTSConfigurationStmt *) parsetree);
+				AlterTSConfiguration((AlterTSConfigurationStmt *) parsetree);
+				/*
+				 * Commands are stashed in MakeConfigurationMapping and
+				 * DropConfigurationMapping, which are called from
+				 * AlterTSConfiguration
+				 */
+				commandCollected = true;
 				break;
 
 			case T_AlterTableMoveAllStmt:

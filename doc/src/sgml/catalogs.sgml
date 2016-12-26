@@ -226,6 +226,11 @@
      </row>
 
      <row>
+      <entry><link linkend="catalog-pg-partitioned-table"><structname>pg_partitioned_table</structname></link></entry>
+      <entry>information about partition key of tables</entry>
+     </row>
+
+     <row>
       <entry><link linkend="catalog-pg-policy"><structname>pg_policy</structname></link></entry>
       <entry>row-security policies</entry>
      </row>
@@ -253,6 +258,11 @@
      <row>
       <entry><link linkend="catalog-pg-seclabel"><structname>pg_seclabel</structname></link></entry>
       <entry>security labels on database objects</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-sequence"><structname>pg_sequence</structname></link></entry>
+      <entry>information about sequences</entry>
      </row>
 
      <row>
@@ -566,7 +576,7 @@
 
      <row>
       <entry><structfield>amhandler</structfield></entry>
-      <entry><type>oid</type></entry>
+      <entry><type>regproc</type></entry>
       <entry><literal><link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.oid</literal></entry>
       <entry>
        OID of a handler function that is responsible for supplying information
@@ -1541,7 +1551,8 @@
    The catalog <structname>pg_class</structname> catalogs tables and most
    everything else that has columns or is otherwise similar to a
    table.  This includes indexes (but see also
-   <structname>pg_index</structname>), sequences, views, materialized
+   <structname>pg_index</structname>), sequences (but see also
+   <structname>pg_sequence</structname>), views, materialized
    views, composite types, and TOAST tables; see <structfield>relkind</>.
    Below, when we mean all of these
    kinds of objects we speak of <quote>relations</quote>.  Not all
@@ -1723,7 +1734,8 @@
       <entry><type>char</type></entry>
       <entry></entry>
       <entry>
-       <literal>r</> = ordinary table, <literal>i</> = index,
+       <literal>r</> = ordinary table, <literal>P</> = partitioned table,
+       <literal>i</> = index
        <literal>S</> = sequence, <literal>v</> = view,
        <literal>m</> = materialized view,
        <literal>c</> = composite type, <literal>t</> = TOAST table,
@@ -1840,6 +1852,13 @@
      </row>
 
      <row>
+      <entry><structfield>relispartition</structfield></entry>
+      <entry><type>bool</type></entry>
+      <entry></entry>
+      <entry>True if table is a partition</entry>
+     </row>
+
+     <row>
       <entry><structfield>relfrozenxid</structfield></entry>
       <entry><type>xid</type></entry>
       <entry></entry>
@@ -1883,6 +1902,16 @@
       <entry></entry>
       <entry>
        Access-method-specific options, as <quote>keyword=value</> strings
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>relpartbound</structfield></entry>
+      <entry><type>pg_node_tree</type></entry>
+      <entry></entry>
+      <entry>
+       If table is a partition (see <structfield>relispartition</structfield>),
+       internal representation of the partition bound
       </entry>
      </row>
     </tbody>
@@ -4689,6 +4718,110 @@
 
  </sect1>
 
+ <sect1 id="catalog-pg-partitioned-table">
+  <title><structname>pg_partitioned_table</structname></title>
+
+  <indexterm zone="catalog-pg-partitioned-table">
+   <primary>pg_partitioned_table</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_partitioned_table</structname> stores
+   information about how tables are partitioned.
+  </para>
+
+  <table>
+   <title><structname>pg_partitioned_table</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+
+     <row>
+      <entry><structfield>partrelid</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal><link linkend="catalog-pg-class"><structname>pg_class</structname></link>.oid</literal></entry>
+      <entry>The OID of the <structname>pg_class</> entry for this partitioned table</entry>
+     </row>
+
+     <row>
+      <entry><structfield>partstrat</structfield></entry>
+      <entry><type>char</type></entry>
+      <entry></entry>
+      <entry>
+       Partitioning strategy; <literal>l</> = list partitioned table,
+       <literal>r</> = range partitioned table
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>partnatts</structfield></entry>
+      <entry><type>int2</type></entry>
+      <entry></entry>
+      <entry>The number of columns in partition key</entry>
+     </row>
+
+     <row>
+      <entry><structfield>partattrs</structfield></entry>
+      <entry><type>int2vector</type></entry>
+      <entry><literal><link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.attnum</literal></entry>
+      <entry>
+       This is an array of <structfield>partnatts</structfield> values that
+       indicate which table columns are part of the partition key.  For
+       example, a value of <literal>1 3</literal> would mean that the first
+       and the third table columns make up the partition key.  A zero in this
+       array indicates that the corresponding partition key column is an
+       expression, rather than a simple column reference.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>partclass</structfield></entry>
+      <entry><type>oidvector</type></entry>
+      <entry><literal><link linkend="catalog-pg-opclass"><structname>pg_opclass</structname></link>.oid</literal></entry>
+      <entry>
+       For each column in the partition key, this contains the OID of the
+       operator class to use.  See
+       <link linkend="catalog-pg-opclass"><structname>pg_opclass</structname></link> for details.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>partcollation</structfield></entry>
+      <entry><type>oidvector</type></entry>
+      <entry><literal><link linkend="catalog-pg-opclass"><structname>pg_opclass</structname></link>.oid</literal></entry>
+      <entry>
+       For each column in the partition key, this contains the OID of the
+       the collation to use for partitioning.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>partexprs</structfield></entry>
+      <entry><type>pg_node_tree</type></entry>
+      <entry></entry>
+      <entry>
+       Expression trees (in <function>nodeToString()</function>
+       representation) for partition key columns that are not simple column
+       references.  This is a list with one element for each zero
+       entry in <structfield>partattrs</>.  Null if all partition key columns
+       are simple references.
+      </entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
  <sect1 id="catalog-pg-policy">
   <title><structname>pg_policy</structname></title>
 
@@ -4745,6 +4878,13 @@
        <literal>w</> for <command>UPDATE</>,
        <literal>d</> for <command>DELETE</>,
        or <literal>*</> for all</entry>
+     </row>
+
+     <row>
+      <entry><structfield>polpermissive</structfield></entry>
+      <entry><type>boolean</type></entry>
+      <entry></entry>
+      <entry>Is the policy permissive or restrictive?</entry>
      </row>
 
      <row>
@@ -5447,6 +5587,86 @@
       <entry><type>text</type></entry>
       <entry></entry>
       <entry>The security label applied to this object.</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pg-sequence">
+  <title><structname>pg_sequence</structname></title>
+
+  <indexterm zone="catalog-pg-sequence">
+   <primary>pg_sequence</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_sequence</structname> contains information about
+   sequences.  Some of the information about sequences, such as the name and
+   the schema, is in <structname>pg_class</structname>.
+  </para>
+
+  <table>
+   <title><structname>pg_sequence</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><structfield>seqrelid</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal><link linkend="catalog-pg-class"><structname>pg_class</structname></link>.oid</literal></entry>
+      <entry>The OID of the <structname>pg_class</> entry for this sequence</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqcycle</structfield></entry>
+      <entry><type>bool</type></entry>
+      <entry></entry>
+      <entry>Whether the sequence cycles</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqstart</structfield></entry>
+      <entry><type>int8</type></entry>
+      <entry></entry>
+      <entry>Start value of the sequence</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqincrement</structfield></entry>
+      <entry><type>int8</type></entry>
+      <entry></entry>
+      <entry>Increment value of the sequence</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqmax</structfield></entry>
+      <entry><type>int8</type></entry>
+      <entry></entry>
+      <entry>Maximum value of the sequence</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqmin</structfield></entry>
+      <entry><type>int8</type></entry>
+      <entry></entry>
+      <entry>Minimum value of the sequence</entry>
+     </row>
+
+     <row>
+      <entry><structfield>seqcache</structfield></entry>
+      <entry><type>int8</type></entry>
+      <entry></entry>
+      <entry>Cache size of the sequence</entry>
      </row>
     </tbody>
    </tgroup>
@@ -7395,6 +7615,11 @@
      </row>
 
      <row>
+      <entry><link linkend="view-pg-sequences"><structname>pg_sequences</structname></link></entry>
+      <entry>sequences</entry>
+     </row>
+
+     <row>
       <entry><link linkend="view-pg-settings"><structname>pg_settings</structname></link></entry>
       <entry>parameter settings</entry>
      </row>
@@ -8433,6 +8658,12 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
       <entry>Name of policy</entry>
      </row>
      <row>
+      <entry><structfield>polpermissive</structfield></entry>
+      <entry><type>text</type></entry>
+      <entry></entry>
+      <entry>Is the policy permissive or restrictive?</entry>
+     </row>
+     <row>
       <entry><structfield>roles</structfield></entry>
       <entry><type>name[]</type></entry>
       <entry></entry>
@@ -9129,6 +9360,98 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
       <entry><type>text</type></entry>
       <entry><literal><link linkend="catalog-pg-seclabel"><structname>pg_seclabel</structname></link>.label</literal></entry>
       <entry>The security label applied to this object.</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="view-pg-sequences">
+  <title><structname>pg_sequences</structname></title>
+
+  <indexterm zone="view-pg-sequences">
+   <primary>pg_sequences</primary>
+  </indexterm>
+
+  <para>
+   The view <structname>pg_sequences</structname> provides access to
+   useful information about each sequence in the database.
+  </para>
+
+  <table>
+   <title><structname>pg_sequences</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><structfield>schemaname</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry><literal><link linkend="catalog-pg-namespace"><structname>pg_namespace</structname></link>.nspname</literal></entry>
+      <entry>Name of schema containing sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>sequencename</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry><literal><link linkend="catalog-pg-class"><structname>pg_class</structname></link>.relname</literal></entry>
+      <entry>Name of sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>sequenceowner</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry><literal><link linkend="catalog-pg-authid"><structname>pg_authid</structname></link>.rolname</literal></entry>
+      <entry>Name of sequence's owner</entry>
+     </row>
+     <row>
+      <entry><structfield>start_value</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Start value of the sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>min_value</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Minimum value of the sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>max_value</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Maximum value of the sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>increment_by</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Increment value of the sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>cycle</structfield></entry>
+      <entry><type>boolean</type></entry>
+      <entry></entry>
+      <entry>Whether the sequence cycles</entry>
+     </row>
+     <row>
+      <entry><structfield>cache_size</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>Cache size of the sequence</entry>
+     </row>
+     <row>
+      <entry><structfield>last_value</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+      <entry>The last sequence value written to disk.  If caching is used,
+       this value can be greater than the last value handed out from the
+       sequence.  Null if the sequence has not been read from yet.</entry>
      </row>
     </tbody>
    </tgroup>

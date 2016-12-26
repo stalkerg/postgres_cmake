@@ -33,6 +33,7 @@
 #include "miscadmin.h"
 #include "replication/walsender.h"
 #include "storage/ipc.h"
+#include "utils/backend_random.h"
 
 
 /*----------------------------------------------------------------
@@ -43,8 +44,20 @@ static void sendAuthRequest(Port *port, AuthRequest areq, char *extradata,
 				int extralen);
 static void auth_failed(Port *port, int status, char *logdetail);
 static char *recv_password_packet(Port *port);
-static int	recv_and_check_password_packet(Port *port, char **logdetail);
 
+
+/*----------------------------------------------------------------
+ * MD5 authentication
+ *----------------------------------------------------------------
+ */
+static int	CheckMD5Auth(Port *port, char **logdetail);
+
+/*----------------------------------------------------------------
+ * Plaintext password authentication
+ *----------------------------------------------------------------
+ */
+
+static int	CheckPasswordAuth(Port *port, char **logdetail);
 
 /*----------------------------------------------------------------
  * Ident authentication
@@ -181,9 +194,6 @@ static int pg_SSPI_make_upn(char *accountname,
  * RADIUS Authentication
  *----------------------------------------------------------------
  */
-#ifdef USE_OPENSSL
-#include <openssl/rand.h>
-#endif
 static int	CheckRADIUSAuth(Port *port);
 
 
@@ -531,18 +541,11 @@ ClientAuthentication(Port *port)
 			break;
 
 		case uaMD5:
-			if (Db_user_namespace)
-				ereport(FATAL,
-						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-						 errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled")));
-			/* include the salt to use for computing the response */
-			sendAuthRequest(port, AUTH_REQ_MD5, port->md5Salt, 4);
-			status = recv_and_check_password_packet(port, &logdetail);
+			status = CheckMD5Auth(port, &logdetail);
 			break;
 
 		case uaPassword:
-			sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
-			status = recv_and_check_password_packet(port, &logdetail);
+			status = CheckPasswordAuth(port, &logdetail);
 			break;
 
 		case uaPAM:
@@ -696,24 +699,70 @@ recv_password_packet(Port *port)
  *----------------------------------------------------------------
  */
 
-/*
- * Called when we have sent an authorization request for a password.
- * Get the response and check it.
- * On error, optionally store a detail string at *logdetail.
- */
 static int
-recv_and_check_password_packet(Port *port, char **logdetail)
+CheckMD5Auth(Port *port, char **logdetail)
 {
+	char		md5Salt[4];		/* Password salt */
 	char	   *passwd;
+	char	   *shadow_pass;
 	int			result;
 
-	passwd = recv_password_packet(port);
+	if (Db_user_namespace)
+		ereport(FATAL,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled")));
 
+	/* include the salt to use for computing the response */
+	if (!pg_backend_random(md5Salt, 4))
+	{
+		ereport(LOG,
+				(errmsg("could not generate random MD5 salt")));
+		return STATUS_ERROR;
+	}
+
+	sendAuthRequest(port, AUTH_REQ_MD5, md5Salt, 4);
+
+	passwd = recv_password_packet(port);
 	if (passwd == NULL)
 		return STATUS_EOF;		/* client wouldn't send password */
 
-	result = md5_crypt_verify(port, port->user_name, passwd, logdetail);
+	result = get_role_password(port->user_name, &shadow_pass, logdetail);
+	if (result == STATUS_OK)
+		result = md5_crypt_verify(port->user_name, shadow_pass, passwd,
+								  md5Salt, 4, logdetail);
 
+	if (shadow_pass)
+		pfree(shadow_pass);
+	pfree(passwd);
+
+	return result;
+}
+
+/*----------------------------------------------------------------
+ * Plaintext password authentication
+ *----------------------------------------------------------------
+ */
+
+static int
+CheckPasswordAuth(Port *port, char **logdetail)
+{
+	char	   *passwd;
+	int			result;
+	char	   *shadow_pass;
+
+	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
+
+	passwd = recv_password_packet(port);
+	if (passwd == NULL)
+		return STATUS_EOF;		/* client wouldn't send password */
+
+	result = get_role_password(port->user_name, &shadow_pass, logdetail);
+	if (result == STATUS_OK)
+		result = plain_crypt_verify(port->user_name, shadow_pass, passwd,
+									logdetail);
+
+	if (shadow_pass)
+		pfree(shadow_pass);
 	pfree(passwd);
 
 	return result;
@@ -920,7 +969,7 @@ pg_GSS_recvauth(Port *port)
 				 (unsigned int) port->gss->outbuf.length);
 
 			sendAuthRequest(port, AUTH_REQ_GSS_CONT,
-							port->gss->outbuf.value, port->gss->outbuf.length);
+						  port->gss->outbuf.value, port->gss->outbuf.length);
 
 			gss_release_buffer(&lmin_s, &port->gss->outbuf);
 		}
@@ -1166,7 +1215,7 @@ pg_SSPI_recvauth(Port *port)
 			port->gss->outbuf.value = outbuf.pBuffers[0].pvBuffer;
 
 			sendAuthRequest(port, AUTH_REQ_GSS_CONT,
-							port->gss->outbuf.value, port->gss->outbuf.length);
+						  port->gss->outbuf.value, port->gss->outbuf.length);
 
 			FreeContextBuffer(outbuf.pBuffers[0].pvBuffer);
 		}
@@ -2508,18 +2557,12 @@ CheckRADIUSAuth(Port *port)
 	/* Construct RADIUS packet */
 	packet->code = RADIUS_ACCESS_REQUEST;
 	packet->length = RADIUS_HEADER_LENGTH;
-#ifdef USE_OPENSSL
-	if (RAND_bytes(packet->vector, RADIUS_VECTOR_LENGTH) != 1)
+	if (!pg_backend_random((char *) packet->vector, RADIUS_VECTOR_LENGTH))
 	{
 		ereport(LOG,
 				(errmsg("could not generate random encryption vector")));
 		return STATUS_ERROR;
 	}
-#else
-	for (i = 0; i < RADIUS_VECTOR_LENGTH; i++)
-		/* Use a lower strengh random number of OpenSSL is not available */
-		packet->vector[i] = random() % 255;
-#endif
 	packet->id = packet->vector[0];
 	radius_add_attribute(packet, RADIUS_SERVICE_TYPE, (unsigned char *) &service, sizeof(service));
 	radius_add_attribute(packet, RADIUS_USER_NAME, (unsigned char *) port->user_name, strlen(port->user_name));

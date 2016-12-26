@@ -120,6 +120,7 @@ pg_namespace|t
 pg_opclass|t
 pg_operator|t
 pg_opfamily|t
+pg_partitioned_table|t
 pg_pltemplate|t
 pg_policy|t
 pg_proc|t
@@ -127,6 +128,7 @@ pg_range|t
 pg_replication_origin|t
 pg_rewrite|t
 pg_seclabel|t
+pg_sequence|t
 pg_shdepend|t
 pg_shdescription|t
 pg_shseclabel|t

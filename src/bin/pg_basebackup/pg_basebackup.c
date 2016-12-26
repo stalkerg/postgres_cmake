@@ -192,7 +192,7 @@ cleanup_directories_atexit(void)
 
 	if (made_tablespace_dirs || found_tablespace_dirs)
 		fprintf(stderr,
-				_("%s: changes to tablespace directories will not be undone"),
+				_("%s: changes to tablespace directories will not be undone\n"),
 				progname);
 }
 
@@ -2262,6 +2262,16 @@ main(int argc, char **argv)
 	{
 		fprintf(stderr,
 				_("%s: only tar mode backups can be compressed\n"),
+				progname);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+
+	if (format == 't' && streamwal && strcmp(basedir, "-") == 0)
+	{
+		fprintf(stderr,
+			_("%s: cannot stream transaction logs in tar mode to stdout\n"),
 				progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);

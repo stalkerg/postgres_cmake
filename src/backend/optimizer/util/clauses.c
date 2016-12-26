@@ -1150,8 +1150,14 @@ is_parallel_safe(PlannerInfo *root, Node *node)
 {
 	max_parallel_hazard_context context;
 
-	/* If max_parallel_hazard found nothing unsafe, we don't need to look */
-	if (root->glob->maxParallelHazard == PROPARALLEL_SAFE)
+	/*
+	 * Even if the original querytree contained nothing unsafe, we need to
+	 * search the expression if we have generated any PARAM_EXEC Params while
+	 * planning, because those are parallel-restricted and there might be one
+	 * in this expression.  But otherwise we don't need to look.
+	 */
+	if (root->glob->maxParallelHazard == PROPARALLEL_SAFE &&
+		root->glob->nParamExec == 0)
 		return true;
 	/* Else use max_parallel_hazard's search logic, but stop on RESTRICTED */
 	context.max_hazard = PROPARALLEL_SAFE;
@@ -3339,6 +3345,23 @@ eval_const_expressions_mutator(Node *node,
 				newcoalesce->args = newargs;
 				newcoalesce->location = coalesceexpr->location;
 				return (Node *) newcoalesce;
+			}
+		case T_SQLValueFunction:
+			{
+				/*
+				 * All variants of SQLValueFunction are stable, so if we are
+				 * estimating the expression's value, we should evaluate the
+				 * current function value.  Otherwise just copy.
+				 */
+				SQLValueFunction *svf = (SQLValueFunction *) node;
+
+				if (context->estimate)
+					return (Node *) evaluate_expr((Expr *) svf,
+												  svf->type,
+												  svf->typmod,
+												  InvalidOid);
+				else
+					return copyObject((Node *) svf);
 			}
 		case T_FieldSelect:
 			{

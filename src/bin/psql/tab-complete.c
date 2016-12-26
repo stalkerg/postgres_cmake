@@ -452,7 +452,7 @@ static const SchemaQuery Query_for_list_of_tables = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r')",
+	"c.relkind IN ('r', 'P')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */
@@ -483,7 +483,7 @@ static const SchemaQuery Query_for_list_of_updatables = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r', 'f', 'v')",
+	"c.relkind IN ('r', 'f', 'v', 'P')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */
@@ -513,7 +513,7 @@ static const SchemaQuery Query_for_list_of_tsvmf = {
 	/* catname */
 	"pg_catalog.pg_class c",
 	/* selcondition */
-	"c.relkind IN ('r', 'S', 'v', 'm', 'f')",
+	"c.relkind IN ('r', 'S', 'v', 'm', 'f', 'P')",
 	/* viscondition */
 	"pg_catalog.pg_table_is_visible(c.oid)",
 	/* namespace */
@@ -1570,13 +1570,31 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_CONST("PASSWORD");
 	/* ALTER DEFAULT PRIVILEGES */
 	else if (Matches3("ALTER", "DEFAULT", "PRIVILEGES"))
-		COMPLETE_WITH_LIST3("FOR ROLE", "FOR USER", "IN SCHEMA");
+		COMPLETE_WITH_LIST2("FOR ROLE", "IN SCHEMA");
 	/* ALTER DEFAULT PRIVILEGES FOR */
 	else if (Matches4("ALTER", "DEFAULT", "PRIVILEGES", "FOR"))
-		COMPLETE_WITH_LIST2("ROLE", "USER");
-	/* ALTER DEFAULT PRIVILEGES { FOR ROLE ... | IN SCHEMA ... } */
-	else if (Matches6("ALTER", "DEFAULT", "PRIVILEGES", "FOR", "ROLE|USER", MatchAny) ||
-		Matches6("ALTER", "DEFAULT", "PRIVILEGES", "IN", "SCHEMA", MatchAny))
+		COMPLETE_WITH_CONST("ROLE");
+	/* ALTER DEFAULT PRIVILEGES IN */
+	else if (Matches4("ALTER", "DEFAULT", "PRIVILEGES", "IN"))
+		COMPLETE_WITH_CONST("SCHEMA");
+	/* ALTER DEFAULT PRIVILEGES FOR ROLE|USER ... */
+	else if (Matches6("ALTER", "DEFAULT", "PRIVILEGES", "FOR", "ROLE|USER",
+				MatchAny))
+		COMPLETE_WITH_LIST3("GRANT", "REVOKE", "IN SCHEMA");
+	/* ALTER DEFAULT PRIVILEGES IN SCHEMA ... */
+	else if (Matches6("ALTER", "DEFAULT", "PRIVILEGES", "IN", "SCHEMA",
+				MatchAny))
+		COMPLETE_WITH_LIST3("GRANT", "REVOKE", "FOR ROLE");
+	/* ALTER DEFAULT PRIVILEGES IN SCHEMA ... FOR */
+	else if (Matches7("ALTER", "DEFAULT", "PRIVILEGES", "IN", "SCHEMA",
+				MatchAny, "FOR"))
+		COMPLETE_WITH_CONST("ROLE");
+	/* ALTER DEFAULT PRIVILEGES FOR ROLE|USER ... IN SCHEMA ... */
+	/* ALTER DEFAULT PRIVILEGES IN SCHEMA ... FOR ROLE|USER ... */
+	else if (Matches9("ALTER", "DEFAULT", "PRIVILEGES", "FOR", "ROLE|USER",
+					MatchAny, "IN", "SCHEMA", MatchAny) ||
+		Matches9("ALTER", "DEFAULT", "PRIVILEGES", "IN", "SCHEMA",
+					MatchAny, "FOR", "ROLE|USER", MatchAny))
 		COMPLETE_WITH_LIST2("GRANT", "REVOKE");
 	/* ALTER DOMAIN <name> */
 	else if (Matches3("ALTER", "DOMAIN", MatchAny))
@@ -1804,7 +1822,7 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_LIST4("PLAIN", "EXTERNAL", "EXTENDED", "MAIN");
 	/* ALTER TABLE ALTER [COLUMN] <foo> DROP */
 	else if (Matches7("ALTER", "TABLE", MatchAny, "ALTER", "COLUMN", MatchAny, "DROP") ||
-			 Matches8("ALTER", "TABLE", MatchAny, "TABLE", MatchAny, "ALTER", MatchAny, "DROP"))
+			 Matches6("ALTER", "TABLE", MatchAny, "ALTER", MatchAny, "DROP"))
 		COMPLETE_WITH_LIST2("DEFAULT", "NOT NULL");
 	else if (Matches4("ALTER", "TABLE", MatchAny, "CLUSTER"))
 		COMPLETE_WITH_CONST("ON");
@@ -2162,9 +2180,15 @@ psql_completion(const char *text, int start, int end)
 	/* Complete "CREATE POLICY <name> ON <table>" */
 	else if (Matches4("CREATE", "POLICY", MatchAny, "ON"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
-	/* Complete "CREATE POLICY <name> ON <table> FOR|TO|USING|WITH CHECK" */
+	/* Complete "CREATE POLICY <name> ON <table> AS|FOR|TO|USING|WITH CHECK" */
 	else if (Matches5("CREATE", "POLICY", MatchAny, "ON", MatchAny))
-		COMPLETE_WITH_LIST4("FOR", "TO", "USING (", "WITH CHECK (");
+		COMPLETE_WITH_LIST5("AS", "FOR", "TO", "USING (", "WITH CHECK (");
+	/* CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE */
+	else if (Matches6("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS"))
+		COMPLETE_WITH_LIST2("PERMISSIVE", "RESTRICTIVE");
+	/* CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE FOR|TO|USING|WITH CHECK */
+	else if (Matches7("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny))
+		COMPLETE_WITH_LIST4("FOR", "TO", "USING", "WITH CHECK");
 	/* CREATE POLICY <name> ON <table> FOR ALL|SELECT|INSERT|UPDATE|DELETE */
 	else if (Matches6("CREATE", "POLICY", MatchAny, "ON", MatchAny, "FOR"))
 		COMPLETE_WITH_LIST5("ALL", "SELECT", "INSERT", "UPDATE", "DELETE");
@@ -2183,6 +2207,25 @@ psql_completion(const char *text, int start, int end)
 	/* Complete "CREATE POLICY <name> ON <table> USING (" */
 	else if (Matches6("CREATE", "POLICY", MatchAny, "ON", MatchAny, "USING"))
 		COMPLETE_WITH_CONST("(");
+	/* CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE FOR ALL|SELECT|INSERT|UPDATE|DELETE */
+	else if (Matches8("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "FOR"))
+		COMPLETE_WITH_LIST5("ALL", "SELECT", "INSERT", "UPDATE", "DELETE");
+	/* Complete "CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE FOR INSERT TO|WITH CHECK" */
+	else if (Matches9("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "FOR", "INSERT"))
+		COMPLETE_WITH_LIST2("TO", "WITH CHECK (");
+	/* Complete "CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE FOR SELECT|DELETE TO|USING" */
+	else if (Matches9("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "FOR", "SELECT|DELETE"))
+		COMPLETE_WITH_LIST2("TO", "USING (");
+	/* CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE FOR ALL|UPDATE TO|USING|WITH CHECK */
+	else if (Matches9("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "FOR", "ALL|UPDATE"))
+		COMPLETE_WITH_LIST3("TO", "USING (", "WITH CHECK (");
+	/* Complete "CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE TO <role>" */
+	else if (Matches8("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "TO"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_grant_roles);
+	/* Complete "CREATE POLICY <name> ON <table> AS PERMISSIVE|RESTRICTIVE USING (" */
+	else if (Matches8("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "USING"))
+		COMPLETE_WITH_CONST("(");
+
 
 /* CREATE RULE */
 	/* Complete "CREATE RULE <sth>" with "AS ON" */
@@ -2541,10 +2584,22 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches2("FOREIGN", "SERVER"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_servers);
 
-/* GRANT && REVOKE --- is allowed inside CREATE SCHEMA, so use TailMatches */
+/*
+ * GRANT and REVOKE are allowed inside CREATE SCHEMA and
+ * ALTER DEFAULT PRIVILEGES, so use TailMatches
+ */
 	/* Complete GRANT/REVOKE with a list of roles and privileges */
 	else if (TailMatches1("GRANT|REVOKE"))
-		COMPLETE_WITH_QUERY(Query_for_list_of_roles
+		/*
+		 * With ALTER DEFAULT PRIVILEGES, restrict completion
+		 * to grantable privileges (can't grant roles)
+		 */
+		if (HeadMatches3("ALTER","DEFAULT","PRIVILEGES"))
+			COMPLETE_WITH_LIST10("SELECT", "INSERT", "UPDATE",
+				"DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
+						"EXECUTE", "USAGE", "ALL");
+		else
+			COMPLETE_WITH_QUERY(Query_for_list_of_roles
 							" UNION SELECT 'SELECT'"
 							" UNION SELECT 'INSERT'"
 							" UNION SELECT 'UPDATE'"
@@ -2585,7 +2640,14 @@ psql_completion(const char *text, int start, int end)
 	 * privilege.
 	 */
 	else if (TailMatches3("GRANT|REVOKE", MatchAny, "ON"))
-		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tsvmf,
+		/*
+		 * With ALTER DEFAULT PRIVILEGES, restrict completion
+		 * to the kinds of objects supported.
+		 */
+		if (HeadMatches3("ALTER","DEFAULT","PRIVILEGES"))
+			COMPLETE_WITH_LIST4("TABLES", "SEQUENCES", "FUNCTIONS", "TYPES");
+		else
+			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tsvmf,
 								   " UNION SELECT 'ALL FUNCTIONS IN SCHEMA'"
 								   " UNION SELECT 'ALL SEQUENCES IN SCHEMA'"
 								   " UNION SELECT 'ALL TABLES IN SCHEMA'"
@@ -2648,7 +2710,9 @@ psql_completion(const char *text, int start, int end)
 	else if ((HeadMatches1("GRANT") && TailMatches1("TO")) ||
 			 (HeadMatches1("REVOKE") && TailMatches1("FROM")))
 		COMPLETE_WITH_QUERY(Query_for_list_of_grant_roles);
-
+	/* Complete "ALTER DEFAULT PRIVILEGES ... GRANT/REVOKE ... TO/FROM */
+	else if (HeadMatches3("ALTER","DEFAULT", "PRIVILEGES") && TailMatches1("TO|FROM"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_grant_roles);
 	/* Complete "GRANT/REVOKE ... ON * *" with TO/FROM */
 	else if (HeadMatches1("GRANT") && TailMatches3("ON", MatchAny, MatchAny))
 		COMPLETE_WITH_CONST("TO");

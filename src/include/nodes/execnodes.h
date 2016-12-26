@@ -16,6 +16,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/tupconvert.h"
 #include "executor/instrument.h"
 #include "lib/pairingheap.h"
 #include "nodes/params.h"
@@ -320,6 +321,8 @@ typedef struct JunkFilter
  *		projectReturning		for computing a RETURNING list
  *		onConflictSetProj		for computing ON CONFLICT DO UPDATE SET
  *		onConflictSetWhere		list of ON CONFLICT DO UPDATE exprs (qual)
+ *		PartitionCheck			partition check expression
+ *		PartitionCheckExpr		partition check expression state
  * ----------------
  */
 typedef struct ResultRelInfo
@@ -344,6 +347,8 @@ typedef struct ResultRelInfo
 	ProjectionInfo *ri_projectReturning;
 	ProjectionInfo *ri_onConflictSetProj;
 	List	   *ri_onConflictSetWhere;
+	List	   *ri_PartitionCheck;
+	List	   *ri_PartitionCheckExpr;
 } ResultRelInfo;
 
 /* ----------------
@@ -378,6 +383,9 @@ typedef struct EState
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 	TupleTableSlot *es_trig_oldtup_slot;		/* for TriggerEnabled */
 	TupleTableSlot *es_trig_newtup_slot;		/* for TriggerEnabled */
+
+	/* Slot used to manipulate a tuple after it is routed to a partition */
+	TupleTableSlot *es_partition_tuple_slot;
 
 	/* Parameter info: */
 	ParamListInfo es_param_list_info;	/* values of external params */
@@ -422,6 +430,9 @@ typedef struct EState
 	HeapTuple  *es_epqTuple;	/* array of EPQ substitute tuples */
 	bool	   *es_epqTupleSet; /* true if EPQ tuple is provided */
 	bool	   *es_epqScanDone; /* true if EPQ tuple has been fetched */
+
+	/* The per-query shared memory area to use for parallel execution. */
+	struct dsa_area   *es_query_dsa;
 } EState;
 
 
@@ -528,6 +539,7 @@ typedef struct TupleHashTableData
 	TupleTableSlot *inputslot;	/* current input tuple's slot */
 	FmgrInfo   *in_hash_funcs;	/* hash functions for input datatype(s) */
 	FmgrInfo   *cur_eq_funcs;	/* equality functions for input vs. table */
+	uint32		hash_iv;		/* hash-function IV */
 }	TupleHashTableData;
 
 typedef tuplehash_iterator TupleHashIterator;
@@ -880,6 +892,7 @@ typedef struct CaseExprState
 	ExprState  *arg;			/* implicit equality comparison argument */
 	List	   *args;			/* the arguments (list of WHEN clauses) */
 	ExprState  *defresult;		/* the default result (ELSE clause) */
+	int16		argtyplen;		/* if arg is provided, its typlen */
 } CaseExprState;
 
 /* ----------------
@@ -1143,6 +1156,15 @@ typedef struct ModifyTableState
 										 * tlist  */
 	TupleTableSlot *mt_conflproj;		/* CONFLICT ... SET ... projection
 										 * target */
+	struct PartitionDispatchData **mt_partition_dispatch_info;
+										/* Tuple-routing support info */
+	int				mt_num_dispatch;	/* Number of entries in the above
+										 * array */
+	int				mt_num_partitions;	/* Number of members in the
+										 * following arrays */
+	ResultRelInfo  *mt_partitions;	/* Per partition result relation */
+	TupleConversionMap **mt_partition_tupconv_maps;
+									/* Per partition tuple conversion map */
 } ModifyTableState;
 
 /* ----------------
@@ -1860,9 +1882,16 @@ typedef struct AggState
 	/* these fields are used in AGG_HASHED mode: */
 	TupleHashTable hashtable;	/* hash table with one entry per group */
 	TupleTableSlot *hashslot;	/* slot for loading hash table */
-	List	   *hash_needed;	/* list of columns needed in hash table */
+	int			numhashGrpCols;	/* number of columns in hash table */
+	int			largestGrpColIdx; /* largest column required for hashing */
+	AttrNumber *hashGrpColIdxInput;	/* and their indices in input slot */
+	AttrNumber *hashGrpColIdxHash;	/* indices for execGrouping in hashtbl */
 	bool		table_filled;	/* hash table filled yet? */
 	TupleHashIterator hashiter; /* for iterating through hash table */
+	/* support for evaluation of agg inputs */
+	TupleTableSlot *evalslot;	/* slot for agg inputs */
+	ProjectionInfo *evalproj;	/* projection machinery */
+	TupleDesc	evaldesc;		/* descriptor of input tuples */
 } AggState;
 
 /* ----------------

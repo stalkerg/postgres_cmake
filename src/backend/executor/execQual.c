@@ -2992,12 +2992,18 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 
 	if (caseExpr->arg)
 	{
+		Datum		arg_value;
 		bool		arg_isNull;
 
-		econtext->caseValue_datum = ExecEvalExpr(caseExpr->arg,
-												 econtext,
-												 &arg_isNull,
-												 NULL);
+		arg_value = ExecEvalExpr(caseExpr->arg,
+								 econtext,
+								 &arg_isNull,
+								 NULL);
+		/* Since caseValue_datum may be read multiple times, force to R/O */
+		econtext->caseValue_datum =
+			MakeExpandedObjectReadOnly(arg_value,
+									   arg_isNull,
+									   caseExpr->argtyplen);
 		econtext->caseValue_isNull = arg_isNull;
 	}
 
@@ -4127,11 +4133,18 @@ ExecEvalCoerceToDomain(CoerceToDomainState *cstate, ExprContext *econtext,
 					 * nodes. We must save and restore prior setting of
 					 * econtext's domainValue fields, in case this node is
 					 * itself within a check expression for another domain.
+					 *
+					 * Also, if we are working with a read-write expanded
+					 * datum, be sure that what we pass to CHECK expressions
+					 * is a read-only pointer; else called functions might
+					 * modify or even delete the expanded object.
 					 */
 					save_datum = econtext->domainValue_datum;
 					save_isNull = econtext->domainValue_isNull;
 
-					econtext->domainValue_datum = result;
+					econtext->domainValue_datum =
+						MakeExpandedObjectReadOnly(result, *isNull,
+									 cstate->constraint_ref->tcache->typlen);
 					econtext->domainValue_isNull = *isNull;
 
 					conResult = ExecEvalExpr(con->check_expr,
@@ -4581,16 +4594,16 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			}
 			else
 			{
-				state = (ExprState *) makeNode(ExprState);
+				state = makeNode(ExprState);
 				state->evalfunc = ExecEvalScalarVar;
 			}
 			break;
 		case T_Const:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			state->evalfunc = ExecEvalConst;
 			break;
 		case T_Param:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			switch (((Param *) node)->paramkind)
 			{
 				case PARAM_EXEC:
@@ -4606,11 +4619,11 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			}
 			break;
 		case T_CoerceToDomainValue:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			state->evalfunc = ExecEvalCoerceToDomainValue;
 			break;
 		case T_CaseTestExpr:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			state->evalfunc = ExecEvalCaseTestExpr;
 			break;
 		case T_Aggref:
@@ -4939,6 +4952,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				}
 				cstate->args = outlist;
 				cstate->defresult = ExecInitExpr(caseexpr->defresult, parent);
+				if (caseexpr->arg)
+					cstate->argtyplen = get_typlen(exprType((Node *) caseexpr->arg));
 				state = (ExprState *) cstate;
 			}
 			break;
@@ -5161,7 +5176,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			}
 			break;
 		case T_SQLValueFunction:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			state->evalfunc = ExecEvalSQLValueFunction;
 			break;
 		case T_XmlExpr:
@@ -5235,7 +5250,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			}
 			break;
 		case T_CurrentOfExpr:
-			state = (ExprState *) makeNode(ExprState);
+			state = makeNode(ExprState);
 			state->evalfunc = ExecEvalCurrentOfExpr;
 			break;
 		case T_TargetEntry:

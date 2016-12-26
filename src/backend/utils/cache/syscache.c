@@ -48,10 +48,12 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_seclabel.h"
+#include "catalog/pg_sequence.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_shseclabel.h"
@@ -568,6 +570,17 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		8
 	},
+	{PartitionedRelationId,		/* PARTRELID */
+		PartitionedRelidIndexId,
+		1,
+		{
+			Anum_pg_partitioned_table_partrelid,
+			0,
+			0,
+			0
+		},
+		32
+	},
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,
 		3,
@@ -655,6 +668,17 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		8
+	},
+	{SequenceRelationId,			/* SEQRELID */
+		SequenceRelidIndexId,
+		1,
+		{
+			Anum_pg_sequence_seqrelid,
+			0,
+			0,
+			0
+		},
+		32
 	},
 	{StatisticRelationId,		/* STATRELATTINH */
 		StatisticRelidAttnumInhIndexId,

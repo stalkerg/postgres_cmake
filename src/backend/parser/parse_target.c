@@ -91,7 +91,17 @@ transformTargetEntry(ParseState *pstate,
 {
 	/* Transform the node if caller didn't do it already */
 	if (expr == NULL)
-		expr = transformExpr(pstate, node, exprKind);
+	{
+		/*
+		 * If it's a SetToDefault node and we should allow that, pass it
+		 * through unmodified.  (transformExpr will throw the appropriate
+		 * error if we're disallowing it.)
+		 */
+		if (exprKind == EXPR_KIND_UPDATE_SOURCE && IsA(node, SetToDefault))
+			expr = node;
+		else
+			expr = transformExpr(pstate, node, exprKind);
+	}
 
 	if (colname == NULL && !resjunk)
 	{
@@ -122,10 +132,14 @@ transformTargetList(ParseState *pstate, List *targetlist,
 					ParseExprKind exprKind)
 {
 	List	   *p_target = NIL;
+	bool		expand_star;
 	ListCell   *o_target;
 
 	/* Shouldn't have any leftover multiassign items at start */
 	Assert(pstate->p_multiassign_exprs == NIL);
+
+	/* Expand "something.*" in SELECT and RETURNING, but not UPDATE */
+	expand_star = (exprKind != EXPR_KIND_UPDATE_SOURCE);
 
 	foreach(o_target, targetlist)
 	{
@@ -136,35 +150,42 @@ transformTargetList(ParseState *pstate, List *targetlist,
 		 * "something", the star could appear as the last field in ColumnRef,
 		 * or as the last indirection item in A_Indirection.
 		 */
-		if (IsA(res->val, ColumnRef))
+		if (expand_star)
 		{
-			ColumnRef  *cref = (ColumnRef *) res->val;
-
-			if (IsA(llast(cref->fields), A_Star))
+			if (IsA(res->val, ColumnRef))
 			{
-				/* It is something.*, expand into multiple items */
-				p_target = list_concat(p_target,
-									   ExpandColumnRefStar(pstate, cref,
-														   true));
-				continue;
+				ColumnRef  *cref = (ColumnRef *) res->val;
+
+				if (IsA(llast(cref->fields), A_Star))
+				{
+					/* It is something.*, expand into multiple items */
+					p_target = list_concat(p_target,
+										   ExpandColumnRefStar(pstate,
+															   cref,
+															   true));
+					continue;
+				}
 			}
-		}
-		else if (IsA(res->val, A_Indirection))
-		{
-			A_Indirection *ind = (A_Indirection *) res->val;
-
-			if (IsA(llast(ind->indirection), A_Star))
+			else if (IsA(res->val, A_Indirection))
 			{
-				/* It is something.*, expand into multiple items */
-				p_target = list_concat(p_target,
-									   ExpandIndirectionStar(pstate, ind,
-															 true, exprKind));
-				continue;
+				A_Indirection *ind = (A_Indirection *) res->val;
+
+				if (IsA(llast(ind->indirection), A_Star))
+				{
+					/* It is something.*, expand into multiple items */
+					p_target = list_concat(p_target,
+										   ExpandIndirectionStar(pstate,
+																 ind,
+																 true,
+																 exprKind));
+					continue;
+				}
 			}
 		}
 
 		/*
-		 * Not "something.*", so transform as a single expression
+		 * Not "something.*", or we want to treat that as a plain whole-row
+		 * variable, so transform as a single expression
 		 */
 		p_target = lappend(p_target,
 						   transformTargetEntry(pstate,
@@ -199,10 +220,13 @@ transformTargetList(ParseState *pstate, List *targetlist,
  * the input list elements are bare expressions without ResTarget decoration,
  * and the output elements are likewise just expressions without TargetEntry
  * decoration.  We use this for ROW() and VALUES() constructs.
+ *
+ * exprKind is not enough to tell us whether to allow SetToDefault, so
+ * an additional flag is needed for that.
  */
 List *
 transformExpressionList(ParseState *pstate, List *exprlist,
-						ParseExprKind exprKind)
+						ParseExprKind exprKind, bool allowDefault)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
@@ -244,10 +268,17 @@ transformExpressionList(ParseState *pstate, List *exprlist,
 		}
 
 		/*
-		 * Not "something.*", so transform as a single expression
+		 * Not "something.*", so transform as a single expression.  If it's a
+		 * SetToDefault node and we should allow that, pass it through
+		 * unmodified.  (transformExpr will throw the appropriate error if
+		 * we're disallowing it.)
 		 */
-		result = lappend(result,
-						 transformExpr(pstate, e, exprKind));
+		if (allowDefault && IsA(e, SetToDefault))
+			 /* do nothing */ ;
+		else
+			e = transformExpr(pstate, e, exprKind);
+
+		result = lappend(result, e);
 	}
 
 	/* Shouldn't have any multiassign items here */

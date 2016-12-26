@@ -106,9 +106,6 @@ static TransactionId *KnownAssignedXids;
 static bool *KnownAssignedXidsValid;
 static TransactionId latestObservedXid = InvalidTransactionId;
 
-/* LWLock tranche for backend locks */
-static LWLockTranche ProcLWLockTranche;
-
 /*
  * If we're in STANDBY_SNAPSHOT_PENDING state, standbySnapshotPendingXmin is
  * the highest xid that might still be running that we don't have in
@@ -266,11 +263,7 @@ CreateSharedProcArray(void)
 	}
 
 	/* Register and initialize fields of ProcLWLockTranche */
-	ProcLWLockTranche.name = "proc";
-	ProcLWLockTranche.array_base = (char *) (ProcGlobal->allProcs) +
-		offsetof(PGPROC, backendLock);
-	ProcLWLockTranche.array_stride = sizeof(PGPROC);
-	LWLockRegisterTranche(LWTRANCHE_PROC, &ProcLWLockTranche);
+	LWLockRegisterTranche(LWTRANCHE_PROC, "proc");
 }
 
 /*
@@ -522,7 +515,7 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 		for (;;)
 		{
 			/* acts as a read barrier */
-			PGSemaphoreLock(&proc->sem);
+			PGSemaphoreLock(proc->sem);
 			if (!proc->procArrayGroupMember)
 				break;
 			extraWaits++;
@@ -532,7 +525,7 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 
 		/* Fix semaphore count for any absorbed wakeups */
 		while (extraWaits-- > 0)
-			PGSemaphoreUnlock(&proc->sem);
+			PGSemaphoreUnlock(proc->sem);
 		return;
 	}
 
@@ -591,7 +584,7 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 		proc->procArrayGroupMember = false;
 
 		if (proc != MyProc)
-			PGSemaphoreUnlock(&proc->sem);
+			PGSemaphoreUnlock(proc->sem);
 	}
 }
 

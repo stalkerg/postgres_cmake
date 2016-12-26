@@ -63,6 +63,7 @@ typedef enum
 	DO_PROCLANG,
 	DO_CAST,
 	DO_TABLE_DATA,
+	DO_SEQUENCE_SET,
 	DO_DUMMY_TYPE,
 	DO_TSPARSER,
 	DO_TSDICT,
@@ -286,6 +287,7 @@ typedef struct _tableInfo
 	int			relpages;		/* table's size in pages (from pg_class) */
 
 	bool		interesting;	/* true if need to collect more data */
+	bool		dummy_view;		/* view's real definition must be postponed */
 	bool		postponed_def;	/* matview must be postponed into post-data */
 
 	/*
@@ -310,6 +312,7 @@ typedef struct _tableInfo
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs;		/* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
+	char	   *partkeydef;		/* partition key definition */
 
 	/*
 	 * Stuff computed only for dumpable tables.
@@ -319,6 +322,8 @@ typedef struct _tableInfo
 	struct _tableDataInfo *dataObj;		/* TableDataInfo, if dumping its data */
 	int			numTriggers;	/* number of triggers for table */
 	struct _triggerInfo *triggers;		/* array of TriggerInfo structs */
+	struct _tableInfo *partitionOf;	/* TableInfo for the partition parent */
+	char	   *partitiondef;		/* partition key definition */
 } TableInfo;
 
 typedef struct _attrDefInfo
@@ -363,8 +368,6 @@ typedef struct _ruleInfo
 	char		ev_enabled;
 	bool		separate;		/* TRUE if must dump as separate item */
 	/* separate is always true for non-ON SELECT rules */
-	char	   *reloptions;		/* options specified by WITH (...) */
-	/* reloptions is only set if we need to dump the options with the rule */
 } RuleInfo;
 
 typedef struct _triggerInfo
@@ -459,6 +462,15 @@ typedef struct _inhInfo
 	Oid			inhparent;		/* OID of its parent */
 } InhInfo;
 
+/* PartInfo isn't a DumpableObject, just temporary state */
+typedef struct _partInfo
+{
+	Oid			partrelid;		/* OID of a partition */
+	Oid			partparent;		/* OID of its parent */
+	char	   *partdef;		/* partition bound definition */
+} PartInfo;
+
+
 typedef struct _prsInfo
 {
 	DumpableObject dobj;
@@ -547,7 +559,8 @@ typedef struct _policyInfo
 	DumpableObject dobj;
 	TableInfo  *poltable;
 	char	   *polname;		/* null indicates RLS is enabled on rel */
-	char	   *polcmd;
+	char		polcmd;
+	bool		polpermissive;
 	char	   *polroles;
 	char	   *polqual;
 	char	   *polwithcheck;
@@ -624,6 +637,7 @@ extern ConvInfo *getConversions(Archive *fout, int *numConversions);
 extern TableInfo *getTables(Archive *fout, int *numTables);
 extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
+extern PartInfo *getPartitions(Archive *fout, int *numPartitions);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);
 extern void getConstraints(Archive *fout, TableInfo tblinfo[], int numTables);
 extern RuleInfo *getRules(Archive *fout, int *numRules);
@@ -648,5 +662,6 @@ extern void processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 					   int numExtensions);
 extern EventTriggerInfo *getEventTriggers(Archive *fout, int *numEventTriggers);
 extern void getPolicies(Archive *fout, TableInfo tblinfo[], int numTables);
+extern void getTablePartitionKeyInfo(Archive *fout, TableInfo *tblinfo, int numTables);
 
 #endif   /* PG_DUMP_H */

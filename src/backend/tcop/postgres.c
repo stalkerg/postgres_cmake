@@ -2427,8 +2427,6 @@ start_xact_command(void)
 {
 	if (!xact_started)
 	{
-		ereport(DEBUG3,
-				(errmsg_internal("StartTransactionCommand")));
 		StartTransactionCommand();
 
 		/* Set statement timeout running, if any */
@@ -2449,10 +2447,6 @@ finish_xact_command(void)
 	{
 		/* Cancel any active statement timeout before committing */
 		disable_timeout(STATEMENT_TIMEOUT, false);
-
-		/* Now commit the command */
-		ereport(DEBUG3,
-				(errmsg_internal("CommitTransactionCommand")));
 
 		CommitTransactionCommand();
 
@@ -3884,6 +3878,9 @@ PostgresMain(int argc, char *argv[],
 		if (MyReplicationSlot != NULL)
 			ReplicationSlotRelease();
 
+		/* We also want to cleanup temporary slots on error. */
+		ReplicationSlotCleanup();
+
 		/*
 		 * Now return to normal top-level context and clear ErrorContext for
 		 * next time.
@@ -3945,6 +3942,12 @@ PostgresMain(int argc, char *argv[],
 		MemoryContextResetAndDeleteChildren(MessageContext);
 
 		initStringInfo(&input_message);
+
+		/*
+		 * Also consider releasing our catalog snapshot if any, so that it's
+		 * not preventing advance of global xmin while we wait for the client.
+		 */
+		InvalidateCatalogSnapshotConditionally();
 
 		/*
 		 * (1) If we've reached idle state, tell the frontend we're ready for
@@ -4422,7 +4425,7 @@ ShowUsage(const char *title)
 
 	appendStringInfoString(&str, "! system usage stats:\n");
 	appendStringInfo(&str,
-				"!\t%ld.%06ld s user, %ld.%06ld s system, %ld.%06ld s elapsed\n",
+			"!\t%ld.%06ld s user, %ld.%06ld s system, %ld.%06ld s elapsed\n",
 					 (long) (r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec),
 					 (long) (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec),
 					 (long) (r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec),
