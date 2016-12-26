@@ -470,6 +470,9 @@
 /* TODO BUT DO NOT NEED:Define to 1 if you have the `strlcpy' function. */
 /*#cmakedefine HAVE_STRLCPY 1*/
 
+/* Define to use have a strong random number source */
+#cmakedefine HAVE_STRONG_RANDOM 1
+
 /* Define to 1 if you have the `strtoll' function. */
 #cmakedefine HAVE_STRTOLL 1
 
@@ -787,6 +790,9 @@
 /* Define to 1 to build with BSD Authentication support. (--with-bsd-auth) */
 #cmakedefine USE_BSD_AUTH 1
 
+/* Define to use /dev/urandom for random number generation */
+#cmakedefine USE_DEV_URANDOM 1
+
 /* Define to 1 if you want float4 values to be passed by value. */
 #cmakedefine USE_FLOAT4_BYVAL 1
 
@@ -810,6 +816,9 @@
 
 /* Define to build with OpenSSL support. (--with-openssl) */
 #cmakedefine USE_OPENSSL 1
+
+/* Define to use OpenSSL for random number generation */
+#cmakedefine USE_OPENSSL_RANDOM 1
 
 /* Define to 1 to build with PAM support. (--with-pam) */
 #cmakedefine USE_PAM 1
@@ -837,6 +846,9 @@
 
 /* Define to select unnamed POSIX semaphores. */
 #cmakedefine USE_UNNAMED_POSIX_SEMAPHORES
+
+/* Define to use native Windows API for random number generation */
+#cmakedefine USE_WIN32_RANDOM 1
 
 /* Define to select Win32-style semaphores. */
 #cmakedefine USE_WIN32_SEMAPHORES

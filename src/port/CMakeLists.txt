@@ -34,6 +34,13 @@ set(port_SRCS
 	${PG_CRC32C_OBJS}
 )
 
+if(STRONG_RANDOM)
+	set(port_SRCS
+		${port_SRCS}
+		pg_strong_random.c
+	)
+endif()
+
 if(NOT HAVE_FLS)
 	set(port_SRCS
 		${port_SRCS}
