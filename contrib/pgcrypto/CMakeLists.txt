@@ -63,6 +63,7 @@ if(OPENSSL_FOUND)
 	)
 else()
 	add_executable(gen-rtab rijndael.c)
+	target_link_libraries(gen-rtab pgport)
 	target_compile_definitions(gen-rtab PRIVATE -DPRINT_TABS)
 
 	add_custom_command(

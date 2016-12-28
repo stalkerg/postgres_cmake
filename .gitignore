@@ -45,3 +45,12 @@ lib*.pc
 /cmake_install.cmake
 /install_manifest.txt
 /build
+/contrib/seg/segparse.h
+/src/bin/pgbench/exprparse.h
+/src/backend/replication/syncrep_gram.h
+/src/test/regress/regression.diffs
+/src/test/regress/regression.out
+/src/test/isolation/specparse.h
+/src/backend/replication/repl_gram.h
+/src/backend/bootstrap/bootparse.h
+/contrib/cube/cubeparse.h

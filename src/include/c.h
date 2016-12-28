@@ -72,6 +72,10 @@
 #undef errcode
 #endif
 
+#if _MSC_VER >= 1800
+#pragma fenv_access (off)
+#endif
+
 /*
  * We have to include stdlib.h here because it defines many of these macros
  * on some platforms, and we only want our definitions used if stdlib.h doesn't

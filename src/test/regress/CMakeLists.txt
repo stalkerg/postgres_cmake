@@ -30,7 +30,7 @@ if (MSVC)
 endif()
 
 if(MSVC OR MINGW)
-	target_link_libraries(regress postgres port pgcommon)
+	target_link_libraries(regress postgres pgport pgcommon)
 endif()
 
 set_target_properties(regress PROPERTIES PREFIX "")
