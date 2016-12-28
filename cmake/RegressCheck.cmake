@@ -22,6 +22,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
 		"LIBPATH=${tmp_check_folder}${LIBDIR}:$LIBPATH"
 		"PATH=${tmp_check_folder}${PGBINDIR}:$$PATH"
 	)
+elseif(MSVC)
+	# We really need add PATH but only for ecpg
+	set(env_cmd "")
 else()
 	if (CMAKE_VERSION VERSION_GREATER "3.2.0")
 		set(env_cmd
@@ -62,7 +65,7 @@ if(MSVC OR MSYS OR MINGW OR CMAKE_GENERATOR STREQUAL Xcode)
 		--encoding=UTF8
 		--no-locale
 	)
-else(MSVC)
+else()
 	set(pre_pg_regress_check
 		${CMAKE_BINARY_DIR}/src/test/regress/${CMAKE_INSTALL_CONFIG_NAME}/pg_regress${CMAKE_EXECUTABLE_SUFFIX}
 		--inputdir="${CMAKE_SOURCE_DIR}/src/test/regress"

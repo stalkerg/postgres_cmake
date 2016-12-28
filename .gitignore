@@ -54,3 +54,7 @@ lib*.pc
 /src/backend/replication/repl_gram.h
 /src/backend/bootstrap/bootparse.h
 /contrib/cube/cubeparse.h
+/src/test/isolation/regression.diffs
+/src/test/isolation/regression.out
+/src/test/isolation/regression.diffs
+/src/test/isolation/regression.out
