@@ -7,7 +7,7 @@ include_directories(
 
 set(extension_name ltree_plpython)
 
-add_library(${extension_name}${PYTHON_VERSION_MAJOR} MODULE ${extension_name}.c)
+add_library(${extension_name}${PYTHON_VERSION_MAJOR} ${PLUGIN_TYPE} ${extension_name}.c)
 target_link_libraries(${extension_name}${PYTHON_VERSION_MAJOR} ${contrib_libs} ${PYTHON_LIBRARIES})
 set_target_properties(${extension_name}${PYTHON_VERSION_MAJOR} PROPERTIES PREFIX "")
 add_dependencies(${extension_name}${PYTHON_VERSION_MAJOR} postgres ltree)

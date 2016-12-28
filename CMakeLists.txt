@@ -105,7 +105,7 @@ set(PLUGIN_TYPE MODULE)
 
 if(MSVC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D_CRT_SECURE_NO_WARNINGS /D_SCL_SECURE_NO_WARNINGS /fp:strict")
-	# We can't use MODULE because CMake export symbols only for SHARED. 
+	# We can't use MODULE because CMake get export symbols only for SHARED.
 	set(PLUGIN_TYPE SHARED)
 endif()
 

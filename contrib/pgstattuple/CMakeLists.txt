@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name pgstattuple)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	${extension_name}.c
 	pgstatindex.c
 	pgstatapprox.c

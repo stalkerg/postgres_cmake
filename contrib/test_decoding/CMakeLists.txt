@@ -9,7 +9,7 @@ endif()
 
 set(extension_name test_decoding)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	test_decoding.c
 )
 target_link_libraries(${extension_name} ${contrib_libs})

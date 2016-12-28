@@ -9,7 +9,7 @@ endif()
 
 set(extension_name test_ddl_deparse)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	test_ddl_deparse.c
 )
 target_link_libraries(${extension_name} ${modules_libs})

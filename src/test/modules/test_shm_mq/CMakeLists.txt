@@ -9,7 +9,7 @@ endif()
 
 set(extension_name test_shm_mq)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	test.c
 	setup.c
 	worker.c

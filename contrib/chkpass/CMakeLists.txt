@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name chkpass)
 
-add_library(${extension_name} MODULE ${extension_name}.c)
+add_library(${extension_name} ${PLUGIN_TYPE} ${extension_name}.c)
 target_link_libraries(${extension_name} ${contrib_libs})
 if(CRYPT_LIB)
 	target_link_libraries(${extension_name} ${CRYPT_LIB})

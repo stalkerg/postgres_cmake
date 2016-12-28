@@ -92,7 +92,7 @@ if(ZLIB_FOUND)
 	set(regress_files ${regress_files} pgp-compression)
 endif()
 
-add_library(${extension_name} MODULE ${pgcrypto_src})
+add_library(${extension_name} ${PLUGIN_TYPE} ${pgcrypto_src})
 target_link_libraries(${extension_name}
 	${contrib_libs}
 )

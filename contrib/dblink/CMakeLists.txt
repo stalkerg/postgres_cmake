@@ -5,7 +5,7 @@ include_directories(
 
 set(extension_name dblink)
 
-add_library(${extension_name} MODULE ${extension_name}.c)
+add_library(${extension_name} ${PLUGIN_TYPE} ${extension_name}.c)
 target_link_libraries(${extension_name} ${contrib_libs} pq)
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)

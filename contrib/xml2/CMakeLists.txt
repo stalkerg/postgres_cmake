@@ -10,7 +10,7 @@ endif()
 set(extension_name xml2)
 set(extension_lib_name pgxml)
 
-add_library(${extension_lib_name} MODULE xpath.c xslt_proc.c)
+add_library(${extension_lib_name} ${PLUGIN_TYPE} xpath.c xslt_proc.c)
 target_link_libraries(${extension_lib_name}
 	${contrib_libs}
 	${LIBXML2_LIBRARIES}

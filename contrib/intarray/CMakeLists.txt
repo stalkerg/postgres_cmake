@@ -3,7 +3,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 set(extension_name intarray)
 set(extension_lib_name _int)
 
-add_library(${extension_lib_name} MODULE
+add_library(${extension_lib_name} ${PLUGIN_TYPE}
 	_int_bool.c
 	_int_gist.c
 	_int_op.c

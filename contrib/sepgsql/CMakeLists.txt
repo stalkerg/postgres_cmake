@@ -13,7 +13,7 @@ add_custom_command(
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	hooks.c
 	selinux.c
 	uavc.c

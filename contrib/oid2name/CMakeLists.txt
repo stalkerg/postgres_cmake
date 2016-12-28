@@ -5,7 +5,7 @@ include_directories(
 
 set(extension_name oid2name)
 
-add_library(${extension_name} MODULE ${extension_name}.c)
+add_library(${extension_name} ${PLUGIN_TYPE} ${extension_name}.c)
 target_link_libraries(${extension_name} ${contrib_libs})
 if(MSVC)
 	gen_def(${extension_name})

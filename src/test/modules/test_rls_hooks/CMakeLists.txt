@@ -9,7 +9,7 @@ endif()
 
 set(extension_name test_rls_hooks)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	test_rls_hooks.c
 )
 target_link_libraries(${extension_name} ${modules_libs})

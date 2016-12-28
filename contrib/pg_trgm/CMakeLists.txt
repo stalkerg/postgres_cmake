@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name pg_trgm)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	trgm_op.c
 	trgm_gist.c
 	trgm_gin.c

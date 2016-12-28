@@ -11,7 +11,7 @@ add_custom_command(
 
 add_custom_target(gen_pltclerrcodes DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/pltclerrcodes.h")
 
-add_library(${plname} MODULE
+add_library(${plname} ${PLUGIN_TYPE}
 	pltcl.c
 )
 

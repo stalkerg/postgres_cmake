@@ -9,7 +9,7 @@ endif()
 
 set(extension_name dummy_seclabel)
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	dummy_seclabel.c
 )
 target_link_libraries(${extension_name} ${modules_libs})

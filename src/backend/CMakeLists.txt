@@ -1066,7 +1066,7 @@ add_custom_target(duplicate_oids
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/src/include/catalog
 )
 
-add_library(pqwalreceiver MODULE
+add_library(pqwalreceiver ${PLUGIN_TYPE}
 	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
 	replication/libpqwalreceiver/libpqwalreceiver.c
 	${backend_port_win32_SRC}

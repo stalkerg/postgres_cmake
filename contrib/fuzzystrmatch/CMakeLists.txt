@@ -2,7 +2,7 @@ include_directories("${PROJECT_SOURCE_DIR}/src/include")
 
 set(extension_name fuzzystrmatch)
 
-add_library(${extension_name} MODULE ${extension_name}.c dmetaphone.c)
+add_library(${extension_name} ${PLUGIN_TYPE} ${extension_name}.c dmetaphone.c)
 target_link_libraries(${extension_name} ${contrib_libs})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")
 add_dependencies(${extension_name} postgres)

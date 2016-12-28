@@ -7,7 +7,7 @@ flex_target(CUBE_SCANNER cubescan.l  ${CMAKE_CURRENT_SOURCE_DIR}/cubescan.c)
 add_flex_bison_dependency(CUBE_SCANNER CUBE_PARSER)
 set_source_files_properties(${BISON_CUBE_PARSER_OUTPUTS} PROPERTIES OBJECT_DEPENDS ${FLEX_CUBE_SCANNER_OUTPUTS})
 
-add_library(${extension_name} MODULE
+add_library(${extension_name} ${PLUGIN_TYPE}
 	${extension_name}.c
 	${BISON_CUBE_PARSER_OUTPUTS}
 )
