@@ -28,7 +28,6 @@
 #include "pg_config_paths.h"
 
 #ifdef WIN32
-#include <WS2tcpip.h>
 #include "win32.h"
 #ifdef _WIN32_IE
 #undef _WIN32_IE
