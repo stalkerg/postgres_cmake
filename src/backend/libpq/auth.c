@@ -874,7 +874,7 @@ pg_GSS_recvauth(Port *port)
 			if (!kt_path ||
 				snprintf(kt_path, kt_len, "KRB5_KTNAME=%s",
 						 pg_krb_server_keyfile) != kt_len - 2 ||
-				pg_putenv_proxy(kt_path) != 0)
+				putenv(kt_path) != 0)
 			{
 				ereport(LOG,
 						(errcode(ERRCODE_OUT_OF_MEMORY),

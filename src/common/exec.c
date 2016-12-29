@@ -586,7 +586,7 @@ set_pglocale_pgservice(const char *argv0, const char *app)
 		canonicalize_path(env_path + 12);
 		dup_path = strdup(env_path);
 		if (dup_path)
-			pg_putenv_proxy(dup_path);
+			putenv(dup_path);
 	}
 #endif
 
@@ -599,7 +599,7 @@ set_pglocale_pgservice(const char *argv0, const char *app)
 		canonicalize_path(env_path + 13);
 		dup_path = strdup(env_path);
 		if (dup_path)
-			pg_putenv_proxy(dup_path);
+			putenv(dup_path);
 	}
 }
 

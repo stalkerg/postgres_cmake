@@ -259,7 +259,7 @@ pg_putenv(const char *var, const char *val)
 		char	   *envstr;
 
 		envstr = psprintf("%s=%s", var, val);
-		pg_putenv_proxy(envstr);
+		putenv(envstr);
 
 		/*
 		 * Do not free envstr because it becomes part of the environment on

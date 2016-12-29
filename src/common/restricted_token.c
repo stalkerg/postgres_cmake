@@ -163,7 +163,7 @@ get_restricted_token(const char *progname)
 
 		cmdline = pg_strdup(GetCommandLine());
 
-		pg_putenv_proxy("PG_RESTRICT_EXEC=1");
+		putenv("PG_RESTRICT_EXEC=1");
 
 		if ((restrictedToken = CreateRestrictedProcess(cmdline, &pi, progname)) == 0)
 		{

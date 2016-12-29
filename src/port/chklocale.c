@@ -229,7 +229,6 @@ win32_langinfo(const char *ctype)
 		_free_locale(loct);
 	}
 #else
-
 	char	   *codepage;
 
 #if (_MSC_VER >= 1900)
