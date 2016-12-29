@@ -939,4 +939,6 @@
 
 /*#include "@pgos_include_SRCS@"*/
 
+#cmakedefine USE_FP_STRICT 1
+
 #endif  // AUTO_CONFIG_H

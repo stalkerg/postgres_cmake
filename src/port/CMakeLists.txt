@@ -1,3 +1,7 @@
+if(OPENSSL_FOUND)
+	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
+endif()
+
 if(USE_SSE42_CRC32C)
 	SET(PG_CRC32C_OBJS pg_crc32c_sse42.c)
 elseif(USE_SSE42_CRC32C_WITH_RUNTIME_CHECK)

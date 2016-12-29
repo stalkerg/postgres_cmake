@@ -104,7 +104,12 @@ endif()
 set(PLUGIN_TYPE MODULE)
 
 if(MSVC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D_CRT_SECURE_NO_WARNINGS /D_SCL_SECURE_NO_WARNINGS /fp:strict")
+	# Try hide warnings
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D_CRT_SECURE_NO_WARNINGS /D_SCL_SECURE_NO_WARNINGS ")
+	option(USE_FP_STRICT "use strict mode for float and double in MSVC" ON)
+	if (USE_FP_STRICT)
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fp:strict")
+	endif()
 	# We can't use MODULE because CMake get export symbols only for SHARED.
 	set(PLUGIN_TYPE SHARED)
 endif()
@@ -404,7 +409,11 @@ set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${LIB_M}")
 check_c_source_runs("
 	#include <math.h>
 	int main(void){
+#ifdef _MSC_VER
+		return isinf(INFINITY) ? 0 : 1;
+#else
 		return isinf(1.0/0.0) ? 0 : 1;
+#endif
 	}
 " HAVE_ISINF)
 

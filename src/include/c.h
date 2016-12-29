@@ -72,7 +72,7 @@
 #undef errcode
 #endif
 
-#if _MSC_VER >= 1800
+#if _MSC_VER >= 1800 && defined(USE_FP_STRICT)
 #pragma fenv_access (off)
 #endif
 
