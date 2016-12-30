@@ -2,8 +2,9 @@ Requirements
 ============
 For Unix system you can build postgres with CMake 3.0 and higher.
 For Windows build you must use CMake 3.7.1 and higher.
-If for your Solaris or AIX or old Linux not have CMake you can
-build it from source without any problems.
+If you don't have CMake on your system (Solaris, AIX or old Linux),
+you can build it from source without any problems.
+
 
 Basic commands
 ==============
@@ -12,25 +13,25 @@ https://cmake.org/cmake/help/latest/
 and small but usefull tutorial here:
 https://cmake.org/cmake-tutorial/
 
-Very basic uasage in Unix systems:
+Very basic usage in Unix systems:
 cmake ..
 
-where .. is path to postgres source dir. For usage Ninja insted
-Make you must write:
+where .. is path to postgres source dir. To use Ninja instead
+of GNU Make you must write:
 
 cmake .. -G "Ninja"
 
-other generators you can explore by:
+To explore other generators use:
 cmake .. -G help
 
 Once you have generated Makefile or Ninja you should run
-make or ninja commands for build postgres. If you want to show full compiler
+make or ninja commands to build postgres. If you want to show all compiler
 option you must set env variable VERBOSE. Example:
 VERBOSE=1 make
 
 Choose configure options
 ========================
-All options sets by -DNAME_OPTION=(ON|OFF|NUMBER|STRING) param in command line.
+All options can be set via -DNAME_OPTION=(ON|OFF|NUMBER|STRING) param in command line.
 Example:
 cmake .. -DCMAKE_INSTALL_PREFIX="/usr/local" -DWITH_LIBXML=ON
 
@@ -54,25 +55,25 @@ Targets
 =======
 In CMake you can have only one main target other targets cannot be installed.
 Also we have only one enter point to the project.
-For build postgres input:
+To build postgres input:
 make
 
 or
 make all
 
-All tests target implemented as optional targets:
+All test targets implemented as optional targets:
 make check
 make isolation_check
 make contrib_check
 make ecpg_check
 make modules_check
 
-also you can use installcheck insted check in target name for run tests for installed postgres.
+also you can use installcheck insted check in target name to run tests for installed postgres.
 Example:
 make installcheck
 make isolation_installcheck
 
-Some tests we can run if related option is enabled:
+Some tests we can run only if corresponding option is enabled:
 make plperl_check
 make pltcl_check
 make plpython_check
@@ -155,20 +156,21 @@ Only **MSVC** options:
 
 CMake options for modules
 =========================
-For find some libraries we use standard CMake modules and you can read documentation
+To find some libraries we use standard CMake modules and you can read documentation
 on the CMake site.
 
 For example setup for python2.7:
 -DPython_ADDITIONAL_VERSIONS=2.7 -DPYTHON_EXECUTABLE=/usr/bin/python2.7
 
+For details you can read:
 Python lib options: https://cmake.org/cmake/help/latest/module/FindPythonLibs.html
 Python interpreter options: https://cmake.org/cmake/help/latest/module/FindPythonInterp.html
 Perl libs: https://cmake.org/cmake/help/latest/module/FindPerlLibs.html
 OpenSSL: https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
 Curses: https://cmake.org/cmake/help/latest/module/FindCurses.htm
 
-Not Common CMake Examples
-=========================
+Uncommon CMake Examples
+=======================
 
 Solaris 10, Sun-Fire-V210:
 CFLAGS="-m64 -mcpu=v9" cmake .. -DFIND_LIBRARY_USE_LIB64_PATHS=ON -DCURSES_LIBRARY=/usr/ccs/lib/sparcv9/libcurses.so -DCURSES_FORM_LIBRARY=/usr/ccs/lib/sparcv9/libform.so -DCMAKE_INSTALL_PREFIX="/home/stalkerg/postgresql_bin"
