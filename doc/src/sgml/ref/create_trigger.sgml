@@ -8,6 +8,11 @@ PostgreSQL documentation
   <primary>CREATE TRIGGER</primary>
  </indexterm>
 
+ <indexterm>
+  <primary>transition tables</primary>
+  <seealso>ephemeral named relation</seealso>
+ </indexterm>
+
  <refmeta>
   <refentrytitle>CREATE TRIGGER</refentrytitle>
   <manvolnum>7</manvolnum>
@@ -295,7 +300,7 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
     <term><literal>REFERENCING</literal></term>
     <listitem>
      <para>
-      This immediately preceeds the declaration of one or two relations which
+      This immediately precedes the declaration of one or two relations which
       can be used to read the before and/or after images of all rows directly
       affected by the triggering statement.  An <literal>AFTER EACH ROW</>
       trigger is allowed to use both these transition relation names and the
@@ -454,6 +459,20 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
   </para>
 
   <para>
+    Modifying a partitioned table or a table with inheritance children fires
+    statement-level triggers directly attached to that table, but not
+    statement-level triggers for its partitions or child tables.  In contrast,
+    row-level triggers are fired for all affected partitions or child tables.
+    If a statement-level trigger has been defined with transition relations
+    named by a <literal>REFERENCING</literal> clause, then before and after
+    images of rows are visible from all affected partitions or child tables.
+    In the case of inheritance children, the row images include only columns
+    that are present in the table that the trigger is attached to.  Currently,
+    row-level triggers with transition relations cannot be defined on
+    partitions or inheritance child tables.
+  </para>
+
+  <para>
    In <productname>PostgreSQL</productname> versions before 7.3, it was
    necessary to declare trigger functions as returning the placeholder
    type <type>opaque</>, rather than <type>trigger</>.  To support loading
@@ -526,8 +545,8 @@ CREATE TRIGGER view_insert
 <programlisting>
 CREATE TRIGGER transfer_insert
     AFTER INSERT ON transfer
-    FOR EACH STATEMENT
     REFERENCING NEW TABLE AS inserted
+    FOR EACH STATEMENT
     EXECUTE PROCEDURE check_transfer_balances_to_zero();
 </programlisting>
 
@@ -538,8 +557,8 @@ CREATE TRIGGER transfer_insert
 <programlisting>
 CREATE TRIGGER paired_items_update
     AFTER UPDATE ON paired_items
-    FOR EACH ROW
     REFERENCING NEW TABLE AS newtab OLD TABLE AS oldtab
+    FOR EACH ROW
     EXECUTE PROCEDURE check_matching_pairs();
 </programlisting>
   </para>

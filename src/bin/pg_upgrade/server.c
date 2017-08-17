@@ -3,7 +3,7 @@
  *
  *	database server functions
  *
- *	Copyright (c) 2010-2016, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/server.c
  */
 
@@ -231,13 +231,13 @@ start_postmaster(ClusterInfo *cluster, bool throw_error)
 	 * win on ext4.
 	 */
 	snprintf(cmd, sizeof(cmd),
-		  "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
-		  cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
+			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
+			 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
 			 (cluster->controldata.cat_ver >=
 			  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
 			 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
 			 (cluster == &new_cluster) ?
-	  " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
+			 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
 			 cluster->pgopts ? cluster->pgopts : "", socket_string);
 
 	/*
@@ -285,9 +285,14 @@ start_postmaster(ClusterInfo *cluster, bool throw_error)
 			   PQerrorMessage(conn));
 		if (conn)
 			PQfinish(conn);
-		pg_fatal("could not connect to %s postmaster started with the command:\n"
-				 "%s\n",
-				 CLUSTER_NAME(cluster), cmd);
+		if (cluster == &old_cluster)
+			pg_fatal("could not connect to source postmaster started with the command:\n"
+					 "%s\n",
+					 cmd);
+		else
+			pg_fatal("could not connect to target postmaster started with the command:\n"
+					 "%s\n",
+					 cmd);
 	}
 	PQfinish(conn);
 
@@ -297,8 +302,12 @@ start_postmaster(ClusterInfo *cluster, bool throw_error)
 	 * running.
 	 */
 	if (!pg_ctl_return)
-		pg_fatal("pg_ctl failed to start the %s server, or connection failed\n",
-				 CLUSTER_NAME(cluster));
+	{
+		if (cluster == &old_cluster)
+			pg_fatal("pg_ctl failed to start the source server, or connection failed\n");
+		else
+			pg_fatal("pg_ctl failed to start the target server, or connection failed\n");
+	}
 
 	return true;
 }
@@ -320,7 +329,7 @@ stop_postmaster(bool fast)
 			  "\"%s/pg_ctl\" -w -D \"%s\" -o \"%s\" %s stop",
 			  cluster->bindir, cluster->pgconfig,
 			  cluster->pgopts ? cluster->pgopts : "",
-			  fast ? "-m fast" : "");
+			  fast ? "-m fast" : "-m smart");
 
 	os_info.running_cluster = NULL;
 }

@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/defrem.h
@@ -27,6 +27,7 @@ extern ObjectAddress DefineIndex(Oid relationId,
 			Oid indexRelationId,
 			bool is_alter_table,
 			bool check_rights,
+			bool check_not_in_use,
 			bool skip_build,
 			bool quiet);
 extern Oid	ReindexIndex(RangeVar *indexRelation, int options);
@@ -42,7 +43,7 @@ extern bool CheckIndexCompatible(Oid oldId,
 					 List *attributeList,
 					 List *exclusionOpNames);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
-extern Oid	ResolveOpClass(List *opclass, Oid attrType,
+extern Oid ResolveOpClass(List *opclass, Oid attrType,
 			   char *accessMethodName, Oid accessMethodId);
 
 /* commands/functioncmds.c */
@@ -76,6 +77,13 @@ extern void interpret_function_parameter_list(ParseState *pstate,
 extern ObjectAddress DefineOperator(List *names, List *parameters);
 extern void RemoveOperatorById(Oid operOid);
 extern ObjectAddress AlterOperator(AlterOperatorStmt *stmt);
+
+/* commands/statscmds.c */
+extern ObjectAddress CreateStatistics(CreateStatsStmt *stmt);
+extern void RemoveStatisticsById(Oid statsOid);
+extern void UpdateStatisticsForTypeChange(Oid statsOid,
+							  Oid relationOid, int attnum,
+							  Oid oldColumnType, Oid newColumnType);
 
 /* commands/aggregatecmds.c */
 extern ObjectAddress DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle,
@@ -154,5 +162,6 @@ extern int64 defGetInt64(DefElem *def);
 extern List *defGetQualifiedName(DefElem *def);
 extern TypeName *defGetTypeName(DefElem *def);
 extern int	defGetTypeLength(DefElem *def);
+extern List *defGetStringList(DefElem *def);
 
-#endif   /* DEFREM_H */
+#endif							/* DEFREM_H */

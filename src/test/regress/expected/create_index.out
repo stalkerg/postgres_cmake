@@ -2335,13 +2335,9 @@ Options: fastupdate=on, gin_pending_list_limit=128
 -- HASH
 --
 CREATE INDEX hash_i4_index ON hash_i4_heap USING hash (random int4_ops);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE INDEX hash_name_index ON hash_name_heap USING hash (random name_ops);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE INDEX hash_txt_index ON hash_txt_heap USING hash (random text_ops);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE UNLOGGED TABLE unlogged_hash_table (id int4);
 CREATE INDEX unlogged_hash_index ON unlogged_hash_table USING hash (id int4_ops);
 DROP TABLE unlogged_hash_table;
@@ -2350,7 +2346,6 @@ DROP TABLE unlogged_hash_table;
 -- maintenance_work_mem setting and fillfactor:
 SET maintenance_work_mem = '1MB';
 CREATE INDEX hash_tuplesort_idx ON tenk1 USING hash (stringu1 name_ops) WITH (fillfactor = 10);
-WARNING:  hash indexes are not WAL-logged and their use is discouraged
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1 WHERE stringu1 = 'TVAAAA';
                       QUERY PLAN                       
@@ -2940,7 +2935,7 @@ ORDER BY thousand;
         1 |     1001
 (2 rows)
 
-RESET enable_indexscan;
+RESET enable_indexonlyscan;
 --
 -- Check elimination of constant-NULL subexpressions
 --
@@ -2951,6 +2946,48 @@ explain (costs off)
  Index Scan using tenk1_thous_tenthous on tenk1
    Index Cond: ((thousand = 1) AND (tenthous = 1001))
 (2 rows)
+
+--
+-- Check matching of boolean index columns to WHERE conditions and sort keys
+--
+create temp table boolindex (b bool, i int, unique(b, i), junk float);
+explain (costs off)
+  select * from boolindex order by b, i limit 10;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Limit
+   ->  Index Scan using boolindex_b_i_key on boolindex
+(2 rows)
+
+explain (costs off)
+  select * from boolindex where b order by i limit 10;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Limit
+   ->  Index Scan using boolindex_b_i_key on boolindex
+         Index Cond: (b = true)
+         Filter: b
+(4 rows)
+
+explain (costs off)
+  select * from boolindex where b = true order by i desc limit 10;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using boolindex_b_i_key on boolindex
+         Index Cond: (b = true)
+         Filter: b
+(4 rows)
+
+explain (costs off)
+  select * from boolindex where not b order by i limit 10;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Limit
+   ->  Index Scan using boolindex_b_i_key on boolindex
+         Index Cond: (b = false)
+         Filter: (NOT b)
+(4 rows)
 
 --
 -- REINDEX (VERBOSE)
@@ -3027,6 +3064,6 @@ ERROR:  must be owner of schema schema_to_reindex
 -- Clean up
 RESET ROLE;
 DROP ROLE regress_reindexuser;
-SET client_min_messages TO 'warning';
+\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA schema_to_reindex CASCADE;
-RESET client_min_messages;
+NOTICE:  drop cascades to 6 other objects

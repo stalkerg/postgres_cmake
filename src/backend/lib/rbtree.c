@@ -17,7 +17,7 @@
  * longest path from root to leaf is only about twice as long as the shortest,
  * so lookups are guaranteed to run in O(lg n) time.
  *
- * Copyright (c) 2009-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/rbtree.c
@@ -429,7 +429,7 @@ rb_insert(RBTree *rb, const RBNode *data, bool *isNew)
 	 */
 	*isNew = true;
 
-	x = rb->allocfunc (rb->arg);
+	x = rb->allocfunc(rb->arg);
 
 	x->color = RBRED;
 
@@ -624,7 +624,7 @@ rb_delete_node(RBTree *rb, RBNode *z)
 
 	/* Now we can recycle the y node */
 	if (rb->freefunc)
-		rb->freefunc (y, rb->arg);
+		rb->freefunc(y, rb->arg);
 }
 
 /*
@@ -808,7 +808,7 @@ loop:
 				iter->next_step = NextStepLeft;
 				goto loop;
 			}
-			else	/* not moved - return current, then go up */
+			else				/* not moved - return current, then go up */
 				iter->next_step = NextStepUp;
 			break;
 
@@ -818,7 +818,7 @@ loop:
 			if (current == NULL)
 			{
 				iter->is_over = true;
-				break;		/* end of iteration */
+				break;			/* end of iteration */
 			}
 			else if (came_from == current->right)
 			{

@@ -3,7 +3,7 @@
  * pg_enum.c
  *	  routines to support manipulation of the pg_enum relation
  *
- * Copyright (c) 2006-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2017, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -24,6 +24,7 @@
 #include "catalog/pg_type.h"
 #include "storage/lmgr.h"
 #include "miscadmin.h"
+#include "nodes/value.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
@@ -35,7 +36,6 @@
 Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
 
 static void RenumberEnumType(Relation pg_enum, HeapTuple *existing, int nelems);
-static int	oid_cmp(const void *p1, const void *p2);
 static int	sort_order_cmp(const void *p1, const void *p2);
 
 
@@ -124,8 +124,7 @@ EnumValuesCreate(Oid enumTypeOid, List *vals)
 		tup = heap_form_tuple(RelationGetDescr(pg_enum), values, nulls);
 		HeapTupleSetOid(tup, oids[elemno]);
 
-		simple_heap_insert(pg_enum, tup);
-		CatalogUpdateIndexes(pg_enum, tup);
+		CatalogTupleInsert(pg_enum, tup);
 		heap_freetuple(tup);
 
 		elemno++;
@@ -161,7 +160,7 @@ EnumValuesDelete(Oid enumTypeOid)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		simple_heap_delete(pg_enum, &tup->t_self);
+		CatalogTupleDelete(pg_enum, &tup->t_self);
 	}
 
 	systable_endscan(scan);
@@ -348,7 +347,7 @@ restart:
 		if (!OidIsValid(binary_upgrade_next_pg_enum_oid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("pg_enum OID value not set when in binary upgrade mode")));
+					 errmsg("pg_enum OID value not set when in binary upgrade mode")));
 
 		/*
 		 * Use binary-upgrade override for pg_enum.oid, if supplied. During
@@ -457,8 +456,7 @@ restart:
 	values[Anum_pg_enum_enumlabel - 1] = NameGetDatum(&enumlabel);
 	enum_tup = heap_form_tuple(RelationGetDescr(pg_enum), values, nulls);
 	HeapTupleSetOid(enum_tup, newOid);
-	simple_heap_insert(pg_enum, enum_tup);
-	CatalogUpdateIndexes(pg_enum, enum_tup);
+	CatalogTupleInsert(pg_enum, enum_tup);
 	heap_freetuple(enum_tup);
 
 	heap_close(pg_enum, RowExclusiveLock);
@@ -542,8 +540,7 @@ RenameEnumLabel(Oid enumTypeOid,
 
 	/* Update the pg_enum entry */
 	namestrcpy(&en->enumlabel, newVal);
-	simple_heap_update(pg_enum, &enum_tup->t_self, enum_tup);
-	CatalogUpdateIndexes(pg_enum, enum_tup);
+	CatalogTupleUpdate(pg_enum, &enum_tup->t_self, enum_tup);
 	heap_freetuple(enum_tup);
 
 	heap_close(pg_enum, RowExclusiveLock);
@@ -596,9 +593,7 @@ RenumberEnumType(Relation pg_enum, HeapTuple *existing, int nelems)
 		{
 			en->enumsortorder = newsortorder;
 
-			simple_heap_update(pg_enum, &newtup->t_self, newtup);
-
-			CatalogUpdateIndexes(pg_enum, newtup);
+			CatalogTupleUpdate(pg_enum, &newtup->t_self, newtup);
 		}
 
 		heap_freetuple(newtup);
@@ -608,20 +603,6 @@ RenumberEnumType(Relation pg_enum, HeapTuple *existing, int nelems)
 	CommandCounterIncrement();
 }
 
-
-/* qsort comparison function for oids */
-static int
-oid_cmp(const void *p1, const void *p2)
-{
-	Oid			v1 = *((const Oid *) p1);
-	Oid			v2 = *((const Oid *) p2);
-
-	if (v1 < v2)
-		return -1;
-	if (v1 > v2)
-		return 1;
-	return 0;
-}
 
 /* qsort comparison function for tuples by sort order */
 static int

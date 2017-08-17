@@ -20,7 +20,7 @@
  * appropriate value for a free lock.  The meaning of the variable is up to
  * the caller, the lightweight lock code just assigns and compares it.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -168,7 +168,7 @@ typedef struct lwlock_stats_key
 {
 	int			tranche;
 	void	   *instance;
-}	lwlock_stats_key;
+}			lwlock_stats_key;
 
 typedef struct lwlock_stats
 {
@@ -178,7 +178,7 @@ typedef struct lwlock_stats
 	int			block_count;
 	int			dequeue_self_count;
 	int			spin_delay_count;
-}	lwlock_stats;
+}			lwlock_stats;
 
 static HTAB *lwlock_stats_htab;
 static lwlock_stats lwlock_stats_dummy;
@@ -226,13 +226,13 @@ LOG_LWDEBUG(const char *where, LWLock *lock, const char *msg)
 #else							/* not LOCK_DEBUG */
 #define PRINT_LWDEBUG(a,b,c) ((void)0)
 #define LOG_LWDEBUG(a,b,c) ((void)0)
-#endif   /* LOCK_DEBUG */
+#endif							/* LOCK_DEBUG */
 
 #ifdef LWLOCK_STATS
 
 static void init_lwlock_stats(void);
 static void print_lwlock_stats(int code, Datum arg);
-static lwlock_stats *get_lwlock_stats_entry(LWLock *lockid);
+static lwlock_stats * get_lwlock_stats_entry(LWLock *lockid);
 
 static void
 init_lwlock_stats(void)
@@ -323,7 +323,7 @@ get_lwlock_stats_entry(LWLock *lock)
 	}
 	return lwstats;
 }
-#endif   /* LWLOCK_STATS */
+#endif							/* LWLOCK_STATS */
 
 
 /*
@@ -497,7 +497,7 @@ RegisterLWLockTranches(void)
 		LWLockTranchesAllocated = 64;
 		LWLockTrancheArray = (char **)
 			MemoryContextAllocZero(TopMemoryContext,
-						  LWLockTranchesAllocated * sizeof(char *));
+								   LWLockTranchesAllocated * sizeof(char *));
 		Assert(LWLockTranchesAllocated >= LWTRANCHE_FIRST_USER_DEFINED);
 	}
 
@@ -508,6 +508,9 @@ RegisterLWLockTranches(void)
 	LWLockRegisterTranche(LWTRANCHE_LOCK_MANAGER, "lock_manager");
 	LWLockRegisterTranche(LWTRANCHE_PREDICATE_LOCK_MANAGER,
 						  "predicate_lock_manager");
+	LWLockRegisterTranche(LWTRANCHE_PARALLEL_QUERY_DSA,
+						  "parallel_query_dsa");
+	LWLockRegisterTranche(LWTRANCHE_TBM, "tbm");
 
 	/* Register named tranches. */
 	for (i = 0; i < NamedLWLockTrancheRequests; i++)
@@ -779,7 +782,7 @@ LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 				return false;
 			}
 			else
-				return true;	/* someobdy else has the lock */
+				return true;	/* somebody else has the lock */
 		}
 	}
 	pg_unreachable();
@@ -848,7 +851,7 @@ LWLockWaitListLock(LWLock *lock)
 static void
 LWLockWaitListUnlock(LWLock *lock)
 {
-	uint32 old_state PG_USED_FOR_ASSERTS_ONLY;
+	uint32		old_state PG_USED_FOR_ASSERTS_ONLY;
 
 	old_state = pg_atomic_fetch_and_u32(&lock->state, ~LW_FLAG_LOCKED);
 
@@ -951,7 +954,7 @@ LWLockWakeup(LWLock *lock)
 		 * that happens before the list unlink happens, the list would end up
 		 * being corrupted.
 		 *
-		 * The barrier pairs with the LWLockWaitListLock() when enqueing for
+		 * The barrier pairs with the LWLockWaitListLock() when enqueuing for
 		 * another lock.
 		 */
 		pg_write_barrier();
@@ -1027,7 +1030,7 @@ LWLockDequeueSelf(LWLock *lock)
 
 	/*
 	 * Can't just remove ourselves from the list, but we need to iterate over
-	 * all entries as somebody else could have unqueued us.
+	 * all entries as somebody else could have dequeued us.
 	 */
 	proclist_foreach_modify(iter, &lock->waiters, lwWaitLink)
 	{
@@ -1089,7 +1092,7 @@ LWLockDequeueSelf(LWLock *lock)
 #ifdef LOCK_DEBUG
 	{
 		/* not waiting anymore */
-		uint32 nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
+		uint32		nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
 
 		Assert(nwaiters < MAX_BACKENDS);
 	}
@@ -1126,7 +1129,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		lwstats->ex_acquire_count++;
 	else
 		lwstats->sh_acquire_count++;
-#endif   /* LWLOCK_STATS */
+#endif							/* LWLOCK_STATS */
 
 	/*
 	 * We can't wait if we haven't got a PGPROC.  This should only occur
@@ -1185,7 +1188,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		 * Instead add us to the queue and try to grab the lock again. If we
 		 * succeed we need to revert the queuing and be happy, otherwise we
 		 * recheck the lock. If we still couldn't grab it, we know that the
-		 * other lock will see our queue entries when releasing since they
+		 * other locker will see our queue entries when releasing since they
 		 * existed before we checked for the lock.
 		 */
 
@@ -1239,7 +1242,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 #ifdef LOCK_DEBUG
 		{
 			/* not waiting anymore */
-			uint32 nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
+			uint32		nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
 
 			Assert(nwaiters < MAX_BACKENDS);
 		}
@@ -1397,7 +1400,7 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 #ifdef LOCK_DEBUG
 			{
 				/* not waiting anymore */
-				uint32 nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
+				uint32		nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
 
 				Assert(nwaiters < MAX_BACKENDS);
 			}
@@ -1613,7 +1616,7 @@ LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 #ifdef LOCK_DEBUG
 		{
 			/* not waiting anymore */
-			uint32 nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
+			uint32		nwaiters PG_USED_FOR_ASSERTS_ONLY = pg_atomic_fetch_sub_u32(&lock->nwaiters, 1);
 
 			Assert(nwaiters < MAX_BACKENDS);
 		}

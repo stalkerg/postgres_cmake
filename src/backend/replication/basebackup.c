@@ -3,7 +3,7 @@
  * basebackup.c
  *	  code for taking a base backup and streaming it to a standby
  *
- * Portions Copyright (c) 2010-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/basebackup.c
@@ -12,12 +12,11 @@
  */
 #include "postgres.h"
 
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
 
-#include "access/xlog_internal.h"		/* for pg_start/stop_backup */
+#include "access/xlog_internal.h"	/* for pg_start/stop_backup */
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
@@ -27,6 +26,7 @@
 #include "nodes/pg_list.h"
 #include "pgtar.h"
 #include "pgstat.h"
+#include "postmaster/syslogger.h"
 #include "replication/basebackup.h"
 #include "replication/walsender.h"
 #include "replication/walsender_private.h"
@@ -54,12 +54,12 @@ typedef struct
 static int64 sendDir(char *path, int basepathlen, bool sizeonly,
 		List *tablespaces, bool sendtblspclinks);
 static bool sendFile(char *readfilename, char *tarfilename,
-		 struct stat * statbuf, bool missing_ok);
+		 struct stat *statbuf, bool missing_ok);
 static void sendFileWithContent(const char *filename, const char *content);
 static int64 _tarWriteHeader(const char *filename, const char *linktarget,
-				struct stat * statbuf, bool sizeonly);
+				struct stat *statbuf, bool sizeonly);
 static int64 _tarWriteDir(const char *pathbuf, int basepathlen, struct stat *statbuf,
-				bool sizeonly);
+			 bool sizeonly);
 static void send_int8_string(StringInfoData *buf, int64 intval);
 static void SendBackupHeader(List *tablespaces);
 static void base_backup_cleanup(int code, Datum arg);
@@ -92,10 +92,10 @@ static uint64 throttling_sample;
 static int64 throttling_counter;
 
 /* The minimum time required to transfer throttling_sample bytes. */
-static int64 elapsed_min_unit;
+static TimeOffset elapsed_min_unit;
 
 /* The last check of the transfer rate. */
-static int64 throttled_last;
+static TimestampTz throttled_last;
 
 /*
  * The contents of these directories are removed or recreated during server
@@ -106,15 +106,15 @@ static const char *excludeDirContents[] =
 {
 	/*
 	 * Skip temporary statistics files. PG_STAT_TMP_DIR must be skipped even
-	 * when stats_temp_directory is set because PGSS_TEXT_FILE is always created
-	 * there.
+	 * when stats_temp_directory is set because PGSS_TEXT_FILE is always
+	 * created there.
 	 */
 	PG_STAT_TMP_DIR,
 
 	/*
-	 * It is generally not useful to backup the contents of this directory even
-	 * if the intention is to restore to another master. See backup.sgml for a
-	 * more detailed description.
+	 * It is generally not useful to backup the contents of this directory
+	 * even if the intention is to restore to another master. See backup.sgml
+	 * for a more detailed description.
 	 */
 	"pg_replslot",
 
@@ -147,6 +147,9 @@ static const char *excludeFiles[] =
 {
 	/* Skip auto conf temporary file. */
 	PG_AUTOCONF_FILENAME ".tmp",
+
+	/* Skip current log file temporary file */
+	LOG_METAINFO_DATAFILE_TMP,
 
 	/*
 	 * If there's a backup_label or tablespace_map file, it belongs to a
@@ -254,7 +257,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			throttling_counter = 0;
 
 			/* The 'real data' starts now (header was ignored). */
-			throttled_last = GetCurrentIntegerTimestamp();
+			throttled_last = GetCurrentTimestamp();
 		}
 		else
 		{
@@ -270,8 +273,8 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 
 			/* Send CopyOutResponse message */
 			pq_beginmessage(&buf, 'H');
-			pq_sendbyte(&buf, 0);		/* overall format */
-			pq_sendint(&buf, 0, 2);		/* natts */
+			pq_sendbyte(&buf, 0);	/* overall format */
+			pq_sendint(&buf, 0, 2); /* natts */
 			pq_endmessage(&buf);
 
 			if (ti->path == NULL)
@@ -315,7 +318,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 				Assert(lnext(lc) == NULL);
 			}
 			else
-				pq_putemptymessage('c');		/* CopyDone */
+				pq_putemptymessage('c');	/* CopyDone */
 		}
 	}
 	PG_END_ENSURE_ERROR_CLEANUP(base_backup_cleanup, (Datum) 0);
@@ -362,7 +365,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 		dir = AllocateDir("pg_wal");
 		if (!dir)
 			ereport(ERROR,
-				 (errmsg("could not open directory \"%s\": %m", "pg_wal")));
+					(errmsg("could not open directory \"%s\": %m", "pg_wal")));
 		while ((de = ReadDir(dir, "pg_wal")) != NULL)
 		{
 			/* Does it look like a WAL segment, and is it in the range? */
@@ -401,8 +404,8 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 		qsort(walFiles, nWalFiles, sizeof(char *), compareWalFileNames);
 
 		/*
-		 * There must be at least one xlog file in the pg_wal directory,
-		 * since we are doing backup-including-xlog.
+		 * There must be at least one xlog file in the pg_wal directory, since
+		 * we are doing backup-including-xlog.
 		 */
 		if (nWalFiles < 1)
 			ereport(ERROR,
@@ -433,7 +436,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 
 				XLogFileName(nextfname, ThisTimeLineID, nextsegno);
 				ereport(ERROR,
-					  (errmsg("could not find WAL file \"%s\"", nextfname)));
+						(errmsg("could not find WAL file \"%s\"", nextfname)));
 			}
 		}
 		if (segno != endsegno)
@@ -481,7 +484,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 				CheckXLogRemoved(segno, tli);
 				ereport(ERROR,
 						(errcode_for_file_access(),
-					errmsg("unexpected WAL file size \"%s\"", walFiles[i])));
+						 errmsg("unexpected WAL file size \"%s\"", walFiles[i])));
 			}
 
 			/* send the WAL file itself */
@@ -507,7 +510,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 				CheckXLogRemoved(segno, tli);
 				ereport(ERROR,
 						(errcode_for_file_access(),
-					errmsg("unexpected WAL file size \"%s\"", walFiles[i])));
+						 errmsg("unexpected WAL file size \"%s\"", walFiles[i])));
 			}
 
 			/* XLogSegSize is a multiple of 512, so no need for padding */
@@ -649,7 +652,7 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 				ereport(ERROR,
 						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 						 errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)",
-				(int) maxrate, "MAX_RATE", MAX_RATE_LOWER, MAX_RATE_UPPER)));
+								(int) maxrate, "MAX_RATE", MAX_RATE_LOWER, MAX_RATE_UPPER)));
 
 			opt->maxrate = (uint32) maxrate;
 			o_maxrate = true;
@@ -811,7 +814,7 @@ SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli)
 	pq_sendstring(&buf, "recptr");
 	pq_sendint(&buf, 0, 4);		/* table oid */
 	pq_sendint(&buf, 0, 2);		/* attnum */
-	pq_sendint(&buf, TEXTOID, 4);		/* type oid */
+	pq_sendint(&buf, TEXTOID, 4);	/* type oid */
 	pq_sendint(&buf, -1, 2);
 	pq_sendint(&buf, 0, 4);
 	pq_sendint(&buf, 0, 2);
@@ -824,7 +827,7 @@ SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli)
 	 * int8 may seem like a surprising data type for this, but in theory int4
 	 * would not be wide enough for this, as TimeLineID is unsigned.
 	 */
-	pq_sendint(&buf, INT8OID, 4);		/* type oid */
+	pq_sendint(&buf, INT8OID, 4);	/* type oid */
 	pq_sendint(&buf, -1, 2);
 	pq_sendint(&buf, 0, 4);
 	pq_sendint(&buf, 0, 2);
@@ -956,7 +959,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 {
 	DIR		   *dir;
 	struct dirent *de;
-	char		pathbuf[MAXPGPATH];
+	char		pathbuf[MAXPGPATH * 2];
 	struct stat statbuf;
 	int64		size = 0;
 
@@ -989,9 +992,9 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("the standby was promoted during online backup"),
-				 errhint("This means that the backup being taken is corrupt "
-						 "and should not be used. "
-						 "Try taking another online backup.")));
+					 errhint("This means that the backup being taken is corrupt "
+							 "and should not be used. "
+							 "Try taking another online backup.")));
 
 		/* Scan for files that should be excluded */
 		excludeFound = false;
@@ -1008,7 +1011,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		if (excludeFound)
 			continue;
 
-		snprintf(pathbuf, MAXPGPATH, "%s/%s", path, de->d_name);
+		snprintf(pathbuf, sizeof(pathbuf), "%s/%s", path, de->d_name);
 
 		/* Skip pg_control here to back up it last */
 		if (strcmp(pathbuf, "./global/pg_control") == 0)
@@ -1033,7 +1036,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 			if (strcmp(de->d_name, excludeDirContents[excludeIdx]) == 0)
 			{
 				elog(DEBUG1, "contents of directory \"%s\" excluded from backup", de->d_name);
-				size += _tarWriteDir(pathbuf, basepathlen, &statbuf,  sizeonly);
+				size += _tarWriteDir(pathbuf, basepathlen, &statbuf, sizeonly);
 				excludeFound = true;
 				break;
 			}
@@ -1110,9 +1113,9 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 			 */
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				  errmsg("tablespaces are not supported on this platform")));
+					 errmsg("tablespaces are not supported on this platform")));
 			continue;
-#endif   /* HAVE_READLINK */
+#endif							/* HAVE_READLINK */
 		}
 		else if (S_ISDIR(statbuf.st_mode))
 		{
@@ -1196,7 +1199,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
  * and the file did not exist.
  */
 static bool
-sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
+sendFile(char *readfilename, char *tarfilename, struct stat *statbuf,
 		 bool missing_ok)
 {
 	FILE	   *fp;
@@ -1222,7 +1225,7 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
 		/* Send the chunk as a CopyData message */
 		if (pq_putmessage('d', buf, cnt))
 			ereport(ERROR,
-			   (errmsg("base backup could not send data, aborting backup")));
+					(errmsg("base backup could not send data, aborting backup")));
 
 		len += cnt;
 		throttle(cnt);
@@ -1270,7 +1273,7 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
 
 static int64
 _tarWriteHeader(const char *filename, const char *linktarget,
-				struct stat * statbuf, bool sizeonly)
+				struct stat *statbuf, bool sizeonly)
 {
 	char		h[512];
 	enum tarError rc;
@@ -1333,7 +1336,7 @@ _tarWriteDir(const char *pathbuf, int basepathlen, struct stat *statbuf,
 static void
 throttle(size_t increment)
 {
-	int64		elapsed,
+	TimeOffset	elapsed,
 				elapsed_min,
 				sleep;
 	int			wait_result;
@@ -1346,7 +1349,7 @@ throttle(size_t increment)
 		return;
 
 	/* Time elapsed since the last measurement (and possible wake up). */
-	elapsed = GetCurrentIntegerTimestamp() - throttled_last;
+	elapsed = GetCurrentTimestamp() - throttled_last;
 	/* How much should have elapsed at minimum? */
 	elapsed_min = elapsed_min_unit * (throttling_counter / throttling_sample);
 	sleep = elapsed_min - elapsed;
@@ -1363,7 +1366,7 @@ throttle(size_t increment)
 		 * the maximum time to sleep. Thus the cast to long is safe.
 		 */
 		wait_result = WaitLatch(MyLatch,
-							 WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+								WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 								(long) (sleep / 1000),
 								WAIT_EVENT_BASE_BACKUP_THROTTLE);
 
@@ -1381,5 +1384,5 @@ throttle(size_t increment)
 	 * Time interval for the remaining amount and possible next increments
 	 * starts now.
 	 */
-	throttled_last = GetCurrentIntegerTimestamp();
+	throttled_last = GetCurrentTimestamp();
 }

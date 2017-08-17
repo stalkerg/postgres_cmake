@@ -45,7 +45,7 @@
  * and we'd like to still refer to them via C struct offsets.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -356,7 +356,7 @@ nocachegetattr(HeapTuple tuple,
 	HeapTupleHeader tup = tuple->t_data;
 	Form_pg_attribute *att = tupleDesc->attrs;
 	char	   *tp;				/* ptr to data part of tuple */
-	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
+	bits8	   *bp = tup->t_bits;	/* ptr to null bitmap in tuple */
 	bool		slow = false;	/* do we have to walk attrs? */
 	int			off;			/* current offset within data */
 
@@ -741,9 +741,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	 * Allocate and zero the space needed.  Note that the tuple body and
 	 * HeapTupleData management structure are allocated in one chunk.
 	 */
-	tuple = MemoryContextAllocExtended(CurrentMemoryContext,
-									   HEAPTUPLESIZE + len,
-									   MCXT_ALLOC_HUGE | MCXT_ALLOC_ZERO);
+	tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
 	tuple->t_data = td = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
 
 	/*
@@ -764,7 +762,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	HeapTupleHeaderSetNatts(td, numberOfAttributes);
 	td->t_hoff = hoff;
 
-	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+	if (tupleDescriptor->tdhasoid)	/* else leave infomask = 0 */
 		td->t_infomask = HEAP_HASOID;
 
 	heap_fill_tuple(tupleDescriptor,
@@ -943,7 +941,7 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 	int			attnum;
 	char	   *tp;				/* ptr to tuple data */
 	long		off;			/* offset in tuple data */
-	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
+	bits8	   *bp = tup->t_bits;	/* ptr to null bitmap in tuple */
 	bool		slow = false;	/* can we use/set attcacheoff? */
 
 	natts = HeapTupleHeaderGetNatts(tup);
@@ -1045,7 +1043,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	int			attnum;
 	char	   *tp;				/* ptr to tuple data */
 	long		off;			/* offset in tuple data */
-	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
+	bits8	   *bp = tup->t_bits;	/* ptr to null bitmap in tuple */
 	bool		slow;			/* can we use/set attcacheoff? */
 
 	/*
@@ -1153,7 +1151,7 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	{
 		if (tuple == NULL)		/* internal error */
 			elog(ERROR, "cannot extract system attribute from virtual tuple");
-		if (tuple == &(slot->tts_minhdr))		/* internal error */
+		if (tuple == &(slot->tts_minhdr))	/* internal error */
 			elog(ERROR, "cannot extract system attribute from minimal tuple");
 		return heap_getsysattr(tuple, attnum, tupleDesc, isnull);
 	}
@@ -1339,7 +1337,7 @@ slot_attisnull(TupleTableSlot *slot, int attnum)
 	{
 		if (tuple == NULL)		/* internal error */
 			elog(ERROR, "cannot extract system attribute from virtual tuple");
-		if (tuple == &(slot->tts_minhdr))		/* internal error */
+		if (tuple == &(slot->tts_minhdr))	/* internal error */
 			elog(ERROR, "cannot extract system attribute from minimal tuple");
 		return heap_attisnull(tuple, attnum);
 	}
@@ -1448,7 +1446,7 @@ heap_form_minimal_tuple(TupleDesc tupleDescriptor,
 	HeapTupleHeaderSetNatts(tuple, numberOfAttributes);
 	tuple->t_hoff = hoff + MINIMAL_TUPLE_OFFSET;
 
-	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+	if (tupleDescriptor->tdhasoid)	/* else leave infomask = 0 */
 		tuple->t_infomask = HEAP_HASOID;
 
 	heap_fill_tuple(tupleDescriptor,

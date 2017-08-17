@@ -7,7 +7,7 @@
  * collation-sensitive, so the code in this file has no support for passing
  * collation settings through from callers.  That may have to change someday.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -330,8 +330,7 @@ BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 	else
 		hashtable->hash_iv = 0;
 
-	hashtable->hashtab = tuplehash_create(tablecxt, nbuckets);
-	hashtable->hashtab->private_data = hashtable;
+	hashtable->hashtab = tuplehash_create(tablecxt, nbuckets, hashtable);
 
 	return hashtable;
 }
@@ -381,7 +380,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 	hashtable->in_hash_funcs = hashtable->tab_hash_funcs;
 	hashtable->cur_eq_funcs = hashtable->tab_eq_funcs;
 
-	key = NULL; /* flag to reference inputslot */
+	key = NULL;					/* flag to reference inputslot */
 
 	if (isnew)
 	{

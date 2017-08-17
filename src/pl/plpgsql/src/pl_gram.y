@@ -3,7 +3,7 @@
  *
  * pl_gram.y			- Parser for the PL/pgSQL procedural language
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -13,7 +13,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "plpgsql.h"
+#include "postgres.h"
 
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
@@ -22,6 +22,8 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+
+#include "plpgsql.h"
 
 
 /* Location tracking support --- simpler than bison's default */
@@ -2860,11 +2862,11 @@ make_execsql_stmt(int firsttoken, int location)
 	 * clause lurking within it, and parse that via read_into_target().
 	 *
 	 * Because INTO is sometimes used in the main SQL grammar, we have to be
-	 * careful not to take any such usage of INTO as a pl/pgsql INTO clause.
+	 * careful not to take any such usage of INTO as a PL/pgSQL INTO clause.
 	 * There are currently three such cases:
 	 *
 	 * 1. SELECT ... INTO.  We don't care, we just override that with the
-	 * pl/pgsql definition.
+	 * PL/pgSQL definition.
 	 *
 	 * 2. INSERT INTO.  This is relatively easy to recognize since the words
 	 * must appear adjacently; but we can't assume INSERT starts the command,

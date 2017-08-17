@@ -6,7 +6,7 @@
  * for developers.  If you edit any of these, be sure to do a *full*
  * rebuild (and an initdb if noted).
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/pg_config_manual.h
@@ -49,12 +49,6 @@
  * Maximum number of columns in a partition key
  */
 #define PARTITION_MAX_KEYS	32
-
-/*
- * Set the upper and lower bounds of sequence values.
- */
-#define SEQ_MAXVALUE	PG_INT64_MAX
-#define SEQ_MINVALUE	(-SEQ_MAXVALUE)
 
 /*
  * When we don't have native spinlocks, we use semaphores to simulate them.

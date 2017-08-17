@@ -8,7 +8,7 @@
  *	  interrupted, unlike LWLock waits.  Condition variables are safe
  *	  to use within dynamic shared memory segments.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/storage/lmgr/condition_variable.c
@@ -52,7 +52,7 @@ ConditionVariableInit(ConditionVariable *cv)
 void
 ConditionVariablePrepareToSleep(ConditionVariable *cv)
 {
-	int		pgprocno = MyProc->pgprocno;
+	int			pgprocno = MyProc->pgprocno;
 
 	/*
 	 * It's not legal to prepare a sleep until the previous sleep has been
@@ -68,28 +68,31 @@ ConditionVariablePrepareToSleep(ConditionVariable *cv)
 	{
 		cv_wait_event_set = CreateWaitEventSet(TopMemoryContext, 1);
 		AddWaitEventToSet(cv_wait_event_set, WL_LATCH_SET, PGINVALID_SOCKET,
-						  &MyProc->procLatch, NULL);
+						  MyLatch, NULL);
 	}
+
+	/*
+	 * Reset my latch before adding myself to the queue and before entering
+	 * the caller's predicate loop.
+	 */
+	ResetLatch(MyLatch);
 
 	/* Add myself to the wait queue. */
 	SpinLockAcquire(&cv->mutex);
 	if (!proclist_contains(&cv->wakeup, pgprocno, cvWaitLink))
 		proclist_push_tail(&cv->wakeup, pgprocno, cvWaitLink);
 	SpinLockRelease(&cv->mutex);
-
-	/* Reset my latch before entering the caller's predicate loop. */
-	ResetLatch(&MyProc->procLatch);
 }
 
 /*--------------------------------------------------------------------------
  * Wait for the given condition variable to be signaled.  This should be
- * called in a predicate loop that tests for a specfic exit condition and
+ * called in a predicate loop that tests for a specific exit condition and
  * otherwise sleeps, like so:
  *
- *   ConditionVariablePrepareToSleep(cv); [optional]
- *   while (condition for which we are waiting is not true)
- *       ConditionVariableSleep(cv, wait_event_info);
- *   ConditionVariableCancelSleep();
+ *	 ConditionVariablePrepareToSleep(cv); [optional]
+ *	 while (condition for which we are waiting is not true)
+ *		 ConditionVariableSleep(cv, wait_event_info);
+ *	 ConditionVariableCancelSleep();
  *
  * Supply a value from one of the WaitEventXXX enums defined in pgstat.h to
  * control the contents of pg_stat_activity's wait_event_type and wait_event
@@ -98,8 +101,8 @@ ConditionVariablePrepareToSleep(ConditionVariable *cv)
 void
 ConditionVariableSleep(ConditionVariable *cv, uint32 wait_event_info)
 {
-	WaitEvent event;
-	bool done = false;
+	WaitEvent	event;
+	bool		done = false;
 
 	/*
 	 * If the caller didn't prepare to sleep explicitly, then do so now and
@@ -108,7 +111,7 @@ ConditionVariableSleep(ConditionVariable *cv, uint32 wait_event_info)
 	 * return can be avoided by calling ConditionVariablePrepareToSleep(cv)
 	 * first.  Whether it's worth doing that depends on whether you expect the
 	 * condition to be met initially, in which case skipping the prepare
-	 * allows you to skip manipulation of the wait list, or not met intiailly,
+	 * allows you to skip manipulation of the wait list, or not met initially,
 	 * in which case preparing first allows you to skip a spurious test of the
 	 * caller's exit condition.
 	 */
@@ -132,7 +135,7 @@ ConditionVariableSleep(ConditionVariable *cv, uint32 wait_event_info)
 		WaitEventSetWait(cv_wait_event_set, -1, &event, 1, wait_event_info);
 
 		/* Reset latch before testing whether we can return. */
-		ResetLatch(&MyProc->procLatch);
+		ResetLatch(MyLatch);
 
 		/*
 		 * If this process has been taken out of the wait list, then we know
@@ -183,7 +186,7 @@ ConditionVariableCancelSleep(void)
 bool
 ConditionVariableSignal(ConditionVariable *cv)
 {
-	PGPROC  *proc = NULL;
+	PGPROC	   *proc = NULL;
 
 	/* Remove the first process from the wakeup queue (if any). */
 	SpinLockAcquire(&cv->mutex);
@@ -210,13 +213,13 @@ ConditionVariableSignal(ConditionVariable *cv)
 int
 ConditionVariableBroadcast(ConditionVariable *cv)
 {
-	int		nwoken = 0;
+	int			nwoken = 0;
 
 	/*
 	 * Let's just do this the dumbest way possible.  We could try to dequeue
 	 * all the sleepers at once to save spinlock cycles, but it's a bit hard
-	 * to get that right in the face of possible sleep cancelations, and
-	 * we don't want to loop holding the mutex.
+	 * to get that right in the face of possible sleep cancelations, and we
+	 * don't want to loop holding the mutex.
 	 */
 	while (ConditionVariableSignal(cv))
 		++nwoken;

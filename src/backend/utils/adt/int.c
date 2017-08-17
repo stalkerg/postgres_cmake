@@ -3,7 +3,7 @@
  * int.c
  *	  Functions for the built-in integer types (except int8).
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -822,7 +822,7 @@ int2mul(PG_FUNCTION_ARGS)
 	 * The most practical way to detect overflow is to do the arithmetic in
 	 * int32 (so that the result can't overflow) and then do a range check.
 	 */
-	result32 = (int32) arg1 *(int32) arg2;
+	result32 = (int32) arg1 * (int32) arg2;
 
 	if (result32 < SHRT_MIN || result32 > SHRT_MAX)
 		ereport(ERROR,

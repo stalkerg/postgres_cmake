@@ -3,7 +3,7 @@
  * parse_target.c
  *	  handle target lists
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -289,12 +289,41 @@ transformExpressionList(ParseState *pstate, List *exprlist,
 
 
 /*
+ * resolveTargetListUnknowns()
+ *		Convert any unknown-type targetlist entries to type TEXT.
+ *
+ * We do this after we've exhausted all other ways of identifying the output
+ * column types of a query.
+ */
+void
+resolveTargetListUnknowns(ParseState *pstate, List *targetlist)
+{
+	ListCell   *l;
+
+	foreach(l, targetlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+		Oid			restype = exprType((Node *) tle->expr);
+
+		if (restype == UNKNOWNOID)
+		{
+			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
+											 restype, TEXTOID, -1,
+											 COERCION_IMPLICIT,
+											 COERCE_IMPLICIT_CAST,
+											 -1);
+		}
+	}
+}
+
+
+/*
  * markTargetListOrigins()
  *		Mark targetlist columns that are simple Vars with the source
  *		table's OID and column number.
  *
- * Currently, this is done only for SELECT targetlists, since we only
- * need the info if we are going to send it to the frontend.
+ * Currently, this is done only for SELECT targetlists and RETURNING lists,
+ * since we only need the info if we are going to send it to the frontend.
  */
 void
 markTargetListOrigins(ParseState *pstate, List *targetlist)
@@ -367,6 +396,8 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 			break;
 		case RTE_FUNCTION:
 		case RTE_VALUES:
+		case RTE_TABLEFUNC:
+		case RTE_NAMEDTUPLESTORE:
 			/* not a simple relation, leave it unmarked */
 			break;
 		case RTE_CTE:
@@ -556,7 +587,7 @@ transformAssignedExpr(ParseState *pstate,
 							colname,
 							format_type_be(attrtype),
 							format_type_be(type_id)),
-				 errhint("You will need to rewrite or cast the expression."),
+					 errhint("You will need to rewrite or cast the expression."),
 					 parser_errposition(pstate, exprLocation(orig_expr))));
 	}
 
@@ -746,7 +777,7 @@ transformAssignmentIndirection(ParseState *pstate,
 						 parser_errposition(pstate, location)));
 
 			get_atttypetypmodcoll(typrelid, attnum,
-								&fieldTypeId, &fieldTypMod, &fieldCollation);
+								  &fieldTypeId, &fieldTypMod, &fieldCollation);
 
 			/* recurse to create appropriate RHS for field assign */
 			rhs = transformAssignmentIndirection(pstate,
@@ -806,7 +837,7 @@ transformAssignmentIndirection(ParseState *pstate,
 							targetName,
 							format_type_be(targetTypeId),
 							format_type_be(exprType(rhs))),
-				 errhint("You will need to rewrite or cast the expression."),
+					 errhint("You will need to rewrite or cast the expression."),
 					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
@@ -816,7 +847,7 @@ transformAssignmentIndirection(ParseState *pstate,
 							targetName,
 							format_type_be(targetTypeId),
 							format_type_be(exprType(rhs))),
-				 errhint("You will need to rewrite or cast the expression."),
+					 errhint("You will need to rewrite or cast the expression."),
 					 parser_errposition(pstate, location)));
 	}
 
@@ -968,9 +999,9 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 			if (attrno == InvalidAttrNumber)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
-					errmsg("column \"%s\" of relation \"%s\" does not exist",
-						   name,
-						 RelationGetRelationName(pstate->p_target_relation)),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								name,
+								RelationGetRelationName(pstate->p_target_relation)),
 						 parser_errposition(pstate, col->location)));
 
 			/*
@@ -1475,6 +1506,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 	{
 		case RTE_RELATION:
 		case RTE_VALUES:
+		case RTE_NAMEDTUPLESTORE:
 
 			/*
 			 * This case should not occur: a column of a table or values list
@@ -1526,6 +1558,12 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 			/*
 			 * We couldn't get here unless a function is declared with one of
 			 * its result columns as RECORD, which is not allowed.
+			 */
+			break;
+		case RTE_TABLEFUNC:
+
+			/*
+			 * Table function cannot have columns with RECORD type.
 			 */
 			break;
 		case RTE_CTE:

@@ -3,7 +3,7 @@
  *
  *	file system operations
  *
- *	Copyright (c) 2010-2016, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/file.c
  */
 
@@ -89,7 +89,7 @@ copyFile(const char *src, const char *dst,
 				 schemaName, relName, src, dst, strerror(errno));
 	}
 
-#endif   /* WIN32 */
+#endif							/* WIN32 */
 }
 
 

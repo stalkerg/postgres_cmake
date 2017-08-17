@@ -51,7 +51,7 @@ static EPlan *find_plan(char *ident, EPlan **eplan, int *nplans);
  *			and stop_date eq INFINITY [ and update_user eq current user ]
  *			and all other column values as in new tuple, and insert tuple
  *			with old data and stop_date eq current date
- *			ELSE - skip updation of tuple.
+ *			ELSE - skip updating of tuple.
  *		2.  IF a delete affects tuple with stop_date eq INFINITY
  *			then insert the same tuple with stop_date eq current date
  *			[ and delete_user eq current user ]
@@ -85,7 +85,7 @@ timetravel(PG_FUNCTION_ARGS)
 	Trigger    *trigger;		/* to get trigger name */
 	int			argc;
 	char	  **args;			/* arguments */
-	int			attnum[MaxAttrNum];		/* fnumbers of start/stop columns */
+	int			attnum[MaxAttrNum]; /* fnumbers of start/stop columns */
 	Datum		oldtimeon,
 				oldtimeoff;
 	Datum		newtimeon,
@@ -461,7 +461,7 @@ set_timetravel(PG_FUNCTION_ARGS)
 			s = rname = DatumGetCString(DirectFunctionCall1(nameout, NameGetDatum(relname)));
 			if (s)
 			{
-				pp = malloc(offsetof(TTOffList, name) +strlen(rname) + 1);
+				pp = malloc(offsetof(TTOffList, name) + strlen(rname) + 1);
 				if (pp)
 				{
 					pp->next = NULL;

@@ -9,7 +9,7 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -127,8 +127,8 @@ typedef struct ResourceOwnerData
 
 	/* We can remember up to MAX_RESOWNER_LOCKS references to local locks. */
 	int			nlocks;			/* number of owned locks */
-	LOCALLOCK  *locks[MAX_RESOWNER_LOCKS];		/* list of owned locks */
-}	ResourceOwnerData;
+	LOCALLOCK  *locks[MAX_RESOWNER_LOCKS];	/* list of owned locks */
+}			ResourceOwnerData;
 
 
 /*****************************************************************************

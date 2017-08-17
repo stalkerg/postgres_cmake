@@ -8,7 +8,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/pg_regress.c
@@ -16,7 +16,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "pg_regress.h"
+#include "postgres_fe.h"
 
 #include <ctype.h>
 #include <sys/stat.h>
@@ -28,6 +28,8 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif
+
+#include "pg_regress.h"
 
 #include "common/restricted_token.h"
 #include "common/username.h"
@@ -265,7 +267,7 @@ stop_postmaster(void)
 		fflush(stderr);
 
 		snprintf(buf, sizeof(buf),
-				 "\"%s%spg_ctl\" stop -D \"%s/data\" -s -m fast",
+				 "\"%s%spg_ctl\" stop -D \"%s/data\" -s",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 temp_instance);
@@ -355,7 +357,7 @@ make_temp_sockdir(void)
 
 	return temp_sockdir;
 }
-#endif   /* HAVE_UNIX_SOCKETS */
+#endif							/* HAVE_UNIX_SOCKETS */
 
 /*
  * Check whether string matches pattern
@@ -1518,7 +1520,7 @@ wait_for_tests(PID_TYPE * pids, int *statuses, char **names, int num_tests)
 		p = active_pids[r - WAIT_OBJECT_0];
 		/* compact the active_pids array */
 		active_pids[r - WAIT_OBJECT_0] = active_pids[tests_left - 1];
-#endif   /* WIN32 */
+#endif							/* WIN32 */
 
 		for (i = 0; i < num_tests; i++)
 		{
@@ -1745,8 +1747,8 @@ run_schedule(const char *schedule, test_function tfunc)
 				bool		newdiff;
 
 				if (tl)
-					tl = tl->next;		/* tl has the same length as rl and el
-										 * if it exists */
+					tl = tl->next;	/* tl has the same length as rl and el if
+									 * it exists */
 
 				newdiff = results_differ(tests[i], rl->str, el->str);
 				if (newdiff && tl)
@@ -1869,6 +1871,10 @@ open_result_files(void)
 	char		file[MAXPGPATH];
 	FILE	   *difffile;
 
+	/* create outputdir directory if not present */
+	if (!directory_exists(outputdir))
+		make_directory(outputdir);
+
 	/* create the log file (copy of running status output) */
 	snprintf(file, sizeof(file), "%s/regression.out", outputdir);
 	logfilename = pg_strdup(file);
@@ -1893,7 +1899,7 @@ open_result_files(void)
 	/* we don't keep the diffs file open continuously */
 	fclose(difffile);
 
-	/* also create the output directory if not present */
+	/* also create the results directory if not present */
 	snprintf(file, sizeof(file), "%s/results", outputdir);
 	if (!directory_exists(file))
 		make_directory(file);
@@ -1927,8 +1933,9 @@ create_database(const char *dbname)
 				 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
 				 "ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
 				 "ALTER DATABASE \"%s\" SET lc_time TO 'C';"
-			"ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
-				 dbname, dbname, dbname, dbname, dbname);
+				 "ALTER DATABASE \"%s\" SET bytea_output TO 'hex';"
+				 "ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
+				 dbname, dbname, dbname, dbname, dbname, dbname);
 
 	/*
 	 * Install any requested procedural languages.  We use CREATE OR REPLACE

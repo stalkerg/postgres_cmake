@@ -30,7 +30,6 @@
 
 
 static PyObject *PLy_spi_execute_query(char *query, long limit);
-static PyObject *PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit);
 static PyObject *PLy_spi_execute_fetch_result(SPITupleTable *tuptable,
 							 uint64 rows, int status);
 static void PLy_spi_exception_set(PyObject *excclass, ErrorData *edata);
@@ -57,7 +56,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 	if (list && (!PySequence_Check(list)))
 	{
 		PLy_exception_set(PyExc_TypeError,
-					   "second argument of plpy.prepare must be a sequence");
+						  "second argument of plpy.prepare must be a sequence");
 		return NULL;
 	}
 
@@ -193,7 +192,7 @@ PLy_spi_execute(PyObject *self, PyObject *args)
 	return NULL;
 }
 
-static PyObject *
+PyObject *
 PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 {
 	volatile int nargs;
@@ -227,8 +226,8 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			PLy_elog(ERROR, "could not execute plan");
 		sv = PyString_AsString(so);
 		PLy_exception_set_plural(PyExc_TypeError,
-							  "Expected sequence of %d argument, got %d: %s",
-							 "Expected sequence of %d arguments, got %d: %s",
+								 "Expected sequence of %d argument, got %d: %s",
+								 "Expected sequence of %d arguments, got %d: %s",
 								 plan->nargs,
 								 plan->nargs, nargs, sv);
 		Py_DECREF(so);
@@ -571,7 +570,7 @@ PLy_spi_exception_set(PyObject *excclass, ErrorData *edata)
 
 	spidata = Py_BuildValue("(izzzizzzzz)", edata->sqlerrcode, edata->detail, edata->hint,
 							edata->internalquery, edata->internalpos,
-				   edata->schema_name, edata->table_name, edata->column_name,
+							edata->schema_name, edata->table_name, edata->column_name,
 							edata->datatype_name, edata->constraint_name);
 	if (!spidata)
 		goto failure;

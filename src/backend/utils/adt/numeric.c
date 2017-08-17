@@ -11,7 +11,7 @@
  * Transactions on Mathematical Software, Vol. 24, No. 4, December 1998,
  * pages 359-367.
  *
- * Copyright (c) 1998-2016, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/numeric.c
@@ -590,8 +590,8 @@ numeric_in(PG_FUNCTION_ARGS)
 			if (!isspace((unsigned char) *cp))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					  errmsg("invalid input syntax for type numeric: \"%s\"",
-							 str)));
+						 errmsg("invalid input syntax for type %s: \"%s\"",
+								"numeric", str)));
 			cp++;
 		}
 	}
@@ -617,8 +617,8 @@ numeric_in(PG_FUNCTION_ARGS)
 			if (!isspace((unsigned char) *cp))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					  errmsg("invalid input syntax for type numeric: \"%s\"",
-							 str)));
+						 errmsg("invalid input syntax for type %s: \"%s\"",
+								"numeric", str)));
 			cp++;
 		}
 
@@ -889,11 +889,10 @@ numeric_send(PG_FUNCTION_ARGS)
 Datum
 numeric_transform(PG_FUNCTION_ARGS)
 {
-	FuncExpr   *expr = (FuncExpr *) PG_GETARG_POINTER(0);
+	FuncExpr   *expr = castNode(FuncExpr, PG_GETARG_POINTER(0));
 	Node	   *ret = NULL;
 	Node	   *typmod;
 
-	Assert(IsA(expr, FuncExpr));
 	Assert(list_length(expr->args) >= 2);
 
 	typmod = (Node *) lsecond(expr->args);
@@ -1027,8 +1026,8 @@ numerictypmodin(PG_FUNCTION_ARGS)
 		if (tl[1] < 0 || tl[1] > tl[0])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("NUMERIC scale %d must be between 0 and precision %d",
-					   tl[1], tl[0])));
+					 errmsg("NUMERIC scale %d must be between 0 and precision %d",
+							tl[1], tl[0])));
 		typmod = ((tl[0] << 16) | tl[1]) + VARHDRSZ;
 	}
 	else if (n == 1)
@@ -1498,7 +1497,7 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 		NUMERIC_IS_NAN(bound2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-			 errmsg("operand, lower bound, and upper bound cannot be NaN")));
+				 errmsg("operand, lower bound, and upper bound cannot be NaN")));
 
 	init_var(&result_var);
 	init_var(&count_var);
@@ -1510,8 +1509,8 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 	{
 		case 0:
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-				 errmsg("lower bound cannot equal upper bound")));
+					(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
+					 errmsg("lower bound cannot equal upper bound")));
 
 			/* bound1 < bound2 */
 		case -1:
@@ -1771,7 +1770,7 @@ numeric_abbrev_abort(int memtupcount, SortSupport ssup)
 		if (trace_sort)
 			elog(LOG,
 				 "numeric_abbrev: aborting abbreviation at cardinality %f"
-			   " below threshold %f after " INT64_FORMAT " values (%d rows)",
+				 " below threshold %f after " INT64_FORMAT " values (%d rows)",
 				 abbr_card, nss->input_count / 10000.0 + 0.5,
 				 nss->input_count, memtupcount);
 #endif
@@ -1934,7 +1933,7 @@ numeric_abbrev_convert_var(NumericVar *var, NumericSortSupport *nss)
 	return NumericAbbrevGetDatum(result);
 }
 
-#endif   /* NUMERIC_ABBREV_BITS == 64 */
+#endif							/* NUMERIC_ABBREV_BITS == 64 */
 
 #if NUMERIC_ABBREV_BITS == 32
 
@@ -2011,7 +2010,7 @@ numeric_abbrev_convert_var(NumericVar *var, NumericSortSupport *nss)
 	return NumericAbbrevGetDatum(result);
 }
 
-#endif   /* NUMERIC_ABBREV_BITS == 32 */
+#endif							/* NUMERIC_ABBREV_BITS == 32 */
 
 /*
  * Ordinary (non-sortsupport) comparisons follow.
@@ -3110,7 +3109,11 @@ numeric_float8(PG_FUNCTION_ARGS)
 }
 
 
-/* Convert numeric to float8; if out of range, return +/- HUGE_VAL */
+/*
+ * Convert numeric to float8; if out of range, return +/- HUGE_VAL
+ *
+ * (internal helper function, not directly callable from SQL)
+ */
 Datum
 numeric_float8_no_overflow(PG_FUNCTION_ARGS)
 {
@@ -3598,7 +3601,7 @@ numeric_avg_serialize(PG_FUNCTION_ARGS)
 
 	temp = DirectFunctionCall1(numeric_send,
 							   NumericGetDatum(make_result(&tmp_var)));
-	sumX = DatumGetByteaP(temp);
+	sumX = DatumGetByteaPP(temp);
 	free_var(&tmp_var);
 
 	pq_begintypsend(&buf);
@@ -3607,7 +3610,7 @@ numeric_avg_serialize(PG_FUNCTION_ARGS)
 	pq_sendint64(&buf, state->N);
 
 	/* sumX */
-	pq_sendbytes(&buf, VARDATA(sumX), VARSIZE(sumX) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX), VARSIZE_ANY_EXHDR(sumX));
 
 	/* maxScale */
 	pq_sendint(&buf, state->maxScale, 4);
@@ -3640,14 +3643,15 @@ numeric_avg_deserialize(PG_FUNCTION_ARGS)
 	if (!AggCheckCallContext(fcinfo, NULL))
 		elog(ERROR, "aggregate function called in non-aggregate context");
 
-	sstate = PG_GETARG_BYTEA_P(0);
+	sstate = PG_GETARG_BYTEA_PP(0);
 
 	/*
 	 * Copy the bytea into a StringInfo so that we can "receive" it using the
 	 * standard recv-function infrastructure.
 	 */
 	initStringInfo(&buf);
-	appendBinaryStringInfo(&buf, VARDATA(sstate), VARSIZE(sstate) - VARHDRSZ);
+	appendBinaryStringInfo(&buf,
+						   VARDATA_ANY(sstate), VARSIZE_ANY_EXHDR(sstate));
 
 	result = makeNumericAggStateCurrentContext(false);
 
@@ -3710,12 +3714,12 @@ numeric_serialize(PG_FUNCTION_ARGS)
 	accum_sum_final(&state->sumX, &tmp_var);
 	temp = DirectFunctionCall1(numeric_send,
 							   NumericGetDatum(make_result(&tmp_var)));
-	sumX = DatumGetByteaP(temp);
+	sumX = DatumGetByteaPP(temp);
 
 	accum_sum_final(&state->sumX2, &tmp_var);
 	temp = DirectFunctionCall1(numeric_send,
 							   NumericGetDatum(make_result(&tmp_var)));
-	sumX2 = DatumGetByteaP(temp);
+	sumX2 = DatumGetByteaPP(temp);
 
 	free_var(&tmp_var);
 
@@ -3725,10 +3729,10 @@ numeric_serialize(PG_FUNCTION_ARGS)
 	pq_sendint64(&buf, state->N);
 
 	/* sumX */
-	pq_sendbytes(&buf, VARDATA(sumX), VARSIZE(sumX) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX), VARSIZE_ANY_EXHDR(sumX));
 
 	/* sumX2 */
-	pq_sendbytes(&buf, VARDATA(sumX2), VARSIZE(sumX2) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX2), VARSIZE_ANY_EXHDR(sumX2));
 
 	/* maxScale */
 	pq_sendint(&buf, state->maxScale, 4);
@@ -3762,14 +3766,15 @@ numeric_deserialize(PG_FUNCTION_ARGS)
 	if (!AggCheckCallContext(fcinfo, NULL))
 		elog(ERROR, "aggregate function called in non-aggregate context");
 
-	sstate = PG_GETARG_BYTEA_P(0);
+	sstate = PG_GETARG_BYTEA_PP(0);
 
 	/*
 	 * Copy the bytea into a StringInfo so that we can "receive" it using the
 	 * standard recv-function infrastructure.
 	 */
 	initStringInfo(&buf);
-	appendBinaryStringInfo(&buf, VARDATA(sstate), VARSIZE(sstate) - VARHDRSZ);
+	appendBinaryStringInfo(&buf,
+						   VARDATA_ANY(sstate), VARSIZE_ANY_EXHDR(sstate));
 
 	result = makeNumericAggStateCurrentContext(false);
 
@@ -4111,7 +4116,7 @@ numeric_poly_serialize(PG_FUNCTION_ARGS)
 #endif
 		temp = DirectFunctionCall1(numeric_send,
 								   NumericGetDatum(make_result(&num)));
-		sumX = DatumGetByteaP(temp);
+		sumX = DatumGetByteaPP(temp);
 
 #ifdef HAVE_INT128
 		int128_to_numericvar(state->sumX2, &num);
@@ -4120,7 +4125,7 @@ numeric_poly_serialize(PG_FUNCTION_ARGS)
 #endif
 		temp = DirectFunctionCall1(numeric_send,
 								   NumericGetDatum(make_result(&num)));
-		sumX2 = DatumGetByteaP(temp);
+		sumX2 = DatumGetByteaPP(temp);
 
 		free_var(&num);
 	}
@@ -4131,10 +4136,10 @@ numeric_poly_serialize(PG_FUNCTION_ARGS)
 	pq_sendint64(&buf, state->N);
 
 	/* sumX */
-	pq_sendbytes(&buf, VARDATA(sumX), VARSIZE(sumX) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX), VARSIZE_ANY_EXHDR(sumX));
 
 	/* sumX2 */
-	pq_sendbytes(&buf, VARDATA(sumX2), VARSIZE(sumX2) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX2), VARSIZE_ANY_EXHDR(sumX2));
 
 	result = pq_endtypsend(&buf);
 
@@ -4160,14 +4165,15 @@ numeric_poly_deserialize(PG_FUNCTION_ARGS)
 	if (!AggCheckCallContext(fcinfo, NULL))
 		elog(ERROR, "aggregate function called in non-aggregate context");
 
-	sstate = PG_GETARG_BYTEA_P(0);
+	sstate = PG_GETARG_BYTEA_PP(0);
 
 	/*
 	 * Copy the bytea into a StringInfo so that we can "receive" it using the
 	 * standard recv-function infrastructure.
 	 */
 	initStringInfo(&buf);
-	appendBinaryStringInfo(&buf, VARDATA(sstate), VARSIZE(sstate) - VARHDRSZ);
+	appendBinaryStringInfo(&buf,
+						   VARDATA_ANY(sstate), VARSIZE_ANY_EXHDR(sstate));
 
 	result = makePolyNumAggStateCurrentContext(false);
 
@@ -4335,7 +4341,7 @@ int8_avg_serialize(PG_FUNCTION_ARGS)
 #endif
 		temp = DirectFunctionCall1(numeric_send,
 								   NumericGetDatum(make_result(&num)));
-		sumX = DatumGetByteaP(temp);
+		sumX = DatumGetByteaPP(temp);
 
 		free_var(&num);
 	}
@@ -4346,7 +4352,7 @@ int8_avg_serialize(PG_FUNCTION_ARGS)
 	pq_sendint64(&buf, state->N);
 
 	/* sumX */
-	pq_sendbytes(&buf, VARDATA(sumX), VARSIZE(sumX) - VARHDRSZ);
+	pq_sendbytes(&buf, VARDATA_ANY(sumX), VARSIZE_ANY_EXHDR(sumX));
 
 	result = pq_endtypsend(&buf);
 
@@ -4369,14 +4375,15 @@ int8_avg_deserialize(PG_FUNCTION_ARGS)
 	if (!AggCheckCallContext(fcinfo, NULL))
 		elog(ERROR, "aggregate function called in non-aggregate context");
 
-	sstate = PG_GETARG_BYTEA_P(0);
+	sstate = PG_GETARG_BYTEA_PP(0);
 
 	/*
 	 * Copy the bytea into a StringInfo so that we can "receive" it using the
 	 * standard recv-function infrastructure.
 	 */
 	initStringInfo(&buf);
-	appendBinaryStringInfo(&buf, VARDATA(sstate), VARSIZE(sstate) - VARHDRSZ);
+	appendBinaryStringInfo(&buf,
+						   VARDATA_ANY(sstate), VARSIZE_ANY_EXHDR(sstate));
 
 	result = makePolyNumAggStateCurrentContext(false);
 
@@ -4697,7 +4704,7 @@ numeric_stddev_internal(NumericAggState *state,
 	rscale = vsumX.dscale * 2;
 
 	mul_var(&vsumX, &vsumX, &vsumX, rscale);	/* vsumX = sumX * sumX */
-	mul_var(&vN, &vsumX2, &vsumX2, rscale);		/* vsumX2 = N * sumX2 */
+	mul_var(&vN, &vsumX2, &vsumX2, rscale); /* vsumX2 = N * sumX2 */
 	sub_var(&vsumX2, &vsumX, &vsumX2);	/* N * sumX2 - sumX * sumX */
 
 	if (cmp_var(&vsumX2, &const_zero) <= 0)
@@ -4708,11 +4715,11 @@ numeric_stddev_internal(NumericAggState *state,
 	else
 	{
 		if (sample)
-			mul_var(&vN, &vNminus1, &vNminus1, 0);		/* N * (N - 1) */
+			mul_var(&vN, &vNminus1, &vNminus1, 0);	/* N * (N - 1) */
 		else
 			mul_var(&vN, &vN, &vNminus1, 0);	/* N * N */
 		rscale = select_div_scale(&vsumX2, &vNminus1);
-		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true);		/* variance */
+		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true);	/* variance */
 		if (!variance)
 			sqrt_var(&vsumX, &vsumX, rscale);	/* stddev */
 
@@ -5362,7 +5369,7 @@ dump_var(const char *str, NumericVar *var)
 
 	printf("\n");
 }
-#endif   /* NUMERIC_DEBUG */
+#endif							/* NUMERIC_DEBUG */
 
 
 /* ----------------------------------------------------------------------
@@ -5478,7 +5485,8 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 	if (!isdigit((unsigned char) *cp))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			  errmsg("invalid input syntax for type numeric: \"%s\"", str)));
+				 errmsg("invalid input syntax for type %s: \"%s\"",
+						"numeric", str)));
 
 	decdigits = (unsigned char *) palloc(strlen(cp) + DEC_DIGITS * 2);
 
@@ -5501,8 +5509,8 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 			if (have_dp)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					  errmsg("invalid input syntax for type numeric: \"%s\"",
-							 str)));
+						 errmsg("invalid input syntax for type %s: \"%s\"",
+								"numeric", str)));
 			have_dp = TRUE;
 			cp++;
 		}
@@ -5525,8 +5533,8 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 		if (endptr == cp)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid input syntax for type numeric: \"%s\"",
-							str)));
+					 errmsg("invalid input syntax for type %s: \"%s\"",
+							"numeric", str)));
 		cp = endptr;
 
 		/*
@@ -6327,8 +6335,8 @@ numeric_to_double_no_overflow(Numeric num)
 		/* shouldn't happen ... */
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			 errmsg("invalid input syntax for type double precision: \"%s\"",
-					tmp)));
+				 errmsg("invalid input syntax for type %s: \"%s\"",
+						"double precision", tmp)));
 	}
 
 	pfree(tmp);
@@ -6353,8 +6361,8 @@ numericvar_to_double_no_overflow(NumericVar *var)
 		/* shouldn't happen ... */
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			 errmsg("invalid input syntax for type double precision: \"%s\"",
-					tmp)));
+				 errmsg("invalid input syntax for type %s: \"%s\"",
+						"double precision", tmp)));
 	}
 
 	pfree(tmp);
@@ -8073,7 +8081,7 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 	if (cmp_var(base, &const_zero) == 0)
 	{
 		set_var_from_var(&const_zero, result);
-		result->dscale = NUMERIC_MIN_SIG_DIGITS;		/* no need to round */
+		result->dscale = NUMERIC_MIN_SIG_DIGITS;	/* no need to round */
 		return;
 	}
 
@@ -8167,8 +8175,7 @@ power_var_int(NumericVar *base, int exp, NumericVar *result, int rscale)
 			 * While 0 ^ 0 can be either 1 or indeterminate (error), we treat
 			 * it as 1 because most programming languages do this. SQL:2003
 			 * also requires a return value of 1.
-			 * http://en.wikipedia.org/wiki/Exponentiation#Zero_to_the_zero_pow
-			 * er
+			 * http://en.wikipedia.org/wiki/Exponentiation#Zero_to_the_zero_power
 			 */
 			set_var_from_var(&const_one, result);
 			result->dscale = rscale;	/* no need to round */
@@ -8353,7 +8360,7 @@ cmp_abs(NumericVar *var1, NumericVar *var2)
  */
 static int
 cmp_abs_common(const NumericDigit *var1digits, int var1ndigits, int var1weight,
-			 const NumericDigit *var2digits, int var2ndigits, int var2weight)
+			   const NumericDigit *var2digits, int var2ndigits, int var2weight)
 {
 	int			i1 = 0;
 	int			i2 = 0;

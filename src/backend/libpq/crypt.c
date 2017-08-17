@@ -1,12 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * crypt.c
- *	  Look into the password file and check the encrypted password with
- *	  the one passed in from the frontend.
+ *	  Functions for dealing with encrypted passwords stored in
+ *	  pg_authid.rolpassword.
  *
- * Original coding by Todd A. Brandys
- *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/libpq/crypt.c
@@ -23,6 +21,7 @@
 #include "catalog/pg_authid.h"
 #include "common/md5.h"
 #include "libpq/crypt.h"
+#include "libpq/scram.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
@@ -32,25 +31,18 @@
 /*
  * Fetch stored password for a user, for authentication.
  *
- * Returns STATUS_OK on success.  On error, returns STATUS_ERROR, and stores
- * a palloc'd string describing the reason, for the postmaster log, in
- * *logdetail.  The error reason should *not* be sent to the client, to avoid
- * giving away user information!
- *
- * If the password is expired, it is still returned in *shadow_pass, but the
- * return code is STATUS_ERROR.  On other errors, *shadow_pass is set to
- * NULL.
+ * On error, returns NULL, and stores a palloc'd string describing the reason,
+ * for the postmaster log, in *logdetail.  The error reason should *not* be
+ * sent to the client, to avoid giving away user information!
  */
-int
-get_role_password(const char *role, char **shadow_pass, char **logdetail)
+char *
+get_role_password(const char *role, char **logdetail)
 {
-	int			retval = STATUS_ERROR;
 	TimestampTz vuntil = 0;
 	HeapTuple	roleTup;
 	Datum		datum;
 	bool		isnull;
-
-	*shadow_pass = NULL;
+	char	   *shadow_pass;
 
 	/* Get role info from pg_authid */
 	roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
@@ -58,7 +50,7 @@ get_role_password(const char *role, char **shadow_pass, char **logdetail)
 	{
 		*logdetail = psprintf(_("Role \"%s\" does not exist."),
 							  role);
-		return STATUS_ERROR;	/* no such user */
+		return NULL;			/* no such user */
 	}
 
 	datum = SysCacheGetAttr(AUTHNAME, roleTup,
@@ -68,9 +60,9 @@ get_role_password(const char *role, char **shadow_pass, char **logdetail)
 		ReleaseSysCache(roleTup);
 		*logdetail = psprintf(_("User \"%s\" has no password assigned."),
 							  role);
-		return STATUS_ERROR;	/* user has no password */
+		return NULL;			/* user has no password */
 	}
-	*shadow_pass = TextDatumGetCString(datum);
+	shadow_pass = TextDatumGetCString(datum);
 
 	datum = SysCacheGetAttr(AUTHNAME, roleTup,
 							Anum_pg_authid_rolvaliduntil, &isnull);
@@ -79,30 +71,78 @@ get_role_password(const char *role, char **shadow_pass, char **logdetail)
 
 	ReleaseSysCache(roleTup);
 
-	if (**shadow_pass == '\0')
-	{
-		*logdetail = psprintf(_("User \"%s\" has an empty password."),
-							  role);
-		pfree(*shadow_pass);
-		*shadow_pass = NULL;
-		return STATUS_ERROR;	/* empty password */
-	}
-
 	/*
-	 * Password OK, now check to be sure we are not past rolvaliduntil
+	 * Password OK, but check to be sure we are not past rolvaliduntil
 	 */
-	if (isnull)
-		retval = STATUS_OK;
-	else if (vuntil < GetCurrentTimestamp())
+	if (!isnull && vuntil < GetCurrentTimestamp())
 	{
 		*logdetail = psprintf(_("User \"%s\" has an expired password."),
 							  role);
-		retval = STATUS_ERROR;
+		return NULL;
 	}
-	else
-		retval = STATUS_OK;
 
-	return retval;
+	return shadow_pass;
+}
+
+/*
+ * What kind of a password verifier is 'shadow_pass'?
+ */
+PasswordType
+get_password_type(const char *shadow_pass)
+{
+	if (strncmp(shadow_pass, "md5", 3) == 0 && strlen(shadow_pass) == MD5_PASSWD_LEN)
+		return PASSWORD_TYPE_MD5;
+	if (strncmp(shadow_pass, "SCRAM-SHA-256$", strlen("SCRAM-SHA-256$")) == 0)
+		return PASSWORD_TYPE_SCRAM_SHA_256;
+	return PASSWORD_TYPE_PLAINTEXT;
+}
+
+/*
+ * Given a user-supplied password, convert it into a verifier of
+ * 'target_type' kind.
+ *
+ * If the password is already in encrypted form, we cannot reverse the
+ * hash, so it is stored as it is regardless of the requested type.
+ */
+char *
+encrypt_password(PasswordType target_type, const char *role,
+				 const char *password)
+{
+	PasswordType guessed_type = get_password_type(password);
+	char	   *encrypted_password;
+
+	if (guessed_type != PASSWORD_TYPE_PLAINTEXT)
+	{
+		/*
+		 * Cannot convert an already-encrypted password from one format to
+		 * another, so return it as it is.
+		 */
+		return pstrdup(password);
+	}
+
+	switch (target_type)
+	{
+		case PASSWORD_TYPE_MD5:
+			encrypted_password = palloc(MD5_PASSWD_LEN + 1);
+
+			if (!pg_md5_encrypt(password, role, strlen(role),
+								encrypted_password))
+				elog(ERROR, "password encryption failed");
+			return encrypted_password;
+
+		case PASSWORD_TYPE_SCRAM_SHA_256:
+			return pg_be_scram_build_verifier(password);
+
+		case PASSWORD_TYPE_PLAINTEXT:
+			elog(ERROR, "cannot encrypt password with 'plaintext'");
+	}
+
+	/*
+	 * This shouldn't happen, because the above switch statements should
+	 * handle every combination of source and target password types.
+	 */
+	elog(ERROR, "cannot encrypt password to requested type");
+	return NULL;				/* keep compiler quiet */
 }
 
 /*
@@ -124,9 +164,16 @@ md5_crypt_verify(const char *role, const char *shadow_pass,
 {
 	int			retval;
 	char		crypt_pwd[MD5_PASSWD_LEN + 1];
-	char		crypt_pwd2[MD5_PASSWD_LEN + 1];
 
 	Assert(md5_salt_len > 0);
+
+	if (get_password_type(shadow_pass) != PASSWORD_TYPE_MD5)
+	{
+		/* incompatible password hash format. */
+		*logdetail = psprintf(_("User \"%s\" has a password that cannot be used with MD5 authentication."),
+							  role);
+		return STATUS_ERROR;
+	}
 
 	/*
 	 * Compute the correct answer for the MD5 challenge.
@@ -135,32 +182,12 @@ md5_crypt_verify(const char *role, const char *shadow_pass,
 	 * below: the only possible error is out-of-memory, which is unlikely, and
 	 * if it did happen adding a psprintf call would only make things worse.
 	 */
-	if (isMD5(shadow_pass))
+	/* stored password already encrypted, only do salt */
+	if (!pg_md5_encrypt(shadow_pass + strlen("md5"),
+						md5_salt, md5_salt_len,
+						crypt_pwd))
 	{
-		/* stored password already encrypted, only do salt */
-		if (!pg_md5_encrypt(shadow_pass + strlen("md5"),
-							md5_salt, md5_salt_len,
-							crypt_pwd))
-		{
-			return STATUS_ERROR;
-		}
-	}
-	else
-	{
-		/* stored password is plain, double-encrypt */
-		if (!pg_md5_encrypt(shadow_pass,
-							role,
-							strlen(role),
-							crypt_pwd2))
-		{
-			return STATUS_ERROR;
-		}
-		if (!pg_md5_encrypt(crypt_pwd2 + strlen("md5"),
-							md5_salt, md5_salt_len,
-							crypt_pwd))
-		{
-			return STATUS_ERROR;
-		}
+		return STATUS_ERROR;
 	}
 
 	if (strcmp(client_pass, crypt_pwd) == 0)
@@ -178,8 +205,8 @@ md5_crypt_verify(const char *role, const char *shadow_pass,
 /*
  * Check given password for given user, and return STATUS_OK or STATUS_ERROR.
  *
- * 'shadow_pass' is the user's correct password or password hash, as stored
- * in pg_authid.rolpassword.
+ * 'shadow_pass' is the user's correct password hash, as stored in
+ * pg_authid.rolpassword.
  * 'client_pass' is the password given by the remote user.
  *
  * In the error case, optionally store a palloc'd string at *logdetail
@@ -190,7 +217,6 @@ plain_crypt_verify(const char *role, const char *shadow_pass,
 				   const char *client_pass,
 				   char **logdetail)
 {
-	int			retval;
 	char		crypt_client_pass[MD5_PASSWD_LEN + 1];
 
 	/*
@@ -198,32 +224,61 @@ plain_crypt_verify(const char *role, const char *shadow_pass,
 	 * the password the client sent, and compare the hashes.  Otherwise
 	 * compare the plaintext passwords directly.
 	 */
-	if (isMD5(shadow_pass))
+	switch (get_password_type(shadow_pass))
 	{
-		if (!pg_md5_encrypt(client_pass,
-							role,
-							strlen(role),
-							crypt_client_pass))
-		{
+		case PASSWORD_TYPE_SCRAM_SHA_256:
+			if (scram_verify_plain_password(role,
+											client_pass,
+											shadow_pass))
+			{
+				return STATUS_OK;
+			}
+			else
+			{
+				*logdetail = psprintf(_("Password does not match for user \"%s\"."),
+									  role);
+				return STATUS_ERROR;
+			}
+			break;
+
+		case PASSWORD_TYPE_MD5:
+			if (!pg_md5_encrypt(client_pass,
+								role,
+								strlen(role),
+								crypt_client_pass))
+			{
+				/*
+				 * We do not bother setting logdetail for pg_md5_encrypt
+				 * failure: the only possible error is out-of-memory, which is
+				 * unlikely, and if it did happen adding a psprintf call would
+				 * only make things worse.
+				 */
+				return STATUS_ERROR;
+			}
+			if (strcmp(crypt_client_pass, shadow_pass) == 0)
+				return STATUS_OK;
+			else
+			{
+				*logdetail = psprintf(_("Password does not match for user \"%s\"."),
+									  role);
+				return STATUS_ERROR;
+			}
+			break;
+
+		case PASSWORD_TYPE_PLAINTEXT:
+
 			/*
-			 * We do not bother setting logdetail for pg_md5_encrypt failure:
-			 * the only possible error is out-of-memory, which is unlikely,
-			 * and if it did happen adding a psprintf call would only make
-			 * things worse.
+			 * We never store passwords in plaintext, so this shouldn't
+			 * happen.
 			 */
-			return STATUS_ERROR;
-		}
-		client_pass = crypt_client_pass;
+			break;
 	}
 
-	if (strcmp(client_pass, shadow_pass) == 0)
-		retval = STATUS_OK;
-	else
-	{
-		*logdetail = psprintf(_("Password does not match for user \"%s\"."),
-							  role);
-		retval = STATUS_ERROR;
-	}
-
-	return retval;
+	/*
+	 * This shouldn't happen.  Plain "password" authentication is possible
+	 * with any kind of stored password hash.
+	 */
+	*logdetail = psprintf(_("Password of user \"%s\" is in unrecognized format."),
+						  role);
+	return STATUS_ERROR;
 }

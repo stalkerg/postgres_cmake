@@ -236,6 +236,14 @@ CREATE TABLE testjsonb (
        j jsonb
 );
 
+CREATE TABLE unknowntab (
+	u unknown    -- fail
+);
+
+CREATE TYPE unknown_comptype AS (
+	u unknown    -- fail
+);
+
 CREATE TABLE IF NOT EXISTS test_tsvector(
 	t text,
 	a tsvector
@@ -402,13 +410,10 @@ CREATE TABLE partitioned (
 -- check relkind
 SELECT relkind FROM pg_class WHERE relname = 'partitioned';
 
--- check that range partition key columns are marked NOT NULL
-SELECT attname, attnotnull FROM pg_attribute WHERE attrelid = 'partitioned'::regclass AND attnum > 0;
-
 -- prevent a function referenced in partition key from being dropped
 DROP FUNCTION plusone(int);
 
--- partitioned table cannot partiticipate in regular inheritance
+-- partitioned table cannot participate in regular inheritance
 CREATE TABLE partitioned2 (
 	a int
 ) PARTITION BY LIST ((a+1));
@@ -449,6 +454,23 @@ CREATE TABLE bools (
 CREATE TABLE bools_true PARTITION OF bools FOR VALUES IN (1);
 DROP TABLE bools;
 
+-- specified literal can be cast, but cast isn't immutable
+CREATE TABLE moneyp (
+	a money
+) PARTITION BY LIST (a);
+CREATE TABLE moneyp_10 PARTITION OF moneyp FOR VALUES IN (10);
+CREATE TABLE moneyp_10 PARTITION OF moneyp FOR VALUES IN ('10');
+DROP TABLE moneyp;
+
+-- immutable cast should work, though
+CREATE TABLE bigintp (
+	a bigint
+) PARTITION BY LIST (a);
+CREATE TABLE bigintp_10 PARTITION OF bigintp FOR VALUES IN (10);
+-- fails due to overlap:
+CREATE TABLE bigintp_10_2 PARTITION OF bigintp FOR VALUES IN ('10');
+DROP TABLE bigintp;
+
 CREATE TABLE range_parted (
 	a date
 ) PARTITION BY RANGE (a);
@@ -461,7 +483,7 @@ CREATE TABLE fail_part PARTITION OF range_parted FOR VALUES FROM ('a', 1) TO ('z
 CREATE TABLE fail_part PARTITION OF range_parted FOR VALUES FROM ('a') TO ('z', 1);
 
 -- cannot specify null values in range bounds
-CREATE TABLE fail_part PARTITION OF range_parted FOR VALUES FROM (null) TO (unbounded);
+CREATE TABLE fail_part PARTITION OF range_parted FOR VALUES FROM (null) TO (maxvalue);
 
 -- check if compatible with the specified parent
 
@@ -483,15 +505,17 @@ DROP TABLE temp_parted;
 CREATE TABLE no_oids_parted (
 	a int
 ) PARTITION BY RANGE (a) WITHOUT OIDS;
-CREATE TABLE fail_part PARTITION OF no_oids_parted FOR VALUES FROM (1) TO (10 )WITH OIDS;
+CREATE TABLE fail_part PARTITION OF no_oids_parted FOR VALUES FROM (1) TO (10) WITH OIDS;
 DROP TABLE no_oids_parted;
 
--- likewise, the reverse if also true
+-- If the partitioned table has oids, then the partition must have them.
+-- If the WITHOUT OIDS option is specified for partition, it is overridden.
 CREATE TABLE oids_parted (
 	a int
 ) PARTITION BY RANGE (a) WITH OIDS;
-CREATE TABLE fail_part PARTITION OF oids_parted FOR VALUES FROM (1) TO (10 ) WITHOUT OIDS;
-DROP TABLE oids_parted;
+CREATE TABLE part_forced_oids PARTITION OF oids_parted FOR VALUES FROM (1) TO (10) WITHOUT OIDS;
+\d+ part_forced_oids
+DROP TABLE oids_parted, part_forced_oids;
 
 -- check for partition bound overlap and other invalid specifications
 
@@ -513,10 +537,14 @@ CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (1) TO (0);
 -- note that the range '[1, 1)' has no elements
 CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (1) TO (1);
 
-CREATE TABLE part0 PARTITION OF range_parted2 FOR VALUES FROM (unbounded) TO (1);
-CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (unbounded) TO (2);
+CREATE TABLE part0 PARTITION OF range_parted2 FOR VALUES FROM (minvalue) TO (1);
+CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (minvalue) TO (2);
 CREATE TABLE part1 PARTITION OF range_parted2 FOR VALUES FROM (1) TO (10);
-CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (9) TO (unbounded);
+CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (9) TO (maxvalue);
+CREATE TABLE part2 PARTITION OF range_parted2 FOR VALUES FROM (20) TO (30);
+CREATE TABLE part3 PARTITION OF range_parted2 FOR VALUES FROM (30) TO (40);
+CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (10) TO (30);
+CREATE TABLE fail_part PARTITION OF range_parted2 FOR VALUES FROM (10) TO (50);
 
 -- now check for multi-column range partition key
 CREATE TABLE range_parted3 (
@@ -524,18 +552,18 @@ CREATE TABLE range_parted3 (
 	b int
 ) PARTITION BY RANGE (a, (b+1));
 
-CREATE TABLE part00 PARTITION OF range_parted3 FOR VALUES FROM (0, unbounded) TO (0, unbounded);
-CREATE TABLE fail_part PARTITION OF range_parted3 FOR VALUES FROM (0, unbounded) TO (0, 1);
+CREATE TABLE part00 PARTITION OF range_parted3 FOR VALUES FROM (0, minvalue) TO (0, maxvalue);
+CREATE TABLE fail_part PARTITION OF range_parted3 FOR VALUES FROM (0, minvalue) TO (0, 1);
 
-CREATE TABLE part10 PARTITION OF range_parted3 FOR VALUES FROM (1, unbounded) TO (1, 1);
+CREATE TABLE part10 PARTITION OF range_parted3 FOR VALUES FROM (1, minvalue) TO (1, 1);
 CREATE TABLE part11 PARTITION OF range_parted3 FOR VALUES FROM (1, 1) TO (1, 10);
-CREATE TABLE part12 PARTITION OF range_parted3 FOR VALUES FROM (1, 10) TO (1, unbounded);
+CREATE TABLE part12 PARTITION OF range_parted3 FOR VALUES FROM (1, 10) TO (1, maxvalue);
 CREATE TABLE fail_part PARTITION OF range_parted3 FOR VALUES FROM (1, 10) TO (1, 20);
 
 -- cannot create a partition that says column b is allowed to range
 -- from -infinity to +infinity, while there exist partitions that have
 -- more specific ranges
-CREATE TABLE fail_part PARTITION OF range_parted3 FOR VALUES FROM (1, unbounded) TO (1, unbounded);
+CREATE TABLE fail_part PARTITION OF range_parted3 FOR VALUES FROM (1, minvalue) TO (1, maxvalue);
 
 -- check schema propagation from parent
 
@@ -548,9 +576,20 @@ CREATE TABLE parted (
 CREATE TABLE part_a PARTITION OF parted FOR VALUES IN ('a');
 
 -- only inherited attributes (never local ones)
-SELECT attname, attislocal, attinhcount FROM pg_attribute WHERE attrelid = 'part_a'::regclass and attnum > 0;
+SELECT attname, attislocal, attinhcount FROM pg_attribute
+  WHERE attrelid = 'part_a'::regclass and attnum > 0
+  ORDER BY attnum;
 
 -- able to specify column default, column constraint, and table constraint
+
+-- first check the "column specified more than once" error
+CREATE TABLE part_b PARTITION OF parted (
+	b NOT NULL,
+	b DEFAULT 1,
+	b CHECK (b >= 0),
+	CONSTRAINT check_a CHECK (length(a) > 0)
+) FOR VALUES IN ('b');
+
 CREATE TABLE part_b PARTITION OF parted (
 	b NOT NULL DEFAULT 1 CHECK (b >= 0),
 	CONSTRAINT check_a CHECK (length(a) > 0)
@@ -560,16 +599,19 @@ SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::reg
 
 -- specify PARTITION BY for a partition
 CREATE TABLE fail_part_col_not_found PARTITION OF parted FOR VALUES IN ('c') PARTITION BY RANGE (c);
-CREATE TABLE part_c PARTITION OF parted FOR VALUES IN ('c') PARTITION BY RANGE ((b));
+CREATE TABLE part_c PARTITION OF parted (b WITH OPTIONS NOT NULL DEFAULT 0) FOR VALUES IN ('c') PARTITION BY RANGE ((b));
 
 -- create a level-2 partition
 CREATE TABLE part_c_1_10 PARTITION OF part_c FOR VALUES FROM (1) TO (10);
 
 -- Partition bound in describe output
-\d part_b
+\d+ part_b
 
 -- Both partition bound and partition key in describe output
-\d part_c
+\d+ part_c
+
+-- a level-2 partition's constraint will include the parent's expressions
+\d+ part_c_1_10
 
 -- Show partition count in the parent's describe output
 -- Tempted to include \d+ output listing partitions with bound info but
@@ -577,10 +619,26 @@ CREATE TABLE part_c_1_10 PARTITION OF part_c FOR VALUES FROM (1) TO (10);
 -- returned.
 \d parted
 
--- partitions cannot be dropped directly
-DROP TABLE part_a;
+-- check that we get the expected partition constraints
+CREATE TABLE range_parted4 (a int, b int, c int) PARTITION BY RANGE (abs(a), abs(b), c);
+CREATE TABLE unbounded_range_part PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, 0, 0) TO (MAXVALUE, 0, 0);
+\d+ unbounded_range_part
+DROP TABLE unbounded_range_part;
+CREATE TABLE range_parted4_1 PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, 0, 0) TO (1, MAXVALUE, 0);
+\d+ range_parted4_1
+CREATE TABLE range_parted4_2 PARTITION OF range_parted4 FOR VALUES FROM (3, 4, 5) TO (6, 7, MAXVALUE);
+\d+ range_parted4_2
+CREATE TABLE range_parted4_3 PARTITION OF range_parted4 FOR VALUES FROM (6, 8, MINVALUE) TO (9, MAXVALUE, 0);
+\d+ range_parted4_3
+DROP TABLE range_parted4;
 
--- need to specify CASCADE to drop partitions along with the parent
-DROP TABLE parted;
+-- cleanup
+DROP TABLE parted, list_parted, range_parted, list_parted2, range_parted2, range_parted3;
 
-DROP TABLE parted, list_parted, range_parted, list_parted2, range_parted2, range_parted3 CASCADE;
+-- comments on partitioned tables columns
+CREATE TABLE parted_col_comment (a int, b text) PARTITION BY LIST (a);
+COMMENT ON TABLE parted_col_comment IS 'Am partitioned table';
+COMMENT ON COLUMN parted_col_comment.a IS 'Partition key';
+SELECT obj_description('parted_col_comment'::regclass);
+\d+ parted_col_comment
+DROP TABLE parted_col_comment;

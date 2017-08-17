@@ -31,7 +31,7 @@ typedef struct PLySRFState
 {
 	PyObject   *iter;			/* Python iterator producing results */
 	PLySavedArgs *savedargs;	/* function argument values */
-	MemoryContextCallback callback;		/* for releasing refcounts when done */
+	MemoryContextCallback callback; /* for releasing refcounts when done */
 } PLySRFState;
 
 static PyObject *PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc);
@@ -345,6 +345,11 @@ PLy_exec_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
 
 	PG_TRY();
 	{
+		int			rc PG_USED_FOR_ASSERTS_ONLY;
+
+		rc = SPI_register_trigger_data(tdata);
+		Assert(rc >= 0);
+
 		plargs = PLy_trigger_build_args(fcinfo, proc, &rv);
 		plrv = PLy_procedure_call(proc, "TD", plargs);
 
@@ -371,7 +376,7 @@ PLy_exec_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-					errmsg("unexpected return value from trigger procedure"),
+						 errmsg("unexpected return value from trigger procedure"),
 						 errdetail("Expected None or a string.")));
 				srv = NULL;		/* keep compiler quiet */
 			}
@@ -397,7 +402,7 @@ PLy_exec_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				 */
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-					errmsg("unexpected return value from trigger procedure"),
+						 errmsg("unexpected return value from trigger procedure"),
 						 errdetail("Expected None, \"OK\", \"SKIP\", or \"MODIFY\".")));
 			}
 		}
@@ -482,7 +487,7 @@ PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments");
 
 			if (proc->argnames && proc->argnames[i] &&
-			PyDict_SetItemString(proc->globals, proc->argnames[i], arg) == -1)
+				PyDict_SetItemString(proc->globals, proc->argnames[i], arg) == -1)
 				PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments");
 			arg = NULL;
 		}
@@ -549,7 +554,7 @@ PLy_function_save_args(PLyProcedure *proc)
 			if (proc->argnames[i])
 			{
 				result->namedargs[i] = PyDict_GetItemString(proc->globals,
-														  proc->argnames[i]);
+															proc->argnames[i]);
 				Py_XINCREF(result->namedargs[i]);
 			}
 		}
@@ -742,7 +747,7 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 		Py_DECREF(pltname);
 
 		stroid = DatumGetCString(DirectFunctionCall1(oidout,
-							   ObjectIdGetDatum(tdata->tg_relation->rd_id)));
+													 ObjectIdGetDatum(tdata->tg_relation->rd_id)));
 		pltrelid = PyString_FromString(stroid);
 		PyDict_SetItemString(pltdata, "relid", pltrelid);
 		Py_DECREF(pltrelid);

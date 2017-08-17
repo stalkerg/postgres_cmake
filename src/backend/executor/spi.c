@@ -3,7 +3,7 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -43,7 +43,7 @@ int			SPI_result;
 
 static _SPI_connection *_SPI_stack = NULL;
 static _SPI_connection *_SPI_current = NULL;
-static int	_SPI_stack_depth = 0;		/* allocated size of _SPI_stack */
+static int	_SPI_stack_depth = 0;	/* allocated size of _SPI_stack */
 static int	_SPI_connected = -1;	/* current stack index */
 
 static Portal SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
@@ -119,9 +119,10 @@ SPI_connect(void)
 	_SPI_current->lastoid = InvalidOid;
 	_SPI_current->tuptable = NULL;
 	slist_init(&_SPI_current->tuptables);
-	_SPI_current->procCxt = NULL;		/* in case we fail to create 'em */
+	_SPI_current->procCxt = NULL;	/* in case we fail to create 'em */
 	_SPI_current->execCxt = NULL;
 	_SPI_current->connectSubid = GetCurrentSubTransactionId();
+	_SPI_current->queryEnv = NULL;
 
 	/*
 	 * Create memory contexts for this procedure
@@ -148,7 +149,7 @@ SPI_finish(void)
 {
 	int			res;
 
-	res = _SPI_begin_call(false);		/* live in procedure memory */
+	res = _SPI_begin_call(false);	/* live in procedure memory */
 	if (res < 0)
 		return res;
 
@@ -314,7 +315,7 @@ SPI_execute(const char *src, bool read_only, long tcount)
 
 	memset(&plan, 0, sizeof(_SPI_plan));
 	plan.magic = _SPI_PLAN_MAGIC;
-	plan.cursor_options = 0;
+	plan.cursor_options = CURSOR_OPT_PARALLEL_OK;
 
 	_SPI_prepare_oneshot_plan(src, &plan);
 
@@ -458,7 +459,7 @@ SPI_execute_with_args(const char *src,
 
 	memset(&plan, 0, sizeof(_SPI_plan));
 	plan.magic = _SPI_PLAN_MAGIC;
-	plan.cursor_options = 0;
+	plan.cursor_options = CURSOR_OPT_PARALLEL_OK;
 	plan.nargs = nargs;
 	plan.argtypes = argtypes;
 	plan.parserSetup = NULL;
@@ -593,7 +594,7 @@ SPI_saveplan(SPIPlanPtr plan)
 		return NULL;
 	}
 
-	SPI_result = _SPI_begin_call(false);		/* don't change context */
+	SPI_result = _SPI_begin_call(false);	/* don't change context */
 	if (SPI_result < 0)
 		return NULL;
 
@@ -1193,11 +1194,8 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	 */
 
 	/* Replan if needed, and increment plan refcount for portal */
-	cplan = GetCachedPlan(plansource, paramLI, false);
+	cplan = GetCachedPlan(plansource, paramLI, false, _SPI_current->queryEnv);
 	stmt_list = cplan->stmt_list;
-
-	/* Pop the error context stack */
-	error_context_stack = spierrcontext.previous;
 
 	if (!plan->saved)
 	{
@@ -1232,9 +1230,9 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	if (!(portal->cursorOptions & (CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL)))
 	{
 		if (list_length(stmt_list) == 1 &&
-			IsA((Node *) linitial(stmt_list), PlannedStmt) &&
-			((PlannedStmt *) linitial(stmt_list))->rowMarks == NIL &&
-			ExecSupportsBackwardScan(((PlannedStmt *) linitial(stmt_list))->planTree))
+			linitial_node(PlannedStmt, stmt_list)->commandType != CMD_UTILITY &&
+			linitial_node(PlannedStmt, stmt_list)->rowMarks == NIL &&
+			ExecSupportsBackwardScan(linitial_node(PlannedStmt, stmt_list)->planTree))
 			portal->cursorOptions |= CURSOR_OPT_SCROLL;
 		else
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
@@ -1248,13 +1246,16 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	if (portal->cursorOptions & CURSOR_OPT_SCROLL)
 	{
 		if (list_length(stmt_list) == 1 &&
-			IsA((Node *) linitial(stmt_list), PlannedStmt) &&
-			((PlannedStmt *) linitial(stmt_list))->rowMarks != NIL)
+			linitial_node(PlannedStmt, stmt_list)->commandType != CMD_UTILITY &&
+			linitial_node(PlannedStmt, stmt_list)->rowMarks != NIL)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("DECLARE SCROLL CURSOR ... FOR UPDATE/SHARE is not supported"),
 					 errdetail("Scrollable cursors must be READ ONLY.")));
 	}
+
+	/* Make current query environment available to portal at execution time. */
+	portal->queryEnv = _SPI_current->queryEnv;
 
 	/*
 	 * If told to be read-only, or in parallel mode, verify that this query is
@@ -1270,7 +1271,7 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 
 		foreach(lc, stmt_list)
 		{
-			Node	   *pstmt = (Node *) lfirst(lc);
+			PlannedStmt *pstmt = lfirst_node(PlannedStmt, lc);
 
 			if (!CommandIsReadOnly(pstmt))
 			{
@@ -1278,10 +1279,10 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is a SQL statement name */
-					   errmsg("%s is not allowed in a non-volatile function",
-							  CreateCommandTag(pstmt))));
+							 errmsg("%s is not allowed in a non-volatile function",
+									CreateCommandTag((Node *) pstmt))));
 				else
-					PreventCommandIfParallelMode(CreateCommandTag(pstmt));
+					PreventCommandIfParallelMode(CreateCommandTag((Node *) pstmt));
 			}
 		}
 	}
@@ -1313,6 +1314,9 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	PortalStart(portal, paramLI, 0, snapshot);
 
 	Assert(portal->strategy != PORTAL_MULTI_QUERY);
+
+	/* Pop the error context stack */
+	error_context_stack = spierrcontext.previous;
 
 	/* Pop the SPI stack */
 	_SPI_end_call(true);
@@ -1532,6 +1536,10 @@ SPI_result_code_string(int code)
 			return "SPI_ERROR_NOOUTFUNC";
 		case SPI_ERROR_TYPUNKNOWN:
 			return "SPI_ERROR_TYPUNKNOWN";
+		case SPI_ERROR_REL_DUPLICATE:
+			return "SPI_ERROR_REL_DUPLICATE";
+		case SPI_ERROR_REL_NOT_FOUND:
+			return "SPI_ERROR_REL_NOT_FOUND";
 		case SPI_OK_CONNECT:
 			return "SPI_OK_CONNECT";
 		case SPI_OK_FINISH:
@@ -1560,6 +1568,10 @@ SPI_result_code_string(int code)
 			return "SPI_OK_UPDATE_RETURNING";
 		case SPI_OK_REWRITTEN:
 			return "SPI_OK_REWRITTEN";
+		case SPI_OK_REL_REGISTER:
+			return "SPI_OK_REL_REGISTER";
+		case SPI_OK_REL_UNREGISTER:
+			return "SPI_OK_REL_UNREGISTER";
 	}
 	/* Unrecognized code ... return something useful ... */
 	sprintf(buf, "Unrecognized SPI code %d", code);
@@ -1570,7 +1582,7 @@ SPI_result_code_string(int code)
  * SPI_plan_get_plan_sources --- get a SPI plan's underlying list of
  * CachedPlanSources.
  *
- * This is exported so that pl/pgsql can use it (this beats letting pl/pgsql
+ * This is exported so that PL/pgSQL can use it (this beats letting PL/pgSQL
  * look directly into the SPIPlan for itself).  It's not documented in
  * spi.sgml because we'd just as soon not have too many places using this.
  */
@@ -1586,7 +1598,7 @@ SPI_plan_get_plan_sources(SPIPlanPtr plan)
  * if the SPI plan contains exactly one CachedPlanSource.  If not,
  * return NULL.  Caller is responsible for doing ReleaseCachedPlan().
  *
- * This is exported so that pl/pgsql can use it (this beats letting pl/pgsql
+ * This is exported so that PL/pgSQL can use it (this beats letting PL/pgSQL
  * look directly into the SPIPlan for itself).  It's not documented in
  * spi.sgml because we'd just as soon not have too many places using this.
  */
@@ -1615,7 +1627,8 @@ SPI_plan_get_cached_plan(SPIPlanPtr plan)
 	error_context_stack = &spierrcontext;
 
 	/* Get the generic plan for the query */
-	cplan = GetCachedPlan(plansource, NULL, plan->saved);
+	cplan = GetCachedPlan(plansource, NULL, plan->saved,
+						  _SPI_current->queryEnv);
 	Assert(cplan == plansource->gplan);
 
 	/* Pop the error context stack */
@@ -1700,7 +1713,7 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
 		tuptable->free = tuptable->alloced;
 		tuptable->alloced += tuptable->free;
 		tuptable->vals = (HeapTuple *) repalloc_huge(tuptable->vals,
-									  tuptable->alloced * sizeof(HeapTuple));
+													 tuptable->alloced * sizeof(HeapTuple));
 	}
 
 	tuptable->vals[tuptable->alloced - tuptable->free] =
@@ -1757,7 +1770,7 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 
 	foreach(list_item, raw_parsetree_list)
 	{
-		Node	   *parsetree = (Node *) lfirst(list_item);
+		RawStmt    *parsetree = lfirst_node(RawStmt, list_item);
 		List	   *stmt_list;
 		CachedPlanSource *plansource;
 
@@ -1767,7 +1780,7 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 		 */
 		plansource = CreateCachedPlan(parsetree,
 									  src,
-									  CreateCommandTag(parsetree));
+									  CreateCommandTag(parsetree->stmt));
 
 		/*
 		 * Parameter datatypes are driven by parserSetup hook if provided,
@@ -1779,14 +1792,16 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 			stmt_list = pg_analyze_and_rewrite_params(parsetree,
 													  src,
 													  plan->parserSetup,
-													  plan->parserSetupArg);
+													  plan->parserSetupArg,
+													  _SPI_current->queryEnv);
 		}
 		else
 		{
 			stmt_list = pg_analyze_and_rewrite(parsetree,
 											   src,
 											   plan->argtypes,
-											   plan->nargs);
+											   plan->nargs,
+											   _SPI_current->queryEnv);
 		}
 
 		/* Finish filling in the CachedPlanSource */
@@ -1798,7 +1813,7 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 						   plan->parserSetup,
 						   plan->parserSetupArg,
 						   plan->cursor_options,
-						   false);		/* not fixed result */
+						   false);	/* not fixed result */
 
 		plancache_list = lappend(plancache_list, plansource);
 	}
@@ -1859,12 +1874,12 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 
 	foreach(list_item, raw_parsetree_list)
 	{
-		Node	   *parsetree = (Node *) lfirst(list_item);
+		RawStmt    *parsetree = lfirst_node(RawStmt, list_item);
 		CachedPlanSource *plansource;
 
 		plansource = CreateOneShotCachedPlan(parsetree,
 											 src,
-											 CreateCommandTag(parsetree));
+											 CreateCommandTag(parsetree->stmt));
 
 		plancache_list = lappend(plancache_list, plansource);
 	}
@@ -1959,7 +1974,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 		 */
 		if (plan->oneshot)
 		{
-			Node	   *parsetree = plansource->raw_parse_tree;
+			RawStmt    *parsetree = plansource->raw_parse_tree;
 			const char *src = plansource->query_string;
 			List	   *stmt_list;
 
@@ -1975,14 +1990,16 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				stmt_list = pg_analyze_and_rewrite_params(parsetree,
 														  src,
 														  plan->parserSetup,
-													   plan->parserSetupArg);
+														  plan->parserSetupArg,
+														  _SPI_current->queryEnv);
 			}
 			else
 			{
 				stmt_list = pg_analyze_and_rewrite(parsetree,
 												   src,
 												   plan->argtypes,
-												   plan->nargs);
+												   plan->nargs,
+												   _SPI_current->queryEnv);
 			}
 
 			/* Finish filling in the CachedPlanSource */
@@ -2001,7 +2018,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 		 * Replan if needed, and increment plan refcount.  If it's a saved
 		 * plan, the refcount must be backed by the CurrentResourceOwner.
 		 */
-		cplan = GetCachedPlan(plansource, paramLI, plan->saved);
+		cplan = GetCachedPlan(plansource, paramLI, plan->saved, _SPI_current->queryEnv);
 		stmt_list = cplan->stmt_list;
 
 		/*
@@ -2018,26 +2035,19 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 
 		foreach(lc2, stmt_list)
 		{
-			Node	   *stmt = (Node *) lfirst(lc2);
-			bool		canSetTag;
+			PlannedStmt *stmt = lfirst_node(PlannedStmt, lc2);
+			bool		canSetTag = stmt->canSetTag;
 			DestReceiver *dest;
 
 			_SPI_current->processed = 0;
 			_SPI_current->lastoid = InvalidOid;
 			_SPI_current->tuptable = NULL;
 
-			if (IsA(stmt, PlannedStmt))
+			if (stmt->utilityStmt)
 			{
-				canSetTag = ((PlannedStmt *) stmt)->canSetTag;
-			}
-			else
-			{
-				/* utilities are canSetTag if only thing in list */
-				canSetTag = (list_length(stmt_list) == 1);
-
-				if (IsA(stmt, CopyStmt))
+				if (IsA(stmt->utilityStmt, CopyStmt))
 				{
-					CopyStmt   *cstmt = (CopyStmt *) stmt;
+					CopyStmt   *cstmt = (CopyStmt *) stmt->utilityStmt;
 
 					if (cstmt->filename == NULL)
 					{
@@ -2045,7 +2055,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 						goto fail;
 					}
 				}
-				else if (IsA(stmt, TransactionStmt))
+				else if (IsA(stmt->utilityStmt, TransactionStmt))
 				{
 					my_res = SPI_ERROR_TRANSACTION;
 					goto fail;
@@ -2056,11 +2066,11 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				/* translator: %s is a SQL statement name */
-					   errmsg("%s is not allowed in a non-volatile function",
-							  CreateCommandTag(stmt))));
+						 errmsg("%s is not allowed in a non-volatile function",
+								CreateCommandTag((Node *) stmt))));
 
 			if (IsInParallelMode() && !CommandIsReadOnly(stmt))
-				PreventCommandIfParallelMode(CreateCommandTag(stmt));
+				PreventCommandIfParallelMode(CreateCommandTag((Node *) stmt));
 
 			/*
 			 * If not read-only mode, advance the command counter before each
@@ -2074,8 +2084,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 
 			dest = CreateDestReceiver(canSetTag ? DestSPI : DestNone);
 
-			if (IsA(stmt, PlannedStmt) &&
-				((PlannedStmt *) stmt)->utilityStmt == NULL)
+			if (stmt->utilityStmt == NULL)
 			{
 				QueryDesc  *qdesc;
 				Snapshot	snap;
@@ -2085,11 +2094,12 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				else
 					snap = InvalidSnapshot;
 
-				qdesc = CreateQueryDesc((PlannedStmt *) stmt,
+				qdesc = CreateQueryDesc(stmt,
 										plansource->query_string,
 										snap, crosscheck_snapshot,
 										dest,
-										paramLI, 0);
+										paramLI, _SPI_current->queryEnv,
+										0);
 				res = _SPI_pquery(qdesc, fire_triggers,
 								  canSetTag ? tcount : 0);
 				FreeQueryDesc(qdesc);
@@ -2102,6 +2112,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 							   plansource->query_string,
 							   PROCESS_UTILITY_QUERY,
 							   paramLI,
+							   _SPI_current->queryEnv,
 							   dest,
 							   completionTag);
 
@@ -2116,9 +2127,9 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				 * Some utility statements return a row count, even though the
 				 * tuples are not returned to the caller.
 				 */
-				if (IsA(stmt, CreateTableAsStmt))
+				if (IsA(stmt->utilityStmt, CreateTableAsStmt))
 				{
-					CreateTableAsStmt *ctastmt = (CreateTableAsStmt *) stmt;
+					CreateTableAsStmt *ctastmt = (CreateTableAsStmt *) stmt->utilityStmt;
 
 					if (strncmp(completionTag, "SELECT ", 7) == 0)
 						_SPI_current->processed =
@@ -2141,7 +2152,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 					if (ctastmt->is_select_into)
 						res = SPI_OK_SELINTO;
 				}
-				else if (IsA(stmt, CopyStmt))
+				else if (IsA(stmt->utilityStmt, CopyStmt))
 				{
 					Assert(strncmp(completionTag, "COPY ", 5) == 0);
 					_SPI_current->processed = pg_strtouint64(completionTag + 5,
@@ -2270,7 +2281,6 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 	switch (operation)
 	{
 		case CMD_SELECT:
-			Assert(queryDesc->plannedstmt->utilityStmt == NULL);
 			if (queryDesc->dest->mydest != DestSPI)
 			{
 				/* Don't return SPI_OK_SELECT if we're discarding result */
@@ -2314,7 +2324,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 
 	ExecutorStart(queryDesc, eflags);
 
-	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
+	ExecutorRun(queryDesc, ForwardScanDirection, tcount, true);
 
 	_SPI_current->processed = queryDesc->estate->es_processed;
 	_SPI_current->lastoid = queryDesc->estate->es_lastoid;
@@ -2627,4 +2637,134 @@ _SPI_save_plan(SPIPlanPtr plan)
 	}
 
 	return newplan;
+}
+
+/*
+ * Internal lookup of ephemeral named relation by name.
+ */
+static EphemeralNamedRelation
+_SPI_find_ENR_by_name(const char *name)
+{
+	/* internal static function; any error is bug in SPI itself */
+	Assert(name != NULL);
+
+	/* fast exit if no tuplestores have been added */
+	if (_SPI_current->queryEnv == NULL)
+		return NULL;
+
+	return get_ENR(_SPI_current->queryEnv, name);
+}
+
+/*
+ * Register an ephemeral named relation for use by the planner and executor on
+ * subsequent calls using this SPI connection.
+ */
+int
+SPI_register_relation(EphemeralNamedRelation enr)
+{
+	EphemeralNamedRelation match;
+	int			res;
+
+	if (enr == NULL || enr->md.name == NULL)
+		return SPI_ERROR_ARGUMENT;
+
+	res = _SPI_begin_call(false);	/* keep current memory context */
+	if (res < 0)
+		return res;
+
+	match = _SPI_find_ENR_by_name(enr->md.name);
+	if (match)
+		res = SPI_ERROR_REL_DUPLICATE;
+	else
+	{
+		if (_SPI_current->queryEnv == NULL)
+			_SPI_current->queryEnv = create_queryEnv();
+
+		register_ENR(_SPI_current->queryEnv, enr);
+		res = SPI_OK_REL_REGISTER;
+	}
+
+	_SPI_end_call(false);
+
+	return res;
+}
+
+/*
+ * Unregister an ephemeral named relation by name.  This will probably be a
+ * rarely used function, since SPI_finish will clear it automatically.
+ */
+int
+SPI_unregister_relation(const char *name)
+{
+	EphemeralNamedRelation match;
+	int			res;
+
+	if (name == NULL)
+		return SPI_ERROR_ARGUMENT;
+
+	res = _SPI_begin_call(false);	/* keep current memory context */
+	if (res < 0)
+		return res;
+
+	match = _SPI_find_ENR_by_name(name);
+	if (match)
+	{
+		unregister_ENR(_SPI_current->queryEnv, match->md.name);
+		res = SPI_OK_REL_UNREGISTER;
+	}
+	else
+		res = SPI_ERROR_REL_NOT_FOUND;
+
+	_SPI_end_call(false);
+
+	return res;
+}
+
+/*
+ * Register the transient relations from 'tdata' using this SPI connection.
+ * This should be called by PL implementations' trigger handlers after
+ * connecting, in order to make transition tables visible to any queries run
+ * in this connection.
+ */
+int
+SPI_register_trigger_data(TriggerData *tdata)
+{
+	if (tdata == NULL)
+		return SPI_ERROR_ARGUMENT;
+
+	if (tdata->tg_newtable)
+	{
+		EphemeralNamedRelation enr =
+		palloc(sizeof(EphemeralNamedRelationData));
+		int			rc;
+
+		enr->md.name = tdata->tg_trigger->tgnewtable;
+		enr->md.reliddesc = tdata->tg_relation->rd_id;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = tuplestore_tuple_count(tdata->tg_newtable);
+		enr->reldata = tdata->tg_newtable;
+		rc = SPI_register_relation(enr);
+		if (rc != SPI_OK_REL_REGISTER)
+			return rc;
+	}
+
+	if (tdata->tg_oldtable)
+	{
+		EphemeralNamedRelation enr =
+		palloc(sizeof(EphemeralNamedRelationData));
+		int			rc;
+
+		enr->md.name = tdata->tg_trigger->tgoldtable;
+		enr->md.reliddesc = tdata->tg_relation->rd_id;
+		enr->md.tupdesc = NULL;
+		enr->md.enrtype = ENR_NAMED_TUPLESTORE;
+		enr->md.enrtuples = tuplestore_tuple_count(tdata->tg_oldtable);
+		enr->reldata = tdata->tg_oldtable;
+		rc = SPI_register_relation(enr);
+		if (rc != SPI_OK_REL_REGISTER)
+			return rc;
+	}
+
+	return SPI_OK_TD_REGISTER;
 }

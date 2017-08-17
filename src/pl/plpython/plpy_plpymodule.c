@@ -140,7 +140,7 @@ PyInit_plpy(void)
 
 	return m;
 }
-#endif   /* PY_MAJOR_VERSION >= 3 */
+#endif							/* PY_MAJOR_VERSION >= 3 */
 
 void
 PLy_init_plpy(void)
@@ -463,10 +463,10 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 
 			if (strcmp(keyword, "message") == 0)
 			{
-				/* the message should not be overwriten */
+				/* the message should not be overwritten */
 				if (PyTuple_Size(args) != 0)
 				{
-					PLy_exception_set(PyExc_TypeError, "Argument 'message' given by name and position");
+					PLy_exception_set(PyExc_TypeError, "argument 'message' given by name and position");
 					return NULL;
 				}
 
@@ -493,7 +493,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 			else
 			{
 				PLy_exception_set(PyExc_TypeError,
-					 "'%s' is an invalid keyword argument for this function",
+								  "'%s' is an invalid keyword argument for this function",
 								  keyword);
 				return NULL;
 			}
@@ -549,7 +549,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 				 (column_name != NULL) ?
 				 err_generic_string(PG_DIAG_COLUMN_NAME, column_name) : 0,
 				 (constraint_name != NULL) ?
-			err_generic_string(PG_DIAG_CONSTRAINT_NAME, constraint_name) : 0,
+				 err_generic_string(PG_DIAG_CONSTRAINT_NAME, constraint_name) : 0,
 				 (datatype_name != NULL) ?
 				 err_generic_string(PG_DIAG_DATATYPE_NAME, datatype_name) : 0,
 				 (table_name != NULL) ?

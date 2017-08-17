@@ -521,15 +521,9 @@ PLy_input_datum_func2(PLyDatumToOb *arg, MemoryContext arg_mcxt, Oid typeOid, He
 static PyObject *
 PLyBool_FromBool(PLyDatumToOb *arg, Datum d)
 {
-	/*
-	 * We would like to use Py_RETURN_TRUE and Py_RETURN_FALSE here for
-	 * generating SQL from trigger functions, but those are only supported in
-	 * Python >= 2.4, and we support older versions.
-	 * http://docs.python.org/api/boolObjects.html
-	 */
 	if (DatumGetBool(d))
-		return PyBool_FromLong(1);
-	return PyBool_FromLong(0);
+		Py_RETURN_TRUE;
+	Py_RETURN_FALSE;
 }
 
 static PyObject *
@@ -609,9 +603,9 @@ PLyLong_FromOid(PLyDatumToOb *arg, Datum d)
 static PyObject *
 PLyBytes_FromBytea(PLyDatumToOb *arg, Datum d)
 {
-	text	   *txt = DatumGetByteaP(d);
-	char	   *str = VARDATA(txt);
-	size_t		size = VARSIZE(txt) - VARHDRSZ;
+	text	   *txt = DatumGetByteaPP(d);
+	char	   *str = VARDATA_ANY(txt);
+	size_t		size = VARSIZE_ANY_EXHDR(txt);
 
 	return PyBytes_FromStringAndSize(str, size);
 }
@@ -653,9 +647,10 @@ PLyList_FromArray(PLyDatumToOb *arg, Datum d)
 
 	/*
 	 * We iterate the SQL array in the physical order it's stored in the
-	 * datum. For example, for a 3-dimensional array the order of iteration would
-	 * be the following: [0,0,0] elements through [0,0,k], then [0,1,0] through
-	 * [0,1,k] till [0,m,k], then [1,0,0] through [1,0,k] till [1,m,k], and so on.
+	 * datum. For example, for a 3-dimensional array the order of iteration
+	 * would be the following: [0,0,0] elements through [0,0,k], then [0,1,0]
+	 * through [0,1,k] till [0,m,k], then [1,0,0] through [1,0,k] till
+	 * [1,m,k], and so on.
 	 *
 	 * In Python, there are no multi-dimensional lists as such, but they are
 	 * represented as a list of lists. So a 3-d array of [n,m,k] elements is a
@@ -688,7 +683,7 @@ PLyList_FromArray_recurse(PLyDatumToOb *elm, int *dims, int ndim, int dim,
 			PyObject   *sublist;
 
 			sublist = PLyList_FromArray_recurse(elm, dims, ndim, dim + 1,
-											 dataptr_p, bitmap_p, bitmask_p);
+												dataptr_p, bitmap_p, bitmask_p);
 			PyList_SET_ITEM(list, i, sublist);
 		}
 	}
@@ -833,7 +828,7 @@ PLyObject_ToComposite(PLyObToDatum *arg, int32 typmod, PyObject *plrv, bool inar
 
 	/*
 	 * This will set up the dummy PLyTypeInfo's output conversion routines,
-	 * since we left is_rowtype as 2. A future optimisation could be caching
+	 * since we left is_rowtype as 2. A future optimization could be caching
 	 * that info instead of looking it up every time a tuple is returned from
 	 * the function.
 	 */
@@ -933,11 +928,11 @@ PLyObject_ToDatum(PLyObToDatum *arg, int32 typmod, PyObject *plrv, bool inarray)
 	 * literal.
 	 *
 	 * To make that less confusing to users who are upgrading from older
-	 * versions, try to give a hint in the typical instances of that. If we are
-	 * parsing an array of composite types, and we see a string literal that
-	 * is not a valid record literal, give a hint. We only want to give the
-	 * hint in the narrow case of a malformed string literal, not any error
-	 * from record_in(), so check for that case here specifically.
+	 * versions, try to give a hint in the typical instances of that. If we
+	 * are parsing an array of composite types, and we see a string literal
+	 * that is not a valid record literal, give a hint. We only want to give
+	 * the hint in the narrow case of a malformed string literal, not any
+	 * error from record_in(), so check for that case here specifically.
 	 *
 	 * This check better match the one in record_in(), so that we don't forbid
 	 * literals that are actually valid!
@@ -954,7 +949,7 @@ PLyObject_ToDatum(PLyObToDatum *arg, int32 typmod, PyObject *plrv, bool inarray)
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("malformed record literal: \"%s\"", str),
 					 errdetail("Missing left parenthesis."),
-					 errhint("To return a composite type in an array, return the composite type as a Python tuple, e.g. \"[('foo')]\"")));
+					 errhint("To return a composite type in an array, return the composite type as a Python tuple, e.g., \"[('foo',)]\".")));
 	}
 
 	return InputFunctionCall(&arg->typfunc,
@@ -1007,7 +1002,7 @@ PLySequence_ToArray(PLyObToDatum *arg, int32 typmod, PyObject *plrv, bool inarra
 
 		dims[ndim] = PySequence_Length(pyptr);
 		if (dims[ndim] < 0)
-			PLy_elog(ERROR, "cannot determine sequence length for function return value");
+			PLy_elog(ERROR, "could not determine sequence length for function return value");
 
 		if (dims[ndim] > MaxAllocSize)
 			PLy_elog(ERROR, "array size exceeds the maximum allowed");
@@ -1092,10 +1087,10 @@ PLySequence_ToArray_recurse(PLyObToDatum *elm, PyObject *list,
 	int			i;
 
 	if (PySequence_Length(list) != dims[dim])
-		PLy_elog(ERROR,
-				 "multidimensional arrays must have array expressions with matching dimensions. "
-				 "PL/Python function return value has sequence length %d while expected %d",
-				 (int) PySequence_Length(list), dims[dim]);
+		ereport(ERROR,
+				(errmsg("wrong length of inner sequence: has length %d, but %d was expected",
+						(int) PySequence_Length(list), dims[dim]),
+				 (errdetail("To construct a multidimensional array, the inner sequences must all have the same length."))));
 
 	if (dim < ndim - 1)
 	{
@@ -1392,7 +1387,7 @@ PLyGenericObject_ToComposite(PLyTypeInfo *info, TupleDesc desc, PyObject *object
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("attribute \"%s\" does not exist in Python object", key),
 						 inarray ?
-						 errhint("To return a composite type in an array, return the composite type as a Python tuple, e.g. \"[('foo')]\"") :
+						 errhint("To return a composite type in an array, return the composite type as a Python tuple, e.g., \"[('foo',)]\".") :
 						 errhint("To return null in a column, let the returned object have an attribute named after column with value None.")));
 			}
 

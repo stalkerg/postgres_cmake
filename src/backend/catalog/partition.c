@@ -3,7 +3,7 @@
  * partition.c
  *		  Partitioning related data structures and functions.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -53,11 +53,12 @@
  * Information about bounds of a partitioned relation
  *
  * A list partition datum that is known to be NULL is never put into the
- * datums array. Instead, it is tracked using has_null and null_index fields.
+ * datums array. Instead, it is tracked using the null_index field.
  *
  * In the case of range partitioning, ndatums will typically be far less than
  * 2 * nparts, because a partition's upper bound and the next partition's lower
- * bound are the same in most common cases, and we only store one of them.
+ * bound are the same in most common cases, and we only store one of them (the
+ * upper bound).
  *
  * In the case of list partitioning, the indexes array stores one entry for
  * every datum, which is the index of the partition that accepts a given datum.
@@ -66,31 +67,22 @@
  * is an upper bound.
  */
 
-/* Ternary value to represent what's contained in a range bound datum */
-typedef enum RangeDatumContent
-{
-	RANGE_DATUM_FINITE = 0,		/* actual datum stored elsewhere */
-	RANGE_DATUM_NEG_INF,		/* negative infinity */
-	RANGE_DATUM_POS_INF			/* positive infinity */
-} RangeDatumContent;
-
 typedef struct PartitionBoundInfoData
 {
 	char		strategy;		/* list or range bounds? */
 	int			ndatums;		/* Length of the datums following array */
 	Datum	  **datums;			/* Array of datum-tuples with key->partnatts
 								 * datums each */
-	RangeDatumContent **content;/* what's contained in each range bound datum?
-								 * (see the above enum); NULL for list
-								 * partitioned tables */
+	PartitionRangeDatumKind **kind; /* The kind of each range bound datum;
+									 * NULL for list partitioned tables */
 	int		   *indexes;		/* Partition indexes; one entry per member of
 								 * the datums array (plus one if range
 								 * partitioned table) */
-	bool		has_null;		/* Is there a null-accepting partition? false
-								 * for range partitioned tables */
 	int			null_index;		/* Index of the null-accepting partition; -1
-								 * for range partitioned tables */
+								 * if there isn't one */
 } PartitionBoundInfoData;
+
+#define partition_bound_accepts_nulls(bi) ((bi)->null_index != -1)
 
 /*
  * When qsort'ing partition bounds after reading from the catalog, each bound
@@ -109,7 +101,7 @@ typedef struct PartitionRangeBound
 {
 	int			index;
 	Datum	   *datums;			/* range bound datums */
-	RangeDatumContent *content; /* what's contained in each datum? */
+	PartitionRangeDatumKind *kind;	/* the kind of each datum */
 	bool		lower;			/* this is the lower (vs upper) bound */
 } PartitionRangeBound;
 
@@ -118,19 +110,27 @@ static int32 qsort_partition_list_value_cmp(const void *a, const void *b,
 static int32 qsort_partition_rbound_cmp(const void *a, const void *b,
 						   void *arg);
 
-static List *get_qual_for_list(PartitionKey key, PartitionBoundSpec *spec);
-static List *get_qual_for_range(PartitionKey key, PartitionBoundSpec *spec);
 static Oid get_partition_operator(PartitionKey key, int col,
 					   StrategyNumber strategy, bool *need_relabel);
-static List *generate_partition_qual(Relation rel, bool recurse);
+static Expr *make_partition_op_expr(PartitionKey key, int keynum,
+					   uint16 strategy, Expr *arg1, Expr *arg2);
+static void get_range_key_properties(PartitionKey key, int keynum,
+						 PartitionRangeDatum *ldatum,
+						 PartitionRangeDatum *udatum,
+						 ListCell **partexprs_item,
+						 Expr **keyCol,
+						 Const **lower_val, Const **upper_val);
+static List *get_qual_for_list(PartitionKey key, PartitionBoundSpec *spec);
+static List *get_qual_for_range(PartitionKey key, PartitionBoundSpec *spec);
+static List *generate_partition_qual(Relation rel);
 
 static PartitionRangeBound *make_one_range_bound(PartitionKey key, int index,
 					 List *datums, bool lower);
 static int32 partition_rbound_cmp(PartitionKey key,
-					 Datum *datums1, RangeDatumContent *content1, bool lower1,
-					 PartitionRangeBound *b2);
+					 Datum *datums1, PartitionRangeDatumKind *kind1,
+					 bool lower1, PartitionRangeBound *b2);
 static int32 partition_rbound_datum_cmp(PartitionKey key,
-						   Datum *rb_datums, RangeDatumContent *rb_content,
+						   Datum *rb_datums, PartitionRangeDatumKind *rb_kind,
 						   Datum *tuple_datums);
 
 static int32 partition_bound_cmp(PartitionKey key,
@@ -139,13 +139,6 @@ static int32 partition_bound_cmp(PartitionKey key,
 static int partition_bound_bsearch(PartitionKey key,
 						PartitionBoundInfo boundinfo,
 						void *probe, bool probe_is_bound, bool *is_equal);
-
-/* Support get_partition_for_tuple() */
-static void FormPartitionKeyDatum(PartitionDispatch pd,
-					  TupleTableSlot *slot,
-					  EState *estate,
-					  Datum *values,
-					  bool *isnull);
 
 /*
  * RelationBuildPartitionDesc
@@ -172,7 +165,6 @@ RelationBuildPartitionDesc(Relation rel)
 
 	/* List partitioning specific */
 	PartitionListValue **all_values = NULL;
-	bool		found_null = false;
 	int			null_index = -1;
 
 	/* Range partitioning specific */
@@ -200,6 +192,8 @@ RelationBuildPartitionDesc(Relation rel)
 		Node	   *boundspec;
 
 		tuple = SearchSysCache1(RELOID, inhrelid);
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u", inhrelid);
 
 		/*
 		 * It is possible that the pg_class tuple of a partition has not been
@@ -242,19 +236,19 @@ RelationBuildPartitionDesc(Relation rel)
 			 * Create a unified list of non-null values across all partitions.
 			 */
 			i = 0;
-			found_null = false;
 			null_index = -1;
 			foreach(cell, boundspecs)
 			{
+				PartitionBoundSpec *spec = castNode(PartitionBoundSpec,
+													lfirst(cell));
 				ListCell   *c;
-				PartitionBoundSpec *spec = lfirst(cell);
 
 				if (spec->strategy != PARTITION_STRATEGY_LIST)
 					elog(ERROR, "invalid strategy in partition bound spec");
 
 				foreach(c, spec->listdatums)
 				{
-					Const	   *val = lfirst(c);
+					Const	   *val = castNode(Const, lfirst(c));
 					PartitionListValue *list_value = NULL;
 
 					if (!val->constisnull)
@@ -271,9 +265,8 @@ RelationBuildPartitionDesc(Relation rel)
 						 * instead for the code further down below where we
 						 * construct the actual relcache struct.
 						 */
-						if (found_null)
+						if (null_index != -1)
 							elog(ERROR, "found null more than once");
-						found_null = true;
 						null_index = i;
 					}
 
@@ -292,7 +285,7 @@ RelationBuildPartitionDesc(Relation rel)
 			 * also save the index of partition the value comes from.
 			 */
 			all_values = (PartitionListValue **) palloc(ndatums *
-											   sizeof(PartitionListValue *));
+														sizeof(PartitionListValue *));
 			i = 0;
 			foreach(cell, non_null_values)
 			{
@@ -317,7 +310,7 @@ RelationBuildPartitionDesc(Relation rel)
 			bool	   *distinct_indexes;
 
 			all_bounds = (PartitionRangeBound **) palloc0(2 * nparts *
-											  sizeof(PartitionRangeBound *));
+														  sizeof(PartitionRangeBound *));
 			distinct_indexes = (bool *) palloc(2 * nparts * sizeof(bool));
 
 			/*
@@ -327,7 +320,8 @@ RelationBuildPartitionDesc(Relation rel)
 			i = j = 0;
 			foreach(cell, boundspecs)
 			{
-				PartitionBoundSpec *spec = lfirst(cell);
+				PartitionBoundSpec *spec = castNode(PartitionBoundSpec,
+													lfirst(cell));
 				PartitionRangeBound *lower,
 						   *upper;
 
@@ -363,29 +357,25 @@ RelationBuildPartitionDesc(Relation rel)
 				bool		is_distinct = false;
 				int			j;
 
-				/* Is current bound is distinct from the previous? */
+				/* Is the current bound distinct from the previous one? */
 				for (j = 0; j < key->partnatts; j++)
 				{
 					Datum		cmpval;
 
-					if (prev == NULL)
+					if (prev == NULL || cur->kind[j] != prev->kind[j])
 					{
 						is_distinct = true;
 						break;
 					}
 
 					/*
-					 * If either of them has infinite element, we can't equate
-					 * them.  Even when both are infinite, they'd have
-					 * opposite signs, because only one of cur and prev is a
-					 * lower bound).
+					 * If the bounds are both MINVALUE or MAXVALUE, stop now
+					 * and treat them as equal, since any values after this
+					 * point must be ignored.
 					 */
-					if (cur->content[j] != RANGE_DATUM_FINITE ||
-						prev->content[j] != RANGE_DATUM_FINITE)
-					{
-						is_distinct = true;
+					if (cur->kind[j] != PARTITION_RANGE_DATUM_VALUE)
 						break;
-					}
+
 					cmpval = FunctionCall2Coll(&key->partsupfunc[j],
 											   key->partcollation[j],
 											   cur->datums[j],
@@ -418,7 +408,7 @@ RelationBuildPartitionDesc(Relation rel)
 			 * into the relcache.
 			 */
 			rbounds = (PartitionRangeBound **) palloc(ndatums *
-											  sizeof(PartitionRangeBound *));
+													  sizeof(PartitionRangeBound *));
 			k = 0;
 			for (i = 0; i < 2 * nparts; i++)
 			{
@@ -452,6 +442,7 @@ RelationBuildPartitionDesc(Relation rel)
 			palloc0(sizeof(PartitionBoundInfoData));
 		boundinfo->strategy = key->strategy;
 		boundinfo->ndatums = ndatums;
+		boundinfo->null_index = -1;
 		boundinfo->datums = (Datum **) palloc0(ndatums * sizeof(Datum *));
 
 		/* Initialize mapping array with invalid values */
@@ -463,7 +454,6 @@ RelationBuildPartitionDesc(Relation rel)
 		{
 			case PARTITION_STRATEGY_LIST:
 				{
-					boundinfo->has_null = found_null;
 					boundinfo->indexes = (int *) palloc(ndatums * sizeof(int));
 
 					/*
@@ -479,8 +469,8 @@ RelationBuildPartitionDesc(Relation rel)
 					{
 						boundinfo->datums[i] = (Datum *) palloc(sizeof(Datum));
 						boundinfo->datums[i][0] = datumCopy(all_values[i]->value,
-														key->parttypbyval[0],
-														 key->parttyplen[0]);
+															key->parttypbyval[0],
+															key->parttyplen[0]);
 
 						/* If the old index has no mapping, assign one */
 						if (mapping[all_values[i]->index] == -1)
@@ -495,27 +485,24 @@ RelationBuildPartitionDesc(Relation rel)
 					 * accepts only null and hence not covered in the above
 					 * loop which only handled non-null values.
 					 */
-					if (found_null)
+					if (null_index != -1)
 					{
 						Assert(null_index >= 0);
 						if (mapping[null_index] == -1)
 							mapping[null_index] = next_index++;
+						boundinfo->null_index = mapping[null_index];
 					}
 
 					/* All partition must now have a valid mapping */
 					Assert(next_index == nparts);
-
-					if (found_null)
-						boundinfo->null_index = mapping[null_index];
-					else
-						boundinfo->null_index = -1;
 					break;
 				}
 
 			case PARTITION_STRATEGY_RANGE:
 				{
-					boundinfo->content = (RangeDatumContent **) palloc(ndatums *
-												sizeof(RangeDatumContent *));
+					boundinfo->kind = (PartitionRangeDatumKind **)
+						palloc(ndatums *
+							   sizeof(PartitionRangeDatumKind *));
 					boundinfo->indexes = (int *) palloc((ndatums + 1) *
 														sizeof(int));
 
@@ -524,19 +511,18 @@ RelationBuildPartitionDesc(Relation rel)
 						int			j;
 
 						boundinfo->datums[i] = (Datum *) palloc(key->partnatts *
-															  sizeof(Datum));
-						boundinfo->content[i] = (RangeDatumContent *)
+																sizeof(Datum));
+						boundinfo->kind[i] = (PartitionRangeDatumKind *)
 							palloc(key->partnatts *
-								   sizeof(RangeDatumContent));
+								   sizeof(PartitionRangeDatumKind));
 						for (j = 0; j < key->partnatts; j++)
 						{
-							if (rbounds[i]->content[j] == RANGE_DATUM_FINITE)
+							if (rbounds[i]->kind[j] == PARTITION_RANGE_DATUM_VALUE)
 								boundinfo->datums[i][j] =
 									datumCopy(rbounds[i]->datums[j],
 											  key->parttypbyval[j],
 											  key->parttyplen[j]);
-							/* Remember, we are storing the tri-state value. */
-							boundinfo->content[i][j] = rbounds[i]->content[j];
+							boundinfo->kind[i][j] = rbounds[i]->kind[j];
 						}
 
 						/*
@@ -554,7 +540,7 @@ RelationBuildPartitionDesc(Relation rel)
 						{
 							int			orig_index = rbounds[i]->index;
 
-							/* If the old index is has no mapping, assign one */
+							/* If the old index has no mapping, assign one */
 							if (mapping[orig_index] == -1)
 								mapping[orig_index] = next_index++;
 
@@ -575,7 +561,7 @@ RelationBuildPartitionDesc(Relation rel)
 		/*
 		 * Now assign OIDs from the original array into mapped indexes of the
 		 * result array.  Order of OIDs in the former is defined by the
-		 * catalog scan that retrived them, whereas that in the latter is
+		 * catalog scan that retrieved them, whereas that in the latter is
 		 * defined by canonicalized representation of the list values or the
 		 * range bounds.
 		 */
@@ -597,7 +583,7 @@ RelationBuildPartitionDesc(Relation rel)
  * representation of partition bounds.
  */
 bool
-partition_bounds_equal(PartitionKey key,
+partition_bounds_equal(int partnatts, int16 *parttyplen, bool *parttypbyval,
 					   PartitionBoundInfo b1, PartitionBoundInfo b2)
 {
 	int			i;
@@ -608,9 +594,6 @@ partition_bounds_equal(PartitionKey key,
 	if (b1->ndatums != b2->ndatums)
 		return false;
 
-	if (b1->has_null != b2->has_null)
-		return false;
-
 	if (b1->null_index != b2->null_index)
 		return false;
 
@@ -618,19 +601,33 @@ partition_bounds_equal(PartitionKey key,
 	{
 		int			j;
 
-		for (j = 0; j < key->partnatts; j++)
+		for (j = 0; j < partnatts; j++)
 		{
-			int32		cmpval;
+			/* For range partitions, the bounds might not be finite. */
+			if (b1->kind != NULL)
+			{
+				/* The different kinds of bound all differ from each other */
+				if (b1->kind[i][j] != b2->kind[i][j])
+					return false;
 
-			cmpval = DatumGetInt32(FunctionCall2Coll(&key->partsupfunc[j],
-													 key->partcollation[j],
-													 b1->datums[i][j],
-													 b2->datums[i][j]));
-			if (cmpval != 0)
-				return false;
+				/* Non-finite bounds are equal without further examination. */
+				if (b1->kind[i][j] != PARTITION_RANGE_DATUM_VALUE)
+					continue;
+			}
 
-			/* Range partitions can have infinite datums */
-			if (b1->content != NULL && b1->content[i][j] != b2->content[i][j])
+			/*
+			 * Compare the actual values. Note that it would be both incorrect
+			 * and unsafe to invoke the comparison operator derived from the
+			 * partitioning specification here.  It would be incorrect because
+			 * we want the relcache entry to be updated for ANY change to the
+			 * partition bounds, not just those that the partitioning operator
+			 * thinks are significant.  It would be unsafe because we might
+			 * reach this code in the context of an aborted transaction, and
+			 * an arbitrary partitioning operator might not be safe in that
+			 * context.  datumIsEqual() should be simple enough to be safe.
+			 */
+			if (!datumIsEqual(b1->datums[i][j], b2->datums[i][j],
+							  parttypbyval[j], parttyplen[j]))
 				return false;
 		}
 
@@ -639,7 +636,7 @@ partition_bounds_equal(PartitionKey key,
 	}
 
 	/* There are ndatums+1 indexes in case of range partitions */
-	if (key->strategy == PARTITION_STRATEGY_RANGE &&
+	if (b1->strategy == PARTITION_STRATEGY_RANGE &&
 		b1->indexes[i] != b2->indexes[i])
 		return false;
 
@@ -653,9 +650,9 @@ partition_bounds_equal(PartitionKey key,
  * of parent.  Also performs additional checks as necessary per strategy.
  */
 void
-check_new_partition_bound(char *relname, Relation parent, Node *bound)
+check_new_partition_bound(char *relname, Relation parent,
+						  PartitionBoundSpec *spec)
 {
-	PartitionBoundSpec *spec = (PartitionBoundSpec *) bound;
 	PartitionKey key = RelationGetPartitionKey(parent);
 	PartitionDesc partdesc = RelationGetPartitionDesc(parent);
 	ParseState *pstate = make_parsestate(NULL);
@@ -675,11 +672,12 @@ check_new_partition_bound(char *relname, Relation parent, Node *bound)
 
 					Assert(boundinfo &&
 						   boundinfo->strategy == PARTITION_STRATEGY_LIST &&
-						   (boundinfo->ndatums > 0 || boundinfo->has_null));
+						   (boundinfo->ndatums > 0 ||
+							partition_bound_accepts_nulls(boundinfo)));
 
 					foreach(cell, spec->listdatums)
 					{
-						Const	   *val = lfirst(cell);
+						Const	   *val = castNode(Const, lfirst(cell));
 
 						if (!val->constisnull)
 						{
@@ -696,7 +694,7 @@ check_new_partition_bound(char *relname, Relation parent, Node *bound)
 								break;
 							}
 						}
-						else if (boundinfo->has_null)
+						else if (partition_bound_accepts_nulls(boundinfo))
 						{
 							overlap = true;
 							with = boundinfo->null_index;
@@ -721,57 +719,81 @@ check_new_partition_bound(char *relname, Relation parent, Node *bound)
 				 * First check if the resulting range would be empty with
 				 * specified lower and upper bounds
 				 */
-				if (partition_rbound_cmp(key, lower->datums, lower->content, true,
+				if (partition_rbound_cmp(key, lower->datums, lower->kind, true,
 										 upper) >= 0)
+				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					errmsg("cannot create range partition with empty range"),
+							 errmsg("empty range bound specified for partition \"%s\"",
+									relname),
+							 errdetail("Specified lower bound %s is greater than or equal to upper bound %s.",
+									   get_range_partbound_string(spec->lowerdatums),
+									   get_range_partbound_string(spec->upperdatums)),
 							 parser_errposition(pstate, spec->location)));
+				}
 
 				if (partdesc->nparts > 0)
 				{
 					PartitionBoundInfo boundinfo = partdesc->boundinfo;
-					int			off1,
-								off2;
-					bool		equal = false;
+					int			offset;
+					bool		equal;
 
 					Assert(boundinfo && boundinfo->ndatums > 0 &&
 						   boundinfo->strategy == PARTITION_STRATEGY_RANGE);
 
 					/*
-					 * Find the greatest index of a range bound that is less
-					 * than or equal with the new lower bound.
-					 */
-					off1 = partition_bound_bsearch(key, boundinfo, lower, true,
-												   &equal);
-
-					/*
-					 * If equal has been set to true, that means the new lower
-					 * bound is found to be equal with the bound at off1,
-					 * which clearly means an overlap with the partition at
-					 * index off1+1).
+					 * Test whether the new lower bound (which is treated
+					 * inclusively as part of the new partition) lies inside
+					 * an existing partition, or in a gap.
 					 *
-					 * Otherwise, check if there is a "gap" that could be
-					 * occupied by the new partition.  In case of a gap, the
-					 * new upper bound should not cross past the upper
-					 * boundary of the gap, that is, off2 == off1 should be
-					 * true.
+					 * If it's inside an existing partition, the bound at
+					 * offset + 1 will be the upper bound of that partition,
+					 * and its index will be >= 0.
+					 *
+					 * If it's in a gap, the bound at offset + 1 will be the
+					 * lower bound of the next partition, and its index will
+					 * be -1. This is also true if there is no next partition,
+					 * since the index array is initialised with an extra -1
+					 * at the end.
 					 */
-					if (!equal && boundinfo->indexes[off1 + 1] < 0)
-					{
-						off2 = partition_bound_bsearch(key, boundinfo, upper,
-													   true, &equal);
+					offset = partition_bound_bsearch(key, boundinfo, lower,
+													 true, &equal);
 
-						if (equal || off1 != off2)
+					if (boundinfo->indexes[offset + 1] < 0)
+					{
+						/*
+						 * Check that the new partition will fit in the gap.
+						 * For it to fit, the new upper bound must be less
+						 * than or equal to the lower bound of the next
+						 * partition, if there is one.
+						 */
+						if (offset + 1 < boundinfo->ndatums)
 						{
-							overlap = true;
-							with = boundinfo->indexes[off2 + 1];
+							int32		cmpval;
+
+							cmpval = partition_bound_cmp(key, boundinfo,
+														 offset + 1, upper,
+														 true);
+							if (cmpval < 0)
+							{
+								/*
+								 * The new partition overlaps with the
+								 * existing partition between offset + 1 and
+								 * offset + 2.
+								 */
+								overlap = true;
+								with = boundinfo->indexes[offset + 2];
+							}
 						}
 					}
 					else
 					{
+						/*
+						 * The new partition overlaps with the existing
+						 * partition between offset and offset + 1.
+						 */
 						overlap = true;
-						with = boundinfo->indexes[off1 + 1];
+						with = boundinfo->indexes[offset + 1];
 					}
 				}
 
@@ -828,7 +850,8 @@ get_partition_parent(Oid relid)
 							  NULL, 2, key);
 
 	tuple = systable_getnext(scan);
-	Assert(HeapTupleIsValid(tuple));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for parent of relation %u", relid);
 
 	form = (Form_pg_inherits) GETSTRUCT(tuple);
 	result = form->inhparent;
@@ -845,15 +868,11 @@ get_partition_parent(Oid relid)
  *		expressions as partition constraint
  */
 List *
-get_qual_from_partbound(Relation rel, Relation parent, Node *bound)
+get_qual_from_partbound(Relation rel, Relation parent,
+						PartitionBoundSpec *spec)
 {
-	PartitionBoundSpec *spec = (PartitionBoundSpec *) bound;
 	PartitionKey key = RelationGetPartitionKey(parent);
 	List	   *my_qual = NIL;
-	TupleDesc	parent_tupdesc = RelationGetDescr(parent);
-	AttrNumber	parent_attno;
-	AttrNumber *partition_attnos;
-	bool		found_whole_row;
 
 	Assert(key != NULL);
 
@@ -874,38 +893,47 @@ get_qual_from_partbound(Relation rel, Relation parent, Node *bound)
 				 (int) key->strategy);
 	}
 
-	/*
-	 * Translate vars in the generated expression to have correct attnos. Note
-	 * that the vars in my_qual bear attnos dictated by key which carries
-	 * physical attnos of the parent.  We must allow for a case where physical
-	 * attnos of a partition can be different from the parent.
-	 */
-	partition_attnos = (AttrNumber *)
-		palloc0(parent_tupdesc->natts * sizeof(AttrNumber));
-	for (parent_attno = 1; parent_attno <= parent_tupdesc->natts;
-		 parent_attno++)
-	{
-		Form_pg_attribute attribute = parent_tupdesc->attrs[parent_attno - 1];
-		char	   *attname = NameStr(attribute->attname);
-		AttrNumber	partition_attno;
-
-		if (attribute->attisdropped)
-			continue;
-
-		partition_attno = get_attnum(RelationGetRelid(rel), attname);
-		partition_attnos[parent_attno - 1] = partition_attno;
-	}
-
-	my_qual = (List *) map_variable_attnos((Node *) my_qual,
-										   1, 0,
-										   partition_attnos,
-										   parent_tupdesc->natts,
-										   &found_whole_row);
-	/* there can never be a whole-row reference here */
-	if (found_whole_row)
-		elog(ERROR, "unexpected whole-row reference found in partition key");
-
 	return my_qual;
+}
+
+/*
+ * map_partition_varattnos - maps varattno of any Vars in expr from the
+ * parent attno to partition attno.
+ *
+ * We must allow for cases where physical attnos of a partition can be
+ * different from the parent's.
+ *
+ * If found_whole_row is not NULL, *found_whole_row returns whether a
+ * whole-row variable was found in the input expression.
+ *
+ * Note: this will work on any node tree, so really the argument and result
+ * should be declared "Node *".  But a substantial majority of the callers
+ * are working on Lists, so it's less messy to do the casts internally.
+ */
+List *
+map_partition_varattnos(List *expr, int target_varno,
+						Relation partrel, Relation parent,
+						bool *found_whole_row)
+{
+	AttrNumber *part_attnos;
+	bool		my_found_whole_row;
+
+	if (expr == NIL)
+		return NIL;
+
+	part_attnos = convert_tuples_by_name_map(RelationGetDescr(partrel),
+											 RelationGetDescr(parent),
+											 gettext_noop("could not convert row type"));
+	expr = (List *) map_variable_attnos((Node *) expr,
+										target_varno, 0,
+										part_attnos,
+										RelationGetDescr(parent)->natts,
+										RelationGetForm(partrel)->reltype,
+										&my_found_whole_row);
+	if (found_whole_row)
+		*found_whole_row = my_found_whole_row;
+
+	return expr;
 }
 
 /*
@@ -914,13 +942,42 @@ get_qual_from_partbound(Relation rel, Relation parent, Node *bound)
  * Returns a list of partition quals
  */
 List *
-RelationGetPartitionQual(Relation rel, bool recurse)
+RelationGetPartitionQual(Relation rel)
 {
 	/* Quick exit */
 	if (!rel->rd_rel->relispartition)
 		return NIL;
 
-	return generate_partition_qual(rel, recurse);
+	return generate_partition_qual(rel);
+}
+
+/*
+ * get_partition_qual_relid
+ *
+ * Returns an expression tree describing the passed-in relation's partition
+ * constraint.
+ */
+Expr *
+get_partition_qual_relid(Oid relid)
+{
+	Relation	rel = heap_open(relid, AccessShareLock);
+	Expr	   *result = NULL;
+	List	   *and_args;
+
+	/* Do the work only if this relation is a partition. */
+	if (rel->rd_rel->relispartition)
+	{
+		and_args = generate_partition_qual(rel);
+		if (list_length(and_args) > 1)
+			result = makeBoolExpr(AND_EXPR, and_args, -1);
+		else
+			result = linitial(and_args);
+	}
+
+	/* Keep the lock. */
+	heap_close(rel, NoLock);
+
+	return result;
 }
 
 /*
@@ -943,7 +1000,7 @@ RelationGetPartitionQual(Relation rel, bool recurse)
  *		Returns information necessary to route tuples down a partition tree
  *
  * All the partitions will be locked with lockmode, unless it is NoLock.
- * A list of the OIDs of all the leaf partition of rel is returned in
+ * A list of the OIDs of all the leaf partitions of rel is returned in
  * *leaf_part_oids.
  */
 PartitionDispatch *
@@ -967,9 +1024,9 @@ RelationGetPartitionDispatchInfo(Relation rel, int lockmode,
 	 *
 	 * Cannot use find_all_inheritors() here, because then the order of OIDs
 	 * in parted_rels list would be unknown, which does not help, because we
-	 * we assign indexes within individual PartitionDispatch in an order that
-	 * is predetermined (determined by the order of OIDs in individual
-	 * partition descriptors).
+	 * assign indexes within individual PartitionDispatch in an order that is
+	 * predetermined (determined by the order of OIDs in individual partition
+	 * descriptors).
 	 */
 	*num_parted = 1;
 	parted_rels = list_make1(rel);
@@ -1021,7 +1078,7 @@ RelationGetPartitionDispatchInfo(Relation rel, int lockmode,
 		Relation	partrel = lfirst(lc1);
 		Relation	parent = lfirst(lc2);
 		PartitionKey partkey = RelationGetPartitionKey(partrel);
-		TupleDesc	 tupdesc = RelationGetDescr(partrel);
+		TupleDesc	tupdesc = RelationGetDescr(partrel);
 		PartitionDesc partdesc = RelationGetPartitionDesc(partrel);
 		int			j,
 					m;
@@ -1034,17 +1091,17 @@ RelationGetPartitionDispatchInfo(Relation rel, int lockmode,
 		if (parent != NULL)
 		{
 			/*
-			 * For every partitioned table other than root, we must store
-			 * a tuple table slot initialized with its tuple descriptor and
-			 * a tuple conversion map to convert a tuple from its parent's
-			 * rowtype to its own. That is to make sure that we are looking
-			 * at the correct row using the correct tuple descriptor when
+			 * For every partitioned table other than root, we must store a
+			 * tuple table slot initialized with its tuple descriptor and a
+			 * tuple conversion map to convert a tuple from its parent's
+			 * rowtype to its own. That is to make sure that we are looking at
+			 * the correct row using the correct tuple descriptor when
 			 * computing its partition key for tuple routing.
 			 */
 			pd[i]->tupslot = MakeSingleTupleTableSlot(tupdesc);
 			pd[i]->tupmap = convert_tuples_by_name(RelationGetDescr(parent),
 												   tupdesc,
-								gettext_noop("could not convert row type"));
+												   gettext_noop("could not convert row type"));
 		}
 		else
 		{
@@ -1101,324 +1158,6 @@ RelationGetPartitionDispatchInfo(Relation rel, int lockmode,
 /* Module-local functions */
 
 /*
- * get_qual_for_list
- *
- * Returns a list of expressions to use as a list partition's constraint.
- */
-static List *
-get_qual_for_list(PartitionKey key, PartitionBoundSpec *spec)
-{
-	List	   *result;
-	ArrayExpr  *arr;
-	ScalarArrayOpExpr *opexpr;
-	ListCell   *cell,
-			   *prev,
-			   *next;
-	Node	   *keyCol;
-	Oid			operoid;
-	bool		need_relabel,
-				list_has_null = false;
-	NullTest   *nulltest1 = NULL,
-			   *nulltest2 = NULL;
-
-	/* Left operand is either a simple Var or arbitrary expression */
-	if (key->partattrs[0] != 0)
-		keyCol = (Node *) makeVar(1,
-								  key->partattrs[0],
-								  key->parttypid[0],
-								  key->parttypmod[0],
-								  key->parttypcoll[0],
-								  0);
-	else
-		keyCol = (Node *) copyObject(linitial(key->partexprs));
-
-	/*
-	 * We must remove any NULL value in the list; we handle it separately
-	 * below.
-	 */
-	prev = NULL;
-	for (cell = list_head(spec->listdatums); cell; cell = next)
-	{
-		Const	   *val = (Const *) lfirst(cell);
-
-		next = lnext(cell);
-
-		if (val->constisnull)
-		{
-			list_has_null = true;
-			spec->listdatums = list_delete_cell(spec->listdatums,
-												cell, prev);
-		}
-		else
-			prev = cell;
-	}
-
-	if (!list_has_null)
-	{
-		/*
-		 * Gin up a col IS NOT NULL test that will be AND'd with other
-		 * expressions
-		 */
-		nulltest1 = makeNode(NullTest);
-		nulltest1->arg = (Expr *) keyCol;
-		nulltest1->nulltesttype = IS_NOT_NULL;
-		nulltest1->argisrow = false;
-		nulltest1->location = -1;
-	}
-	else
-	{
-		/*
-		 * Gin up a col IS NULL test that will be OR'd with other expressions
-		 */
-		nulltest2 = makeNode(NullTest);
-		nulltest2->arg = (Expr *) keyCol;
-		nulltest2->nulltesttype = IS_NULL;
-		nulltest2->argisrow = false;
-		nulltest2->location = -1;
-	}
-
-	/* Right operand is an ArrayExpr containing this partition's values */
-	arr = makeNode(ArrayExpr);
-	arr->array_typeid = !type_is_array(key->parttypid[0])
-		? get_array_type(key->parttypid[0])
-		: key->parttypid[0];
-	arr->array_collid = key->parttypcoll[0];
-	arr->element_typeid = key->parttypid[0];
-	arr->elements = spec->listdatums;
-	arr->multidims = false;
-	arr->location = -1;
-
-	/* Get the correct btree equality operator */
-	operoid = get_partition_operator(key, 0, BTEqualStrategyNumber,
-									 &need_relabel);
-	if (need_relabel || key->partcollation[0] != key->parttypcoll[0])
-		keyCol = (Node *) makeRelabelType((Expr *) keyCol,
-										  key->partopcintype[0],
-										  -1,
-										  key->partcollation[0],
-										  COERCE_EXPLICIT_CAST);
-
-	/* Build leftop = ANY (rightop) */
-	opexpr = makeNode(ScalarArrayOpExpr);
-	opexpr->opno = operoid;
-	opexpr->opfuncid = get_opcode(operoid);
-	opexpr->useOr = true;
-	opexpr->inputcollid = key->partcollation[0];
-	opexpr->args = list_make2(keyCol, arr);
-	opexpr->location = -1;
-
-	if (nulltest1)
-		result = list_make2(nulltest1, opexpr);
-	else if (nulltest2)
-	{
-		Expr	   *or;
-
-		or = makeBoolExpr(OR_EXPR, list_make2(nulltest2, opexpr), -1);
-		result = list_make1(or);
-	}
-	else
-		result = list_make1(opexpr);
-
-	return result;
-}
-
-/*
- * get_qual_for_range
- *
- * Get a list of OpExpr's to use as a range partition's constraint.
- */
-static List *
-get_qual_for_range(PartitionKey key, PartitionBoundSpec *spec)
-{
-	List	   *result = NIL;
-	ListCell   *cell1,
-			   *cell2,
-			   *partexprs_item;
-	int			i;
-
-	/*
-	 * Iterate over columns of the key, emitting an OpExpr for each using the
-	 * corresponding lower and upper datums as constant operands.
-	 */
-	i = 0;
-	partexprs_item = list_head(key->partexprs);
-	forboth(cell1, spec->lowerdatums, cell2, spec->upperdatums)
-	{
-		PartitionRangeDatum *ldatum = lfirst(cell1),
-				   *udatum = lfirst(cell2);
-		Node	   *keyCol;
-		Const	   *lower_val = NULL,
-				   *upper_val = NULL;
-		EState	   *estate;
-		MemoryContext oldcxt;
-		Expr	   *test_expr;
-		ExprState  *test_exprstate;
-		Datum		test_result;
-		bool		isNull;
-		bool		need_relabel = false;
-		Oid			operoid;
-		NullTest   *nulltest;
-
-		/* Left operand */
-		if (key->partattrs[i] != 0)
-		{
-			keyCol = (Node *) makeVar(1,
-									  key->partattrs[i],
-									  key->parttypid[i],
-									  key->parttypmod[i],
-									  key->parttypcoll[i],
-									  0);
-		}
-		else
-		{
-			keyCol = (Node *) copyObject(lfirst(partexprs_item));
-			partexprs_item = lnext(partexprs_item);
-		}
-
-		/*
-		 * Emit a IS NOT NULL expression for non-Var keys, because whereas
-		 * simple attributes are covered by NOT NULL constraints, expression
-		 * keys are still nullable which is not acceptable in case of range
-		 * partitioning.
-		 */
-		if (!IsA(keyCol, Var))
-		{
-			nulltest = makeNode(NullTest);
-			nulltest->arg = (Expr *) keyCol;
-			nulltest->nulltesttype = IS_NOT_NULL;
-			nulltest->argisrow = false;
-			nulltest->location = -1;
-			result = lappend(result, nulltest);
-		}
-
-		/*
-		 * Stop at this column if either of lower or upper datum is infinite,
-		 * but do emit an OpExpr for the non-infinite datum.
-		 */
-		if (!ldatum->infinite)
-			lower_val = (Const *) ldatum->value;
-		if (!udatum->infinite)
-			upper_val = (Const *) udatum->value;
-
-		/*
-		 * If lower_val and upper_val are both finite and happen to be equal,
-		 * emit only (keyCol = lower_val) for this column, because all rows in
-		 * this partition could only ever contain this value (ie, lower_val)
-		 * in the current partitioning column.  We must consider further
-		 * columns because the above condition does not fully constrain the
-		 * rows of this partition.
-		 */
-		if (lower_val && upper_val)
-		{
-			/* Get the correct btree equality operator for the test */
-			operoid = get_partition_operator(key, i, BTEqualStrategyNumber,
-											 &need_relabel);
-
-			/* Create the test expression */
-			estate = CreateExecutorState();
-			oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
-			test_expr = make_opclause(operoid,
-									  BOOLOID,
-									  false,
-									  (Expr *) lower_val,
-									  (Expr *) upper_val,
-									  InvalidOid,
-									  key->partcollation[i]);
-			fix_opfuncids((Node *) test_expr);
-			test_exprstate = ExecInitExpr(test_expr, NULL);
-			test_result = ExecEvalExprSwitchContext(test_exprstate,
-											  GetPerTupleExprContext(estate),
-													&isNull, NULL);
-			MemoryContextSwitchTo(oldcxt);
-			FreeExecutorState(estate);
-
-			if (DatumGetBool(test_result))
-			{
-				/* This can never be, but it's better to make sure */
-				if (i == key->partnatts - 1)
-					elog(ERROR, "invalid range bound specification");
-
-				if (need_relabel || key->partcollation[i] != key->parttypcoll[i])
-					keyCol = (Node *) makeRelabelType((Expr *) keyCol,
-													  key->partopcintype[i],
-													  -1,
-													  key->partcollation[i],
-													  COERCE_EXPLICIT_CAST);
-				result = lappend(result,
-								 make_opclause(operoid,
-											   BOOLOID,
-											   false,
-											   (Expr *) keyCol,
-											   (Expr *) lower_val,
-											   InvalidOid,
-											   key->partcollation[i]));
-
-				/* Go over to consider the next column. */
-				i++;
-				continue;
-			}
-		}
-
-		/*
-		 * We can say here that lower_val != upper_val.  Emit expressions
-		 * (keyCol >= lower_val) and (keyCol < upper_val), then stop.
-		 */
-		if (lower_val)
-		{
-			operoid = get_partition_operator(key, i,
-											 BTGreaterEqualStrategyNumber,
-											 &need_relabel);
-
-			if (need_relabel || key->partcollation[i] != key->parttypcoll[i])
-				keyCol = (Node *) makeRelabelType((Expr *) keyCol,
-												  key->partopcintype[i],
-												  -1,
-												  key->partcollation[i],
-												  COERCE_EXPLICIT_CAST);
-			result = lappend(result,
-							 make_opclause(operoid,
-										   BOOLOID,
-										   false,
-										   (Expr *) keyCol,
-										   (Expr *) lower_val,
-										   InvalidOid,
-										   key->partcollation[i]));
-		}
-
-		if (upper_val)
-		{
-			operoid = get_partition_operator(key, i,
-											 BTLessStrategyNumber,
-											 &need_relabel);
-
-			if (need_relabel || key->partcollation[i] != key->parttypcoll[i])
-				keyCol = (Node *) makeRelabelType((Expr *) keyCol,
-												  key->partopcintype[i],
-												  -1,
-												  key->partcollation[i],
-												  COERCE_EXPLICIT_CAST);
-
-			result = lappend(result,
-							 make_opclause(operoid,
-										   BOOLOID,
-										   false,
-										   (Expr *) keyCol,
-										   (Expr *) upper_val,
-										   InvalidOid,
-										   key->partcollation[i]));
-		}
-
-		/*
-		 * We can stop at this column, because we would not have checked the
-		 * next column when routing a given row into this partition.
-		 */
-		break;
-	}
-
-	return result;
-}
-
-/*
  * get_partition_operator
  *
  * Return oid of the operator of given strategy for a given partition key
@@ -1442,7 +1181,7 @@ get_partition_operator(PartitionKey key, int col, StrategyNumber strategy,
 
 	/*
 	 * If one doesn't exist, we must resort to using an operator in the same
-	 * opreator family but with the operator class declared input type.  It is
+	 * operator family but with the operator class declared input type.  It is
 	 * OK to do so, because the column's type is known to be binary-coercible
 	 * with the operator class input type (otherwise, the operator class in
 	 * question would not have been accepted as the partitioning operator
@@ -1457,15 +1196,578 @@ get_partition_operator(PartitionKey key, int col, StrategyNumber strategy,
 									  key->partopcintype[col],
 									  key->partopcintype[col],
 									  strategy);
+		if (!OidIsValid(operoid))
+			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+				 strategy, key->partopcintype[col], key->partopcintype[col],
+				 key->partopfamily[col]);
 		*need_relabel = true;
 	}
 	else
 		*need_relabel = false;
 
-	if (!OidIsValid(operoid))
-		elog(ERROR, "could not find operator for partitioning");
-
 	return operoid;
+}
+
+/*
+ * make_partition_op_expr
+ *		Returns an Expr for the given partition key column with arg1 and
+ *		arg2 as its leftop and rightop, respectively
+ */
+static Expr *
+make_partition_op_expr(PartitionKey key, int keynum,
+					   uint16 strategy, Expr *arg1, Expr *arg2)
+{
+	Oid			operoid;
+	bool		need_relabel = false;
+	Expr	   *result = NULL;
+
+	/* Get the correct btree operator for this partitioning column */
+	operoid = get_partition_operator(key, keynum, strategy, &need_relabel);
+
+	/*
+	 * Chosen operator may be such that the non-Const operand needs to be
+	 * coerced, so apply the same; see the comment in
+	 * get_partition_operator().
+	 */
+	if (!IsA(arg1, Const) &&
+		(need_relabel ||
+		 key->partcollation[keynum] != key->parttypcoll[keynum]))
+		arg1 = (Expr *) makeRelabelType(arg1,
+										key->partopcintype[keynum],
+										-1,
+										key->partcollation[keynum],
+										COERCE_EXPLICIT_CAST);
+
+	/* Generate the actual expression */
+	switch (key->strategy)
+	{
+		case PARTITION_STRATEGY_LIST:
+			{
+				ScalarArrayOpExpr *saopexpr;
+
+				/* Build leftop = ANY (rightop) */
+				saopexpr = makeNode(ScalarArrayOpExpr);
+				saopexpr->opno = operoid;
+				saopexpr->opfuncid = get_opcode(operoid);
+				saopexpr->useOr = true;
+				saopexpr->inputcollid = key->partcollation[keynum];
+				saopexpr->args = list_make2(arg1, arg2);
+				saopexpr->location = -1;
+
+				result = (Expr *) saopexpr;
+				break;
+			}
+
+		case PARTITION_STRATEGY_RANGE:
+			result = make_opclause(operoid,
+								   BOOLOID,
+								   false,
+								   arg1, arg2,
+								   InvalidOid,
+								   key->partcollation[keynum]);
+			break;
+
+		default:
+			elog(ERROR, "invalid partitioning strategy");
+			break;
+	}
+
+	return result;
+}
+
+/*
+ * get_qual_for_list
+ *
+ * Returns an implicit-AND list of expressions to use as a list partition's
+ * constraint, given the partition key and bound structures.
+ */
+static List *
+get_qual_for_list(PartitionKey key, PartitionBoundSpec *spec)
+{
+	List	   *result;
+	Expr	   *keyCol;
+	ArrayExpr  *arr;
+	Expr	   *opexpr;
+	NullTest   *nulltest;
+	ListCell   *cell;
+	List	   *arrelems = NIL;
+	bool		list_has_null = false;
+
+	/*
+	 * Only single-column list partitioning is supported, so we are worried
+	 * only about the partition key with index 0.
+	 */
+	Assert(key->partnatts == 1);
+
+	/* Construct Var or expression representing the partition column */
+	if (key->partattrs[0] != 0)
+		keyCol = (Expr *) makeVar(1,
+								  key->partattrs[0],
+								  key->parttypid[0],
+								  key->parttypmod[0],
+								  key->parttypcoll[0],
+								  0);
+	else
+		keyCol = (Expr *) copyObject(linitial(key->partexprs));
+
+	/* Create list of Consts for the allowed values, excluding any nulls */
+	foreach(cell, spec->listdatums)
+	{
+		Const	   *val = castNode(Const, lfirst(cell));
+
+		if (val->constisnull)
+			list_has_null = true;
+		else
+			arrelems = lappend(arrelems, copyObject(val));
+	}
+
+	if (arrelems)
+	{
+		/* Construct an ArrayExpr for the non-null partition values */
+		arr = makeNode(ArrayExpr);
+		arr->array_typeid = !type_is_array(key->parttypid[0])
+			? get_array_type(key->parttypid[0])
+			: key->parttypid[0];
+		arr->array_collid = key->parttypcoll[0];
+		arr->element_typeid = key->parttypid[0];
+		arr->elements = arrelems;
+		arr->multidims = false;
+		arr->location = -1;
+
+		/* Generate the main expression, i.e., keyCol = ANY (arr) */
+		opexpr = make_partition_op_expr(key, 0, BTEqualStrategyNumber,
+										keyCol, (Expr *) arr);
+	}
+	else
+	{
+		/* If there are no partition values, we don't need an = ANY expr */
+		opexpr = NULL;
+	}
+
+	if (!list_has_null)
+	{
+		/*
+		 * Gin up a "col IS NOT NULL" test that will be AND'd with the main
+		 * expression.  This might seem redundant, but the partition routing
+		 * machinery needs it.
+		 */
+		nulltest = makeNode(NullTest);
+		nulltest->arg = keyCol;
+		nulltest->nulltesttype = IS_NOT_NULL;
+		nulltest->argisrow = false;
+		nulltest->location = -1;
+
+		result = opexpr ? list_make2(nulltest, opexpr) : list_make1(nulltest);
+	}
+	else
+	{
+		/*
+		 * Gin up a "col IS NULL" test that will be OR'd with the main
+		 * expression.
+		 */
+		nulltest = makeNode(NullTest);
+		nulltest->arg = keyCol;
+		nulltest->nulltesttype = IS_NULL;
+		nulltest->argisrow = false;
+		nulltest->location = -1;
+
+		if (opexpr)
+		{
+			Expr	   *or;
+
+			or = makeBoolExpr(OR_EXPR, list_make2(nulltest, opexpr), -1);
+			result = list_make1(or);
+		}
+		else
+			result = list_make1(nulltest);
+	}
+
+	return result;
+}
+
+/*
+ * get_range_key_properties
+ *		Returns range partition key information for a given column
+ *
+ * This is a subroutine for get_qual_for_range, and its API is pretty
+ * specialized to that caller.
+ *
+ * Constructs an Expr for the key column (returned in *keyCol) and Consts
+ * for the lower and upper range limits (returned in *lower_val and
+ * *upper_val).  For MINVALUE/MAXVALUE limits, NULL is returned instead of
+ * a Const.  All of these structures are freshly palloc'd.
+ *
+ * *partexprs_item points to the cell containing the next expression in
+ * the key->partexprs list, or NULL.  It may be advanced upon return.
+ */
+static void
+get_range_key_properties(PartitionKey key, int keynum,
+						 PartitionRangeDatum *ldatum,
+						 PartitionRangeDatum *udatum,
+						 ListCell **partexprs_item,
+						 Expr **keyCol,
+						 Const **lower_val, Const **upper_val)
+{
+	/* Get partition key expression for this column */
+	if (key->partattrs[keynum] != 0)
+	{
+		*keyCol = (Expr *) makeVar(1,
+								   key->partattrs[keynum],
+								   key->parttypid[keynum],
+								   key->parttypmod[keynum],
+								   key->parttypcoll[keynum],
+								   0);
+	}
+	else
+	{
+		if (*partexprs_item == NULL)
+			elog(ERROR, "wrong number of partition key expressions");
+		*keyCol = copyObject(lfirst(*partexprs_item));
+		*partexprs_item = lnext(*partexprs_item);
+	}
+
+	/* Get appropriate Const nodes for the bounds */
+	if (ldatum->kind == PARTITION_RANGE_DATUM_VALUE)
+		*lower_val = castNode(Const, copyObject(ldatum->value));
+	else
+		*lower_val = NULL;
+
+	if (udatum->kind == PARTITION_RANGE_DATUM_VALUE)
+		*upper_val = castNode(Const, copyObject(udatum->value));
+	else
+		*upper_val = NULL;
+}
+
+/*
+ * get_qual_for_range
+ *
+ * Returns an implicit-AND list of expressions to use as a range partition's
+ * constraint, given the partition key and bound structures.
+ *
+ * For a multi-column range partition key, say (a, b, c), with (al, bl, cl)
+ * as the lower bound tuple and (au, bu, cu) as the upper bound tuple, we
+ * generate an expression tree of the following form:
+ *
+ *	(a IS NOT NULL) and (b IS NOT NULL) and (c IS NOT NULL)
+ *		AND
+ *	(a > al OR (a = al AND b > bl) OR (a = al AND b = bl AND c >= cl))
+ *		AND
+ *	(a < au OR (a = au AND b < bu) OR (a = au AND b = bu AND c < cu))
+ *
+ * It is often the case that a prefix of lower and upper bound tuples contains
+ * the same values, for example, (al = au), in which case, we will emit an
+ * expression tree of the following form:
+ *
+ *	(a IS NOT NULL) and (b IS NOT NULL) and (c IS NOT NULL)
+ *		AND
+ *	(a = al)
+ *		AND
+ *	(b > bl OR (b = bl AND c >= cl))
+ *		AND
+ *	(b < bu) OR (b = bu AND c < cu))
+ *
+ * If a bound datum is either MINVALUE or MAXVALUE, these expressions are
+ * simplified using the fact that any value is greater than MINVALUE and less
+ * than MAXVALUE. So, for example, if cu = MAXVALUE, c < cu is automatically
+ * true, and we need not emit any expression for it, and the last line becomes
+ *
+ *	(b < bu) OR (b = bu), which is simplified to (b <= bu)
+ *
+ * In most common cases with only one partition column, say a, the following
+ * expression tree will be generated: a IS NOT NULL AND a >= al AND a < au
+ *
+ * If we end up with an empty result list, we return a single-member list
+ * containing a constant TRUE, because callers expect a non-empty list.
+ */
+static List *
+get_qual_for_range(PartitionKey key, PartitionBoundSpec *spec)
+{
+	List	   *result = NIL;
+	ListCell   *cell1,
+			   *cell2,
+			   *partexprs_item,
+			   *partexprs_item_saved;
+	int			i,
+				j;
+	PartitionRangeDatum *ldatum,
+			   *udatum;
+	Expr	   *keyCol;
+	Const	   *lower_val,
+			   *upper_val;
+	NullTest   *nulltest;
+	List	   *lower_or_arms,
+			   *upper_or_arms;
+	int			num_or_arms,
+				current_or_arm;
+	ListCell   *lower_or_start_datum,
+			   *upper_or_start_datum;
+	bool		need_next_lower_arm,
+				need_next_upper_arm;
+
+	lower_or_start_datum = list_head(spec->lowerdatums);
+	upper_or_start_datum = list_head(spec->upperdatums);
+	num_or_arms = key->partnatts;
+
+	/*
+	 * A range-partitioned table does not currently allow partition keys to be
+	 * null, so emit an IS NOT NULL expression for each key column.
+	 */
+	partexprs_item = list_head(key->partexprs);
+	for (i = 0; i < key->partnatts; i++)
+	{
+		Expr	   *keyCol;
+
+		if (key->partattrs[i] != 0)
+		{
+			keyCol = (Expr *) makeVar(1,
+									  key->partattrs[i],
+									  key->parttypid[i],
+									  key->parttypmod[i],
+									  key->parttypcoll[i],
+									  0);
+		}
+		else
+		{
+			if (partexprs_item == NULL)
+				elog(ERROR, "wrong number of partition key expressions");
+			keyCol = copyObject(lfirst(partexprs_item));
+			partexprs_item = lnext(partexprs_item);
+		}
+
+		nulltest = makeNode(NullTest);
+		nulltest->arg = keyCol;
+		nulltest->nulltesttype = IS_NOT_NULL;
+		nulltest->argisrow = false;
+		nulltest->location = -1;
+		result = lappend(result, nulltest);
+	}
+
+	/*
+	 * Iterate over the key columns and check if the corresponding lower and
+	 * upper datums are equal using the btree equality operator for the
+	 * column's type.  If equal, we emit single keyCol = common_value
+	 * expression.  Starting from the first column for which the corresponding
+	 * lower and upper bound datums are not equal, we generate OR expressions
+	 * as shown in the function's header comment.
+	 */
+	i = 0;
+	partexprs_item = list_head(key->partexprs);
+	partexprs_item_saved = partexprs_item;	/* placate compiler */
+	forboth(cell1, spec->lowerdatums, cell2, spec->upperdatums)
+	{
+		EState	   *estate;
+		MemoryContext oldcxt;
+		Expr	   *test_expr;
+		ExprState  *test_exprstate;
+		Datum		test_result;
+		bool		isNull;
+
+		ldatum = castNode(PartitionRangeDatum, lfirst(cell1));
+		udatum = castNode(PartitionRangeDatum, lfirst(cell2));
+
+		/*
+		 * Since get_range_key_properties() modifies partexprs_item, and we
+		 * might need to start over from the previous expression in the later
+		 * part of this function, save away the current value.
+		 */
+		partexprs_item_saved = partexprs_item;
+
+		get_range_key_properties(key, i, ldatum, udatum,
+								 &partexprs_item,
+								 &keyCol,
+								 &lower_val, &upper_val);
+
+		/*
+		 * If either value is NULL, the corresponding partition bound is
+		 * either MINVALUE or MAXVALUE, and we treat them as unequal, because
+		 * even if they're the same, there is no common value to equate the
+		 * key column with.
+		 */
+		if (!lower_val || !upper_val)
+			break;
+
+		/* Create the test expression */
+		estate = CreateExecutorState();
+		oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+		test_expr = make_partition_op_expr(key, i, BTEqualStrategyNumber,
+										   (Expr *) lower_val,
+										   (Expr *) upper_val);
+		fix_opfuncids((Node *) test_expr);
+		test_exprstate = ExecInitExpr(test_expr, NULL);
+		test_result = ExecEvalExprSwitchContext(test_exprstate,
+												GetPerTupleExprContext(estate),
+												&isNull);
+		MemoryContextSwitchTo(oldcxt);
+		FreeExecutorState(estate);
+
+		/* If not equal, go generate the OR expressions */
+		if (!DatumGetBool(test_result))
+			break;
+
+		/*
+		 * The bounds for the last key column can't be equal, because such a
+		 * range partition would never be allowed to be defined (it would have
+		 * an empty range otherwise).
+		 */
+		if (i == key->partnatts - 1)
+			elog(ERROR, "invalid range bound specification");
+
+		/* Equal, so generate keyCol = lower_val expression */
+		result = lappend(result,
+						 make_partition_op_expr(key, i, BTEqualStrategyNumber,
+												keyCol, (Expr *) lower_val));
+
+		i++;
+	}
+
+	/* First pair of lower_val and upper_val that are not equal. */
+	lower_or_start_datum = cell1;
+	upper_or_start_datum = cell2;
+
+	/* OR will have as many arms as there are key columns left. */
+	num_or_arms = key->partnatts - i;
+	current_or_arm = 0;
+	lower_or_arms = upper_or_arms = NIL;
+	need_next_lower_arm = need_next_upper_arm = true;
+	while (current_or_arm < num_or_arms)
+	{
+		List	   *lower_or_arm_args = NIL,
+				   *upper_or_arm_args = NIL;
+
+		/* Restart scan of columns from the i'th one */
+		j = i;
+		partexprs_item = partexprs_item_saved;
+
+		for_both_cell(cell1, lower_or_start_datum, cell2, upper_or_start_datum)
+		{
+			PartitionRangeDatum *ldatum_next = NULL,
+					   *udatum_next = NULL;
+
+			ldatum = castNode(PartitionRangeDatum, lfirst(cell1));
+			if (lnext(cell1))
+				ldatum_next = castNode(PartitionRangeDatum,
+									   lfirst(lnext(cell1)));
+			udatum = castNode(PartitionRangeDatum, lfirst(cell2));
+			if (lnext(cell2))
+				udatum_next = castNode(PartitionRangeDatum,
+									   lfirst(lnext(cell2)));
+			get_range_key_properties(key, j, ldatum, udatum,
+									 &partexprs_item,
+									 &keyCol,
+									 &lower_val, &upper_val);
+
+			if (need_next_lower_arm && lower_val)
+			{
+				uint16		strategy;
+
+				/*
+				 * For the non-last columns of this arm, use the EQ operator.
+				 * For the last column of this arm, use GT, unless this is the
+				 * last column of the whole bound check, or the next bound
+				 * datum is MINVALUE, in which case use GE.
+				 */
+				if (j - i < current_or_arm)
+					strategy = BTEqualStrategyNumber;
+				else if (j == key->partnatts - 1 ||
+						 (ldatum_next &&
+						  ldatum_next->kind == PARTITION_RANGE_DATUM_MINVALUE))
+					strategy = BTGreaterEqualStrategyNumber;
+				else
+					strategy = BTGreaterStrategyNumber;
+
+				lower_or_arm_args = lappend(lower_or_arm_args,
+											make_partition_op_expr(key, j,
+																   strategy,
+																   keyCol,
+																   (Expr *) lower_val));
+			}
+
+			if (need_next_upper_arm && upper_val)
+			{
+				uint16		strategy;
+
+				/*
+				 * For the non-last columns of this arm, use the EQ operator.
+				 * For the last column of this arm, use LT, unless the next
+				 * bound datum is MAXVALUE, in which case use LE.
+				 */
+				if (j - i < current_or_arm)
+					strategy = BTEqualStrategyNumber;
+				else if (udatum_next &&
+						 udatum_next->kind == PARTITION_RANGE_DATUM_MAXVALUE)
+					strategy = BTLessEqualStrategyNumber;
+				else
+					strategy = BTLessStrategyNumber;
+
+				upper_or_arm_args = lappend(upper_or_arm_args,
+											make_partition_op_expr(key, j,
+																   strategy,
+																   keyCol,
+																   (Expr *) upper_val));
+			}
+
+			/*
+			 * Did we generate enough of OR's arguments?  First arm considers
+			 * the first of the remaining columns, second arm considers first
+			 * two of the remaining columns, and so on.
+			 */
+			++j;
+			if (j - i > current_or_arm)
+			{
+				/*
+				 * We must not emit any more arms if the new column that will
+				 * be considered is unbounded, or this one was.
+				 */
+				if (!lower_val || !ldatum_next ||
+					ldatum_next->kind != PARTITION_RANGE_DATUM_VALUE)
+					need_next_lower_arm = false;
+				if (!upper_val || !udatum_next ||
+					udatum_next->kind != PARTITION_RANGE_DATUM_VALUE)
+					need_next_upper_arm = false;
+				break;
+			}
+		}
+
+		if (lower_or_arm_args != NIL)
+			lower_or_arms = lappend(lower_or_arms,
+									list_length(lower_or_arm_args) > 1
+									? makeBoolExpr(AND_EXPR, lower_or_arm_args, -1)
+									: linitial(lower_or_arm_args));
+
+		if (upper_or_arm_args != NIL)
+			upper_or_arms = lappend(upper_or_arms,
+									list_length(upper_or_arm_args) > 1
+									? makeBoolExpr(AND_EXPR, upper_or_arm_args, -1)
+									: linitial(upper_or_arm_args));
+
+		/* If no work to do in the next iteration, break away. */
+		if (!need_next_lower_arm && !need_next_upper_arm)
+			break;
+
+		++current_or_arm;
+	}
+
+	/*
+	 * Generate the OR expressions for each of lower and upper bounds (if
+	 * required), and append to the list of implicitly ANDed list of
+	 * expressions.
+	 */
+	if (lower_or_arms != NIL)
+		result = lappend(result,
+						 list_length(lower_or_arms) > 1
+						 ? makeBoolExpr(OR_EXPR, lower_or_arms, -1)
+						 : linitial(lower_or_arms));
+	if (upper_or_arms != NIL)
+		result = lappend(result,
+						 list_length(upper_or_arms) > 1
+						 ? makeBoolExpr(OR_EXPR, upper_or_arms, -1)
+						 : linitial(upper_or_arms));
+
+	/* As noted above, caller expects the list to be non-empty. */
+	if (result == NIL)
+		result = list_make1(makeBoolConst(true, false));
+
+	return result;
 }
 
 /*
@@ -1480,67 +1782,68 @@ get_partition_operator(PartitionKey key, int col, StrategyNumber strategy,
  * into cache memory.
  */
 static List *
-generate_partition_qual(Relation rel, bool recurse)
+generate_partition_qual(Relation rel)
 {
 	HeapTuple	tuple;
 	MemoryContext oldcxt;
 	Datum		boundDatum;
 	bool		isnull;
-	Node	   *bound;
+	PartitionBoundSpec *bound;
 	List	   *my_qual = NIL,
 			   *result = NIL;
 	Relation	parent;
+	bool		found_whole_row;
 
 	/* Guard against stack overflow due to overly deep partition tree */
 	check_stack_depth();
+
+	/* Quick copy */
+	if (rel->rd_partcheck != NIL)
+		return copyObject(rel->rd_partcheck);
 
 	/* Grab at least an AccessShareLock on the parent table */
 	parent = heap_open(get_partition_parent(RelationGetRelid(rel)),
 					   AccessShareLock);
 
-	/* Quick copy */
-	if (rel->rd_partcheck)
-	{
-		if (parent->rd_rel->relispartition && recurse)
-			result = list_concat(generate_partition_qual(parent, true),
-								 copyObject(rel->rd_partcheck));
-		else
-			result = copyObject(rel->rd_partcheck);
-
-		heap_close(parent, AccessShareLock);
-		return result;
-	}
-
 	/* Get pg_class.relpartbound */
-	if (!rel->rd_rel->relispartition)	/* should not happen */
-		elog(ERROR, "relation \"%s\" has relispartition = false",
-			 RelationGetRelationName(rel));
 	tuple = SearchSysCache1(RELOID, RelationGetRelid(rel));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u",
+			 RelationGetRelid(rel));
+
 	boundDatum = SysCacheGetAttr(RELOID, tuple,
 								 Anum_pg_class_relpartbound,
 								 &isnull);
 	if (isnull)					/* should not happen */
 		elog(ERROR, "relation \"%s\" has relpartbound = null",
 			 RelationGetRelationName(rel));
-	bound = stringToNode(TextDatumGetCString(boundDatum));
+	bound = castNode(PartitionBoundSpec,
+					 stringToNode(TextDatumGetCString(boundDatum)));
 	ReleaseSysCache(tuple);
 
 	my_qual = get_qual_from_partbound(rel, parent, bound);
 
-	/* If requested, add parent's quals to the list (if any) */
-	if (parent->rd_rel->relispartition && recurse)
-	{
-		List	   *parent_check;
-
-		parent_check = generate_partition_qual(parent, true);
-		result = list_concat(parent_check, my_qual);
-	}
+	/* Add the parent's quals to the list (if any) */
+	if (parent->rd_rel->relispartition)
+		result = list_concat(generate_partition_qual(parent), my_qual);
 	else
 		result = my_qual;
 
-	/* Save a copy of my_qual in the relcache */
+	/*
+	 * Change Vars to have partition's attnos instead of the parent's. We do
+	 * this after we concatenate the parent's quals, because we want every Var
+	 * in it to bear this relation's attnos. It's safe to assume varno = 1
+	 * here.
+	 */
+	result = map_partition_varattnos(result, 1, rel, parent,
+									 &found_whole_row);
+	/* There can never be a whole-row reference here */
+	if (found_whole_row)
+		elog(ERROR, "unexpected whole-row reference found in partition key");
+
+	/* Save a copy in the relcache */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-	rel->rd_partcheck = copyObject(my_qual);
+	rel->rd_partcheck = copyObject(result);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* Keep the parent locked until commit */
@@ -1565,7 +1868,7 @@ generate_partition_qual(Relation rel, bool recurse)
  * the heap tuple passed in.
  * ----------------
  */
-static void
+void
 FormPartitionKeyDatum(PartitionDispatch pd,
 					  TupleTableSlot *slot,
 					  EState *estate,
@@ -1582,8 +1885,7 @@ FormPartitionKeyDatum(PartitionDispatch pd,
 			   GetPerTupleExprContext(estate)->ecxt_scantuple == slot);
 
 		/* First time through, set up expression evaluation state */
-		pd->keystate = (List *) ExecPrepareExpr((Expr *) pd->key->partexprs,
-												estate);
+		pd->keystate = ExecPrepareExprList(pd->key->partexprs, estate);
 	}
 
 	partexpr_item = list_head(pd->keystate);
@@ -1605,8 +1907,7 @@ FormPartitionKeyDatum(PartitionDispatch pd,
 				elog(ERROR, "wrong number of partition key expressions");
 			datum = ExecEvalExprSwitchContext((ExprState *) lfirst(partexpr_item),
 											  GetPerTupleExprContext(estate),
-											  &isNull,
-											  NULL);
+											  &isNull);
 			partexpr_item = lnext(partexpr_item);
 		}
 		values[i] = datum;
@@ -1630,14 +1931,18 @@ int
 get_partition_for_tuple(PartitionDispatch *pd,
 						TupleTableSlot *slot,
 						EState *estate,
-						Oid *failed_at)
+						PartitionDispatchData **failed_at,
+						TupleTableSlot **failed_slot)
 {
 	PartitionDispatch parent;
 	Datum		values[PARTITION_MAX_KEYS];
 	bool		isnull[PARTITION_MAX_KEYS];
 	int			cur_offset,
 				cur_index;
-	int			i;
+	int			i,
+				result;
+	ExprContext *ecxt = GetPerTupleExprContext(estate);
+	TupleTableSlot *ecxt_scantuple_old = ecxt->ecxt_scantuple;
 
 	/* start with the root partitioned table */
 	parent = pd[0];
@@ -1648,41 +1953,62 @@ get_partition_for_tuple(PartitionDispatch *pd,
 		TupleTableSlot *myslot = parent->tupslot;
 		TupleConversionMap *map = parent->tupmap;
 
-		/* Quick exit */
-		if (partdesc->nparts == 0)
-		{
-			*failed_at = RelationGetRelid(parent->reldesc);
-			return -1;
-		}
-
-		if (myslot != NULL)
+		if (myslot != NULL && map != NULL)
 		{
 			HeapTuple	tuple = ExecFetchSlotTuple(slot);
 
 			ExecClearTuple(myslot);
-			Assert(map != NULL);
 			tuple = do_convert_tuple(tuple, map);
 			ExecStoreTuple(tuple, myslot, InvalidBuffer, true);
 			slot = myslot;
 		}
 
-		/* Extract partition key from tuple */
+		/* Quick exit */
+		if (partdesc->nparts == 0)
+		{
+			*failed_at = parent;
+			*failed_slot = slot;
+			result = -1;
+			goto error_exit;
+		}
+
+		/*
+		 * Extract partition key from tuple. Expression evaluation machinery
+		 * that FormPartitionKeyDatum() invokes expects ecxt_scantuple to
+		 * point to the correct tuple slot.  The slot might have changed from
+		 * what was used for the parent table if the table of the current
+		 * partitioning level has different tuple descriptor from the parent.
+		 * So update ecxt_scantuple accordingly.
+		 */
+		ecxt->ecxt_scantuple = slot;
 		FormPartitionKeyDatum(parent, slot, estate, values, isnull);
 
 		if (key->strategy == PARTITION_STRATEGY_RANGE)
 		{
-			/* Disallow nulls in the range partition key of the tuple */
+			/*
+			 * Since we cannot route tuples with NULL partition keys through a
+			 * range-partitioned table, simply return that no partition exists
+			 */
 			for (i = 0; i < key->partnatts; i++)
+			{
 				if (isnull[i])
-					ereport(ERROR,
-							(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-						errmsg("range partition key of row contains null")));
+				{
+					*failed_at = parent;
+					*failed_slot = slot;
+					result = -1;
+					goto error_exit;
+				}
+			}
 		}
 
-		if (partdesc->boundinfo->has_null && isnull[0])
-			/* Tuple maps to the null-accepting list partition */
+		/*
+		 * A null partition key is only acceptable if null-accepting list
+		 * partition exists.
+		 */
+		cur_index = -1;
+		if (isnull[0] && partition_bound_accepts_nulls(partdesc->boundinfo))
 			cur_index = partdesc->boundinfo->null_index;
-		else
+		else if (!isnull[0])
 		{
 			/* Else bsearch in partdesc->boundinfo */
 			bool		equal = false;
@@ -1721,16 +2047,23 @@ get_partition_for_tuple(PartitionDispatch *pd,
 		 */
 		if (cur_index < 0)
 		{
-			*failed_at = RelationGetRelid(parent->reldesc);
-			return -1;
-		}
-		else if (parent->indexes[cur_index] < 0)
-			parent = pd[-parent->indexes[cur_index]];
-		else
+			result = -1;
+			*failed_at = parent;
+			*failed_slot = slot;
 			break;
+		}
+		else if (parent->indexes[cur_index] >= 0)
+		{
+			result = parent->indexes[cur_index];
+			break;
+		}
+		else
+			parent = pd[-parent->indexes[cur_index]];
 	}
 
-	return parent->indexes[cur_index];
+error_exit:
+	ecxt->ecxt_scantuple = ecxt_scantuple_old;
+	return result;
 }
 
 /*
@@ -1761,30 +2094,27 @@ static PartitionRangeBound *
 make_one_range_bound(PartitionKey key, int index, List *datums, bool lower)
 {
 	PartitionRangeBound *bound;
-	ListCell   *cell;
+	ListCell   *lc;
 	int			i;
 
 	bound = (PartitionRangeBound *) palloc0(sizeof(PartitionRangeBound));
 	bound->index = index;
 	bound->datums = (Datum *) palloc0(key->partnatts * sizeof(Datum));
-	bound->content = (RangeDatumContent *) palloc0(key->partnatts *
-												   sizeof(RangeDatumContent));
+	bound->kind = (PartitionRangeDatumKind *) palloc0(key->partnatts *
+													  sizeof(PartitionRangeDatumKind));
 	bound->lower = lower;
 
 	i = 0;
-	foreach(cell, datums)
+	foreach(lc, datums)
 	{
-		PartitionRangeDatum *datum = lfirst(cell);
+		PartitionRangeDatum *datum = castNode(PartitionRangeDatum, lfirst(lc));
 
 		/* What's contained in this range datum? */
-		bound->content[i] = !datum->infinite
-			? RANGE_DATUM_FINITE
-			: (lower ? RANGE_DATUM_NEG_INF
-			   : RANGE_DATUM_POS_INF);
+		bound->kind[i] = datum->kind;
 
-		if (bound->content[i] == RANGE_DATUM_FINITE)
+		if (datum->kind == PARTITION_RANGE_DATUM_VALUE)
 		{
-			Const	   *val = (Const *) datum->value;
+			Const	   *val = castNode(Const, datum->value);
 
 			if (val->constisnull)
 				elog(ERROR, "invalid range bound datum");
@@ -1805,45 +2135,53 @@ qsort_partition_rbound_cmp(const void *a, const void *b, void *arg)
 	PartitionRangeBound *b2 = (*(PartitionRangeBound *const *) b);
 	PartitionKey key = (PartitionKey) arg;
 
-	return partition_rbound_cmp(key, b1->datums, b1->content, b1->lower, b2);
+	return partition_rbound_cmp(key, b1->datums, b1->kind, b1->lower, b2);
 }
 
 /*
  * partition_rbound_cmp
  *
  * Return for two range bounds whether the 1st one (specified in datum1,
- * content1, and lower1) is <=, =, >= the bound specified in *b2
+ * kind1, and lower1) is <, =, or > the bound specified in *b2.
+ *
+ * Note that if the values of the two range bounds compare equal, then we take
+ * into account whether they are upper or lower bounds, and an upper bound is
+ * considered to be smaller than a lower bound. This is important to the way
+ * that RelationBuildPartitionDesc() builds the PartitionBoundInfoData
+ * structure, which only stores the upper bound of a common boundary between
+ * two contiguous partitions.
  */
 static int32
 partition_rbound_cmp(PartitionKey key,
-					 Datum *datums1, RangeDatumContent *content1, bool lower1,
-					 PartitionRangeBound *b2)
+					 Datum *datums1, PartitionRangeDatumKind *kind1,
+					 bool lower1, PartitionRangeBound *b2)
 {
 	int32		cmpval = 0;		/* placate compiler */
 	int			i;
 	Datum	   *datums2 = b2->datums;
-	RangeDatumContent *content2 = b2->content;
+	PartitionRangeDatumKind *kind2 = b2->kind;
 	bool		lower2 = b2->lower;
 
 	for (i = 0; i < key->partnatts; i++)
 	{
 		/*
-		 * First, handle cases involving infinity, which don't require
-		 * invoking the comparison proc.
+		 * First, handle cases where the column is unbounded, which should not
+		 * invoke the comparison procedure, and should not consider any later
+		 * columns. Note that the PartitionRangeDatumKind enum elements
+		 * compare the same way as the values they represent.
 		 */
-		if (content1[i] != RANGE_DATUM_FINITE &&
-			content2[i] != RANGE_DATUM_FINITE)
+		if (kind1[i] < kind2[i])
+			return -1;
+		else if (kind1[i] > kind2[i])
+			return 1;
+		else if (kind1[i] != PARTITION_RANGE_DATUM_VALUE)
 
 			/*
-			 * Both are infinity, so they are equal unless one is negative
-			 * infinity and other positive (or vice versa)
+			 * The column bounds are both MINVALUE or both MAXVALUE. No later
+			 * columns should be considered, but we still need to compare
+			 * whether they are upper or lower bounds.
 			 */
-			return content1[i] == content2[i] ? 0
-				: (content1[i] < content2[i] ? -1 : 1);
-		else if (content1[i] != RANGE_DATUM_FINITE)
-			return content1[i] == RANGE_DATUM_NEG_INF ? -1 : 1;
-		else if (content2[i] != RANGE_DATUM_FINITE)
-			return content2[i] == RANGE_DATUM_NEG_INF ? 1 : -1;
+			break;
 
 		cmpval = DatumGetInt32(FunctionCall2Coll(&key->partsupfunc[i],
 												 key->partcollation[i],
@@ -1868,12 +2206,12 @@ partition_rbound_cmp(PartitionKey key,
 /*
  * partition_rbound_datum_cmp
  *
- * Return whether range bound (specified in rb_datums, rb_content, and
- * rb_lower) <=, =, >= partition key of tuple (tuple_datums)
+ * Return whether range bound (specified in rb_datums, rb_kind, and rb_lower)
+ * is <, =, or > partition key of tuple (tuple_datums)
  */
 static int32
 partition_rbound_datum_cmp(PartitionKey key,
-						   Datum *rb_datums, RangeDatumContent *rb_content,
+						   Datum *rb_datums, PartitionRangeDatumKind *rb_kind,
 						   Datum *tuple_datums)
 {
 	int			i;
@@ -1881,8 +2219,10 @@ partition_rbound_datum_cmp(PartitionKey key,
 
 	for (i = 0; i < key->partnatts; i++)
 	{
-		if (rb_content[i] != RANGE_DATUM_FINITE)
-			return rb_content[i] == RANGE_DATUM_NEG_INF ? -1 : 1;
+		if (rb_kind[i] == PARTITION_RANGE_DATUM_MINVALUE)
+			return -1;
+		else if (rb_kind[i] == PARTITION_RANGE_DATUM_MAXVALUE)
+			return 1;
 
 		cmpval = DatumGetInt32(FunctionCall2Coll(&key->partsupfunc[i],
 												 key->partcollation[i],
@@ -1898,7 +2238,7 @@ partition_rbound_datum_cmp(PartitionKey key,
 /*
  * partition_bound_cmp
  *
- * Return whether the bound at offset in boundinfo is <=, =, >= the argument
+ * Return whether the bound at offset in boundinfo is <, =, or > the argument
  * specified in *probe.
  */
 static int32
@@ -1919,7 +2259,7 @@ partition_bound_cmp(PartitionKey key, PartitionBoundInfo boundinfo,
 
 		case PARTITION_STRATEGY_RANGE:
 			{
-				RangeDatumContent *content = boundinfo->content[offset];
+				PartitionRangeDatumKind *kind = boundinfo->kind[offset];
 
 				if (probe_is_bound)
 				{
@@ -1931,12 +2271,12 @@ partition_bound_cmp(PartitionKey key, PartitionBoundInfo boundinfo,
 					bool		lower = boundinfo->indexes[offset] < 0;
 
 					cmpval = partition_rbound_cmp(key,
-												bound_datums, content, lower,
-											  (PartitionRangeBound *) probe);
+												  bound_datums, kind, lower,
+												  (PartitionRangeBound *) probe);
 				}
 				else
 					cmpval = partition_rbound_datum_cmp(key,
-														bound_datums, content,
+														bound_datums, kind,
 														(Datum *) probe);
 				break;
 			}
@@ -1950,8 +2290,8 @@ partition_bound_cmp(PartitionKey key, PartitionBoundInfo boundinfo,
 }
 
 /*
- * Binary search on a collection of partition bounds. Returns greatest index
- * of bound in array boundinfo->datums which is less or equal with *probe.
+ * Binary search on a collection of partition bounds. Returns greatest
+ * bound in array boundinfo->datums which is less than or equal to *probe.
  * If all bounds in the array are greater than *probe, -1 is returned.
  *
  * *probe could either be a partition bound or a Datum array representing
@@ -1983,6 +2323,9 @@ partition_bound_bsearch(PartitionKey key, PartitionBoundInfo boundinfo,
 		{
 			lo = mid;
 			*is_equal = (cmpval == 0);
+
+			if (*is_equal)
+				break;
 		}
 		else
 			hi = mid - 1;

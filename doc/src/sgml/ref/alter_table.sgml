@@ -46,6 +46,9 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> SET DEFAULT <replaceable class="PARAMETER">expression</replaceable>
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> DROP DEFAULT
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> { SET | DROP } NOT NULL
+    ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ]
+    ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> { SET GENERATED { ALWAYS | BY DEFAULT } | SET <replaceable>sequence_option</replaceable> | RESTART [ [ WITH ] <replaceable class="parameter">restart</replaceable> ] } [...]
+    ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> DROP IDENTITY [ IF EXISTS ]
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> SET STATISTICS <replaceable class="PARAMETER">integer</replaceable>
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> SET ( <replaceable class="PARAMETER">attribute_option</replaceable> = <replaceable class="PARAMETER">value</replaceable> [, ... ] )
     ALTER [ COLUMN ] <replaceable class="PARAMETER">column_name</replaceable> RESET ( <replaceable class="PARAMETER">attribute_option</replaceable> [, ... ] )
@@ -119,9 +122,12 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
      <para>
       This form drops a column from a table.  Indexes and
       table constraints involving the column will be automatically
-      dropped as well.  You will need to say <literal>CASCADE</> if
-      anything outside the table depends on the column, for example,
-      foreign key references or views.
+      dropped as well.
+      Multivariate statistics referencing the dropped column will also be
+      removed if the removal of the column would cause the statistics to
+      contain data for only a single column.
+      You will need to say <literal>CASCADE</> if anything outside the table
+      depends on the column, for example, foreign key references or views.
       If <literal>IF EXISTS</literal> is specified and the column
       does not exist, no error is thrown. In this case a notice
       is issued instead.
@@ -172,9 +178,46 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
      </para>
 
      <para>
-      If this table is a partition, one cannot perform <literal>DROP NOT NULL</>
+      If this table is a partition, one cannot perform <literal>DROP NOT NULL</literal>
       on a column if it is marked <literal>NOT NULL</literal> in the parent
-      table.
+      table.  To drop the <literal>NOT NULL</literal> constraint from all the
+      partitions, perform <literal>DROP NOT NULL</literal> on the parent
+      table.  Even if there is no <literal>NOT NULL</> constraint on the
+      parent, such a constraint can still be added to individual partitions,
+      if desired; that is, the children can disallow nulls even if the parent
+      allows them, but not the other way around.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY</literal></term>
+    <term><literal>SET GENERATED { ALWAYS | BY DEFAULT }</literal></term>
+    <term><literal>DROP IDENTITY [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      These forms change whether a column is an identity column or change the
+      generation attribute of an existing identity column.
+      See <xref linkend="sql-createtable"> for details.
+     </para>
+
+     <para>
+      If <literal>DROP IDENTITY IF EXISTS</literal> is specified and the
+      column is not an identity column, no error is thrown.  In this case a
+      notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET <replaceable>sequence_option</replaceable></literal></term>
+    <term><literal>RESTART</literal></term>
+    <listitem>
+     <para>
+      These forms alter the sequence that underlies an existing identity
+      column.  <replaceable>sequence_option</replaceable> is an option
+      supported by <xref linkend="sql-altersequence"> such
+      as <literal>INCREMENT BY</literal>.
      </para>
     </listitem>
    </varlistentry>
@@ -568,10 +611,17 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
       That can be done with <link linkend="SQL-VACUUM">VACUUM
       FULL</>, <xref linkend="SQL-CLUSTER"> or one of the forms
       of <command>ALTER TABLE</> that forces a table rewrite.
+      For planner related parameters, changes will take effect from the next
+      time the table is locked so currently executing queries will not be
+      affected.
      </para>
 
      <para>
-      Changing fillfactor and autovacuum storage parameters acquires a <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+      <literal>SHARE UPDATE EXCLUSIVE</literal> lock will be taken for
+      fillfactor and autovacuum storage parameters, as well as the
+      following planner related parameters:
+      effective_io_concurrency, parallel_workers, seq_page_cost
+      random_page_cost, n_distinct and n_distinct_inherited.
      </para>
 
      <note>
@@ -715,7 +765,7 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
    </varlistentry>
 
    <varlistentry>
-    <term><literal>ATTACH PARTITION</literal> <replaceable class="PARAMETER">partition_name</replaceable> FOR VALUES <replaceable class="PARAMETER">partition_bound_spec</replaceable></term>
+    <term><literal>ATTACH PARTITION <replaceable class="PARAMETER">partition_name</replaceable> FOR VALUES <replaceable class="PARAMETER">partition_bound_spec</replaceable></literal></term>
     <listitem>
      <para>
       This form attaches an existing table (which might itself be partitioned)
@@ -736,18 +786,25 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
      </para>
 
      <para>
-      A full table scan is performed on the table being attached to check that
-      no existing row in the table violates the partition constraint.  It is
-      possible to avoid this scan by adding a valid <literal>CHECK</literal>
-      constraint to the table that would allow only the rows satisfying the
-      desired partition constraint before running this command.  It will be
-      determined using such a constraint that the table need not be scanned
-      to validate the partition constraint.  This does not work, however, if
-      any of the partition keys is an expression and the partition does not
-      accept <literal>NULL</literal> values.  If attaching a list partition
-      that will not accept <literal>NULL</literal> values, also add
-      <literal>NOT NULL</literal> constraint to the partition key column,
-      unless it's an expression.
+      If the new partition is a regular table, a full table scan is performed
+      to check that no existing row in the table violates the partition
+      constraint.  It is possible to avoid this scan by adding a valid
+      <literal>CHECK</literal> constraint to the table that would allow only
+      the rows satisfying the desired partition constraint before running this
+      command.  It will be determined using such a constraint that the table
+      need not be scanned to validate the partition constraint.  This does not
+      work, however, if any of the partition keys is an expression and the
+      partition does not accept <literal>NULL</literal> values.  If attaching
+      a list partition that will not accept <literal>NULL</literal> values,
+      also add <literal>NOT NULL</literal> constraint to the partition key
+      column, unless it's an expression.
+     </para>
+
+     <para>
+      If the new partition is a foreign table, nothing is done to verify
+      that all the rows in the foreign table obey the partition constraint.
+      (See the discussion in <xref linkend="SQL-CREATEFOREIGNTABLE"> about
+      constraints on the foreign table.)
      </para>
     </listitem>
    </varlistentry>
@@ -1138,8 +1195,11 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable>
    </para>
 
    <para>
-    The <literal>TRIGGER</>, <literal>CLUSTER</>, <literal>OWNER</>,
-    and <literal>TABLESPACE</> actions never recurse to descendant tables;
+    The actions for identity columns (<literal>ADD
+    GENERATED</literal>, <literal>SET</literal> etc., <literal>DROP
+    IDENTITY</literal>), as well as the actions
+    <literal>TRIGGER</>, <literal>CLUSTER</>, <literal>OWNER</>,
+    and <literal>TABLESPACE</> never recurse to descendant tables;
     that is, they always act as though <literal>ONLY</> were specified.
     Adding a constraint recurses only for <literal>CHECK</> constraints
     that are not marked <literal>NO INHERIT</>.
@@ -1338,7 +1398,7 @@ ALTER TABLE cities
   <para>
    Detach a partition from partitioned table:
 <programlisting>
-ALTER TABLE cities
+ALTER TABLE measurement
     DETACH PARTITION measurement_y2015m12;
 </programlisting></para>
 
@@ -1349,8 +1409,9 @@ ALTER TABLE cities
 
   <para>
    The forms <literal>ADD</literal> (without <literal>USING INDEX</literal>),
-   <literal>DROP</>, <literal>SET DEFAULT</>,
-   and <literal>SET DATA TYPE</literal> (without <literal>USING</literal>)
+   <literal>DROP [COLUMN]</>, <literal>DROP IDENTITY</literal>, <literal>RESTART</literal>,
+   <literal>SET DEFAULT</>, <literal>SET DATA TYPE</literal> (without <literal>USING</literal>),
+   <literal>SET GENERATED</literal>, and <literal>SET <replaceable>sequence_option</replaceable></literal>
    conform with the SQL standard.  The other forms are
    <productname>PostgreSQL</productname> extensions of the SQL standard.
    Also, the ability to specify more than one manipulation in a single

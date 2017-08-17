@@ -3,7 +3,7 @@
  * rbtree.h
  *	  interface for PostgreSQL generic Red-Black binary tree package
  *
- * Copyright (c) 2009-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/include/lib/rbtree.h
@@ -79,4 +79,4 @@ extern void rb_begin_iterate(RBTree *rb, RBOrderControl ctrl,
 				 RBTreeIterator *iter);
 extern RBNode *rb_iterate(RBTreeIterator *iter);
 
-#endif   /* RBTREE_H */
+#endif							/* RBTREE_H */

@@ -4,7 +4,7 @@
  *	Catalog routines used by pg_dump; long ago these were shared
  *	by another dump tool, but not anymore.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -66,10 +66,8 @@ static int	numExtensions;
 static ExtensionMemberId *extmembers;
 static int	numextmembers;
 
-static void flagInhTables(TableInfo *tbinfo, int numTables,
+static void flagInhTables(Archive *fout, TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
-static void flagPartitions(TableInfo *tblinfo, int numTables,
-			  PartInfo *partinfo, int numPartitions);
 static void flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables);
 static DumpableObject **buildIndexArray(void *objArray, int numObjs,
 				Size objSize);
@@ -77,8 +75,6 @@ static int	DOCatalogIdCompare(const void *p1, const void *p2);
 static int	ExtensionMemberIdCompare(const void *p1, const void *p2);
 static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
-static void findPartitionParentByOid(TableInfo *self, PartInfo *partinfo,
-				 int numPartitions);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
 
 
@@ -97,10 +93,8 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	NamespaceInfo *nspinfo;
 	ExtensionInfo *extinfo;
 	InhInfo    *inhinfo;
-	PartInfo    *partinfo;
 	int			numAggregates;
 	int			numInherits;
-	int			numPartitions;
 	int			numRules;
 	int			numProcLangs;
 	int			numCasts;
@@ -238,10 +232,6 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	inhinfo = getInherits(fout, &numInherits);
 
 	if (g_verbose)
-		write_msg(NULL, "reading partition information\n");
-	partinfo = getPartitions(fout, &numPartitions);
-
-	if (g_verbose)
 		write_msg(NULL, "reading event triggers\n");
 	getEventTriggers(fout, &numEventTriggers);
 
@@ -253,12 +243,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	/* Link tables to parents, mark parents of target tables interesting */
 	if (g_verbose)
 		write_msg(NULL, "finding inheritance relationships\n");
-	flagInhTables(tblinfo, numTables, inhinfo, numInherits);
-
-	/* Link tables to partition parents, mark parents as interesting */
-	if (g_verbose)
-		write_msg(NULL, "finding partition relationships\n");
-	flagPartitions(tblinfo, numTables, partinfo, numPartitions);
+	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
 
 	if (g_verbose)
 		write_msg(NULL, "reading column info for interesting tables\n");
@@ -271,6 +256,10 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading indexes\n");
 	getIndexes(fout, tblinfo, numTables);
+
+	if (g_verbose)
+		write_msg(NULL, "reading extended statistics\n");
+	getExtendedStatistics(fout, tblinfo, numTables);
 
 	if (g_verbose)
 		write_msg(NULL, "reading constraints\n");
@@ -289,16 +278,24 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	getPolicies(fout, tblinfo, numTables);
 
 	if (g_verbose)
-		write_msg(NULL, "reading partition key information for interesting tables\n");
-	getTablePartitionKeyInfo(fout, tblinfo, numTables);
+		write_msg(NULL, "reading publications\n");
+	getPublications(fout);
+
+	if (g_verbose)
+		write_msg(NULL, "reading publication membership\n");
+	getPublicationTables(fout, tblinfo, numTables);
+
+	if (g_verbose)
+		write_msg(NULL, "reading subscriptions\n");
+	getSubscriptions(fout);
 
 	*numTablesPtr = numTables;
 	return tblinfo;
 }
 
 /* flagInhTables -
- *	 Fill in parent link fields of every target table, and mark
- *	 parents of target tables as interesting
+ *	 Fill in parent link fields of tables for which we need that information,
+ *	 and mark parents of target tables as interesting
  *
  * Note that only direct ancestors of targets are marked interesting.
  * This is sufficient; we don't much care whether they inherited their
@@ -307,70 +304,52 @@ getSchemaData(Archive *fout, int *numTablesPtr)
  * modifies tblinfo
  */
 static void
-flagInhTables(TableInfo *tblinfo, int numTables,
+flagInhTables(Archive *fout, TableInfo *tblinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits)
 {
+	DumpOptions *dopt = fout->dopt;
 	int			i,
 				j;
-	int			numParents;
-	TableInfo **parents;
 
 	for (i = 0; i < numTables; i++)
 	{
+		bool		find_parents = true;
+		bool		mark_parents = true;
+
 		/* Some kinds never have parents */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE ||
 			tblinfo[i].relkind == RELKIND_VIEW ||
 			tblinfo[i].relkind == RELKIND_MATVIEW)
 			continue;
 
-		/* Don't bother computing anything for non-target tables, either */
+		/*
+		 * Normally, we don't bother computing anything for non-target tables,
+		 * but if load-via-partition-root is specified, we gather information
+		 * on every partition in the system so that getRootTableInfo can trace
+		 * from any given to leaf partition all the way up to the root.  (We
+		 * don't need to mark them as interesting for getTableAttrs, though.)
+		 */
 		if (!tblinfo[i].dobj.dump)
-			continue;
-
-		/* Find all the immediate parent tables */
-		findParentsByOid(&tblinfo[i], inhinfo, numInherits);
-
-		/* Mark the parents as interesting for getTableAttrs */
-		numParents = tblinfo[i].numParents;
-		parents = tblinfo[i].parents;
-		for (j = 0; j < numParents; j++)
-			parents[j]->interesting = true;
-	}
-}
-
-/* flagPartitions -
- *	 Fill in parent link fields of every target table that is partition,
- *	 and mark parents of partitions as interesting
- *
- * modifies tblinfo
- */
-static void
-flagPartitions(TableInfo *tblinfo, int numTables,
-			  PartInfo *partinfo, int numPartitions)
-{
-	int		i;
-
-	for (i = 0; i < numTables; i++)
-	{
-		/* Some kinds are never partitions */
-		if (tblinfo[i].relkind == RELKIND_SEQUENCE ||
-			tblinfo[i].relkind == RELKIND_VIEW ||
-			tblinfo[i].relkind == RELKIND_MATVIEW)
-			continue;
-
-		/* Don't bother computing anything for non-target tables, either */
-		if (!tblinfo[i].dobj.dump)
-			continue;
-
-		/* Find the parent TableInfo and save */
-		findPartitionParentByOid(&tblinfo[i], partinfo, numPartitions);
-
-		/* Mark the parent as interesting for getTableAttrs */
-		if (tblinfo[i].partitionOf)
 		{
-			tblinfo[i].partitionOf->interesting = true;
-			addObjectDependency(&tblinfo[i].dobj,
-								tblinfo[i].partitionOf->dobj.dumpId);
+			mark_parents = false;
+
+			if (!dopt->load_via_partition_root ||
+				!tblinfo[i].ispartition)
+				find_parents = false;
+		}
+
+		/* If needed, find all the immediate parent tables. */
+		if (find_parents)
+			findParentsByOid(&tblinfo[i], inhinfo, numInherits);
+
+		/* If needed, mark the parents as interesting for getTableAttrs. */
+		if (mark_parents)
+		{
+			int			numParents = tblinfo[i].numParents;
+			TableInfo **parents = tblinfo[i].parents;
+
+			for (j = 0; j < numParents; j++)
+				parents[j]->interesting = true;
 		}
 	}
 }
@@ -973,40 +952,6 @@ findParentsByOid(TableInfo *self,
 	}
 	else
 		self->parents = NULL;
-}
-
-/*
- * findPartitionParentByOid
- *	  find a partition's parent in tblinfo[]
- */
-static void
-findPartitionParentByOid(TableInfo *self, PartInfo *partinfo,
-						 int numPartitions)
-{
-	Oid			oid = self->dobj.catId.oid;
-	int			i;
-
-	for (i = 0; i < numPartitions; i++)
-	{
-		if (partinfo[i].partrelid == oid)
-		{
-			TableInfo  *parent;
-
-			parent = findTableByOid(partinfo[i].partparent);
-			if (parent == NULL)
-			{
-				write_msg(NULL, "failed sanity check, parent OID %u of table \"%s\" (OID %u) not found\n",
-						  partinfo[i].partparent,
-						  self->dobj.name,
-						  oid);
-				exit_nicely(1);
-			}
-			self->partitionOf = parent;
-
-			/* While we're at it, also save the partdef */
-			self->partitiondef = partinfo[i].partdef;
-		}
-	}
 }
 
 /*

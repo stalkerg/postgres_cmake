@@ -3,7 +3,7 @@
  * slotfuncs.c
  *	   Support functions for replication slots
  *
- * Copyright (c) 2012-2016, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/slotfuncs.c
@@ -119,11 +119,11 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 
 	/*
 	 * Acquire a logical decoding slot, this will check for conflicting names.
-	 * Initially create persistent slot as ephemeral - that allows us to nicely
-	 * handle errors during initialization because it'll get dropped if this
-	 * transaction fails. We'll make it persistent at the end.
-	 * Temporary slots can be created as temporary from beginning as they get
-	 * dropped on error as well.
+	 * Initially create persistent slot as ephemeral - that allows us to
+	 * nicely handle errors during initialization because it'll get dropped if
+	 * this transaction fails. We'll make it persistent at the end. Temporary
+	 * slots can be created as temporary from beginning as they get dropped on
+	 * error as well.
 	 */
 	ReplicationSlotCreate(NameStr(*name), true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL);
@@ -131,9 +131,10 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	/*
 	 * Create logical decoding context, to build the initial snapshot.
 	 */
-	ctx = CreateInitDecodingContext(
-									NameStr(*plugin), NIL,
-									logical_read_local_xlog_page, NULL, NULL);
+	ctx = CreateInitDecodingContext(NameStr(*plugin), NIL,
+									false,	/* do not build snapshot */
+									logical_read_local_xlog_page, NULL, NULL,
+									NULL);
 
 	/* build initial snapshot, might take a while */
 	DecodingContextFindStartpoint(ctx);
@@ -170,7 +171,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 
 	CheckSlotRequirements();
 
-	ReplicationSlotDrop(NameStr(*name));
+	ReplicationSlotDrop(NameStr(*name), false);
 
 	PG_RETURN_VOID();
 }
@@ -220,13 +221,14 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
+	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 	for (slotno = 0; slotno < max_replication_slots; slotno++)
 	{
 		ReplicationSlot *slot = &ReplicationSlotCtl->replication_slots[slotno];
 		Datum		values[PG_GET_REPLICATION_SLOTS_COLS];
 		bool		nulls[PG_GET_REPLICATION_SLOTS_COLS];
 
-		ReplicationSlotPersistency	persistency;
+		ReplicationSlotPersistency persistency;
 		TransactionId xmin;
 		TransactionId catalog_xmin;
 		XLogRecPtr	restart_lsn;
@@ -237,25 +239,21 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		NameData	plugin;
 		int			i;
 
-		SpinLockAcquire(&slot->mutex);
 		if (!slot->in_use)
-		{
-			SpinLockRelease(&slot->mutex);
 			continue;
-		}
-		else
-		{
-			xmin = slot->data.xmin;
-			catalog_xmin = slot->data.catalog_xmin;
-			database = slot->data.database;
-			restart_lsn = slot->data.restart_lsn;
-			confirmed_flush_lsn = slot->data.confirmed_flush;
-			namecpy(&slot_name, &slot->data.name);
-			namecpy(&plugin, &slot->data.plugin);
 
-			active_pid = slot->active_pid;
-			persistency = slot->data.persistency;
-		}
+		SpinLockAcquire(&slot->mutex);
+
+		xmin = slot->data.xmin;
+		catalog_xmin = slot->data.catalog_xmin;
+		database = slot->data.database;
+		restart_lsn = slot->data.restart_lsn;
+		confirmed_flush_lsn = slot->data.confirmed_flush;
+		namecpy(&slot_name, &slot->data.name);
+		namecpy(&plugin, &slot->data.plugin);
+		active_pid = slot->active_pid;
+		persistency = slot->data.persistency;
+
 		SpinLockRelease(&slot->mutex);
 
 		memset(nulls, 0, sizeof(nulls));
@@ -308,6 +306,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
+	LWLockRelease(ReplicationSlotControlLock);
 
 	tuplestore_donestoring(tupstore);
 

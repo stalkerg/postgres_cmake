@@ -4,7 +4,7 @@
  *	  Utility routines for the Postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/gin_private.h"
+#include "access/ginxlog.h"
 #include "access/reloptions.h"
 #include "access/xloginsert.h"
 #include "catalog/pg_collation.h"
@@ -49,6 +50,7 @@ ginhandler(PG_FUNCTION_ARGS)
 	amroutine->amstorage = true;
 	amroutine->amclusterable = false;
 	amroutine->ampredlocks = false;
+	amroutine->amcanparallel = false;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ginbuild;
@@ -68,6 +70,9 @@ ginhandler(PG_FUNCTION_ARGS)
 	amroutine->amendscan = ginendscan;
 	amroutine->ammarkpos = NULL;
 	amroutine->amrestrpos = NULL;
+	amroutine->amestimateparallelscan = NULL;
+	amroutine->aminitparallelscan = NULL;
+	amroutine->amparallelrescan = NULL;
 
 	PG_RETURN_POINTER(amroutine);
 }
@@ -126,8 +131,8 @@ initGinState(GinState *state, Relation index)
 			if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				errmsg("could not identify a comparison function for type %s",
-					   format_type_be(origTupdesc->attrs[i]->atttypid))));
+						 errmsg("could not identify a comparison function for type %s",
+								format_type_be(origTupdesc->attrs[i]->atttypid))));
 			fmgr_info_copy(&(state->compareFn[i]),
 						   &(typentry->cmp_proc_finfo),
 						   CurrentMemoryContext);
@@ -148,14 +153,14 @@ initGinState(GinState *state, Relation index)
 		if (index_getprocid(index, i + 1, GIN_TRICONSISTENT_PROC) != InvalidOid)
 		{
 			fmgr_info_copy(&(state->triConsistentFn[i]),
-					 index_getprocinfo(index, i + 1, GIN_TRICONSISTENT_PROC),
+						   index_getprocinfo(index, i + 1, GIN_TRICONSISTENT_PROC),
 						   CurrentMemoryContext);
 		}
 
 		if (index_getprocid(index, i + 1, GIN_CONSISTENT_PROC) != InvalidOid)
 		{
 			fmgr_info_copy(&(state->consistentFn[i]),
-						index_getprocinfo(index, i + 1, GIN_CONSISTENT_PROC),
+						   index_getprocinfo(index, i + 1, GIN_CONSISTENT_PROC),
 						   CurrentMemoryContext);
 		}
 
@@ -173,7 +178,7 @@ initGinState(GinState *state, Relation index)
 		if (index_getprocid(index, i + 1, GIN_COMPARE_PARTIAL_PROC) != InvalidOid)
 		{
 			fmgr_info_copy(&(state->comparePartialFn[i]),
-				   index_getprocinfo(index, i + 1, GIN_COMPARE_PARTIAL_PROC),
+						   index_getprocinfo(index, i + 1, GIN_COMPARE_PARTIAL_PROC),
 						   CurrentMemoryContext);
 			state->canPartialMatch[i] = true;
 		}
@@ -387,7 +392,7 @@ ginCompareEntries(GinState *ginstate, OffsetNumber attnum,
 
 	/* both not null, so safe to call the compareFn */
 	return DatumGetInt32(FunctionCall2Coll(&ginstate->compareFn[attnum - 1],
-									  ginstate->supportCollation[attnum - 1],
+										   ginstate->supportCollation[attnum - 1],
 										   a, b));
 }
 
@@ -494,7 +499,7 @@ ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 	nullFlags = NULL;			/* in case extractValue doesn't set it */
 	entries = (Datum *)
 		DatumGetPointer(FunctionCall3Coll(&ginstate->extractValueFn[attnum - 1],
-									  ginstate->supportCollation[attnum - 1],
+										  ginstate->supportCollation[attnum - 1],
 										  value,
 										  PointerGetDatum(nentries),
 										  PointerGetDatum(&nullFlags)));
@@ -597,7 +602,7 @@ ginoptions(Datum reloptions, bool validate)
 	static const relopt_parse_elt tab[] = {
 		{"fastupdate", RELOPT_TYPE_BOOL, offsetof(GinOptions, useFastUpdate)},
 		{"gin_pending_list_limit", RELOPT_TYPE_INT, offsetof(GinOptions,
-													 pendingListCleanupSize)}
+															 pendingListCleanupSize)}
 	};
 
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIN,

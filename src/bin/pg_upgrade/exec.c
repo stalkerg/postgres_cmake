@@ -3,24 +3,58 @@
  *
  *	execution functions
  *
- *	Copyright (c) 2010-2016, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/exec.c
  */
 
 #include "postgres_fe.h"
 
-#include "pg_upgrade.h"
-
 #include <fcntl.h>
-#include <sys/types.h>
+
+#include "pg_upgrade.h"
 
 static void check_data_dir(ClusterInfo *cluster);
 static void check_bin_dir(ClusterInfo *cluster);
+static void get_bin_version(ClusterInfo *cluster);
 static void validate_exec(const char *dir, const char *cmdName);
 
 #ifdef WIN32
 static int	win32_check_directory_write_permissions(void);
 #endif
+
+
+/*
+ * get_bin_version
+ *
+ *	Fetch versions of binaries for cluster.
+ */
+static void
+get_bin_version(ClusterInfo *cluster)
+{
+	char		cmd[MAXPGPATH],
+				cmd_output[MAX_STRING];
+	FILE	   *output;
+	int			pre_dot = 0,
+				post_dot = 0;
+
+	snprintf(cmd, sizeof(cmd), "\"%s/pg_ctl\" --version", cluster->bindir);
+
+	if ((output = popen(cmd, "r")) == NULL ||
+		fgets(cmd_output, sizeof(cmd_output), output) == NULL)
+		pg_fatal("could not get pg_ctl version data using %s: %s\n",
+				 cmd, strerror(errno));
+
+	pclose(output);
+
+	/* Remove trailing newline */
+	if (strchr(cmd_output, '\n') != NULL)
+		*strchr(cmd_output, '\n') = '\0';
+
+	if (sscanf(cmd_output, "%*s %*s %d.%d", &pre_dot, &post_dot) < 1)
+		pg_fatal("could not get version from %s\n", cmd);
+
+	cluster->bin_version = (pre_dot * 100 + post_dot) * 100;
+}
 
 
 /*
@@ -255,7 +289,7 @@ win32_check_directory_write_permissions(void)
 /*
  * check_single_dir()
  *
- *  Check for the presence of a single directory in PGDATA, and fail if
+ *	Check for the presence of a single directory in PGDATA, and fail if
  * is it missing or not accessible.
  */
 static void
@@ -265,7 +299,7 @@ check_single_dir(const char *pg_data, const char *subdir)
 	char		subDirName[MAXPGPATH];
 
 	snprintf(subDirName, sizeof(subDirName), "%s%s%s", pg_data,
-			 /* Win32 can't stat() a directory with a trailing slash. */
+	/* Win32 can't stat() a directory with a trailing slash. */
 			 *subdir ? "/" : "",
 			 subdir);
 
@@ -304,11 +338,17 @@ check_data_dir(ClusterInfo *cluster)
 	check_single_dir(pg_data, "pg_tblspc");
 	check_single_dir(pg_data, "pg_twophase");
 
-	/* pg_xlog has been renamed to pg_wal in post-10 cluster */
+	/* pg_xlog has been renamed to pg_wal in v10 */
 	if (GET_MAJOR_VERSION(cluster->major_version) < 1000)
 		check_single_dir(pg_data, "pg_xlog");
 	else
 		check_single_dir(pg_data, "pg_wal");
+
+	/* pg_clog has been renamed to pg_xact in v10 */
+	if (GET_MAJOR_VERSION(cluster->major_version) < 1000)
+		check_single_dir(pg_data, "pg_clog");
+	else
+		check_single_dir(pg_data, "pg_xact");
 }
 
 
@@ -335,7 +375,20 @@ check_bin_dir(ClusterInfo *cluster)
 
 	validate_exec(cluster->bindir, "postgres");
 	validate_exec(cluster->bindir, "pg_ctl");
-	validate_exec(cluster->bindir, "pg_resetxlog");
+
+	/*
+	 * Fetch the binary versions after checking for the existence of pg_ctl,
+	 * this gives a correct error if the binary used itself for the version
+	 * fetching is broken.
+	 */
+	get_bin_version(&old_cluster);
+	get_bin_version(&new_cluster);
+
+	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
+	if (GET_MAJOR_VERSION(cluster->bin_version) < 1000)
+		validate_exec(cluster->bindir, "pg_resetxlog");
+	else
+		validate_exec(cluster->bindir, "pg_resetwal");
 	if (cluster == &new_cluster)
 	{
 		/* these are only needed in the new cluster */

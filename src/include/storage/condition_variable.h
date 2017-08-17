@@ -12,7 +12,7 @@
  * can be cancelled prior to the fulfillment of the condition) and do not
  * use pointers internally (so that they are safe to use within DSMs).
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/condition_variable.h
@@ -28,7 +28,7 @@
 typedef struct
 {
 	slock_t		mutex;
-	proclist_head	wakeup;
+	proclist_head wakeup;
 } ConditionVariable;
 
 /* Initialize a condition variable. */
@@ -54,6 +54,6 @@ extern void ConditionVariablePrepareToSleep(ConditionVariable *);
 
 /* Wake up a single waiter (via signal) or all waiters (via broadcast). */
 extern bool ConditionVariableSignal(ConditionVariable *);
-extern int ConditionVariableBroadcast(ConditionVariable *);
+extern int	ConditionVariableBroadcast(ConditionVariable *);
 
-#endif   /* CONDITION_VARIABLE_H */
+#endif							/* CONDITION_VARIABLE_H */

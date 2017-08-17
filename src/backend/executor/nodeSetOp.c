@@ -32,7 +32,7 @@
  * input group.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -47,6 +47,7 @@
 #include "access/htup_details.h"
 #include "executor/executor.h"
 #include "executor/nodeSetOp.h"
+#include "miscadmin.h"
 #include "utils/memutils.h"
 
 
@@ -64,7 +65,7 @@ typedef struct SetOpStatePerGroupData
 {
 	long		numLeft;		/* number of left-input dups in group */
 	long		numRight;		/* number of right-input dups in group */
-} SetOpStatePerGroupData;
+}			SetOpStatePerGroupData;
 
 
 static TupleTableSlot *setop_retrieve_direct(SetOpState *setopstate);
@@ -179,11 +180,14 @@ set_output_count(SetOpState *setopstate, SetOpStatePerGroup pergroup)
  *		ExecSetOp
  * ----------------------------------------------------------------
  */
-TupleTableSlot *				/* return: a tuple or NULL */
-ExecSetOp(SetOpState *node)
+static TupleTableSlot *			/* return: a tuple or NULL */
+ExecSetOp(PlanState *pstate)
 {
+	SetOpState *node = castNode(SetOpState, pstate);
 	SetOp	   *plannode = (SetOp *) node->ps.plan;
 	TupleTableSlot *resultTupleSlot = node->ps.ps_ResultTupleSlot;
+
+	CHECK_FOR_INTERRUPTS();
 
 	/*
 	 * If the previously-returned tuple needs to be returned more than once,
@@ -263,7 +267,7 @@ setop_retrieve_direct(SetOpState *setopstate)
 					   resultTupleSlot,
 					   InvalidBuffer,
 					   true);
-		setopstate->grp_firstTuple = NULL;		/* don't keep two pointers */
+		setopstate->grp_firstTuple = NULL;	/* don't keep two pointers */
 
 		/* Initialize working state for a new input tuple group */
 		initialize_counts(pergroup);
@@ -333,7 +337,7 @@ setop_fill_hash_table(SetOpState *setopstate)
 	SetOp	   *node = (SetOp *) setopstate->ps.plan;
 	PlanState  *outerPlan;
 	int			firstFlag;
-	bool in_first_rel PG_USED_FOR_ASSERTS_ONLY;
+	bool		in_first_rel PG_USED_FOR_ASSERTS_ONLY;
 
 	/*
 	 * get state info from node
@@ -428,6 +432,8 @@ setop_retrieve_hash_table(SetOpState *setopstate)
 	 */
 	while (!setopstate->setop_done)
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * Find the next entry in the hash table
 		 */
@@ -480,6 +486,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 	setopstate = makeNode(SetOpState);
 	setopstate->ps.plan = (Plan *) node;
 	setopstate->ps.state = estate;
+	setopstate->ps.ExecProcNode = ExecSetOp;
 
 	setopstate->eqfunctions = NULL;
 	setopstate->hashfunctions = NULL;

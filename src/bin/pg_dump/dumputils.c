@@ -5,7 +5,7 @@
  * Basically this is stuff that is useful in both pg_dump and pg_dumpall.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/dumputils.c
@@ -177,7 +177,7 @@ buildACLCommands(const char *name, const char *subname,
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(firstsql, "GROUP %s;\n",
-									fmtId(grantee->data + strlen("group ")));
+										  fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBuffer(firstsql, "%s;\n",
 										  fmtId(grantee->data));
@@ -185,14 +185,14 @@ buildACLCommands(const char *name, const char *subname,
 				if (privswgo->len > 0)
 				{
 					appendPQExpBuffer(firstsql,
-							   "%sREVOKE GRANT OPTION FOR %s ON %s %s FROM ",
+									  "%sREVOKE GRANT OPTION FOR %s ON %s %s FROM ",
 									  prefix, privswgo->data, type, name);
 					if (grantee->len == 0)
 						appendPQExpBufferStr(firstsql, "PUBLIC");
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(firstsql, "GROUP %s",
-									fmtId(grantee->data + strlen("group ")));
+										  fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBufferStr(firstsql, fmtId(grantee->data));
 				}
@@ -260,7 +260,7 @@ buildACLCommands(const char *name, const char *subname,
 										  fmtId(grantee->data));
 					if (privswgo->len > 0)
 						appendPQExpBuffer(firstsql,
-							"%sGRANT %s ON %s %s TO %s WITH GRANT OPTION;\n",
+										  "%sGRANT %s ON %s %s TO %s WITH GRANT OPTION;\n",
 										  prefix, privswgo->data, type, name,
 										  fmtId(grantee->data));
 				}
@@ -291,7 +291,7 @@ buildACLCommands(const char *name, const char *subname,
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(secondsql, "GROUP %s;\n",
-									fmtId(grantee->data + strlen("group ")));
+										  fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBuffer(secondsql, "%s;\n", fmtId(grantee->data));
 				}
@@ -304,7 +304,7 @@ buildACLCommands(const char *name, const char *subname,
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(secondsql, "GROUP %s",
-									fmtId(grantee->data + strlen("group ")));
+										  fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBufferStr(secondsql, fmtId(grantee->data));
 					appendPQExpBufferStr(secondsql, " WITH GRANT OPTION;\n");
@@ -364,11 +364,12 @@ buildACLCommands(const char *name, const char *subname,
  */
 bool
 buildDefaultACLCommands(const char *type, const char *nspname,
-						const char *acls, const char *owner,
+						const char *acls, const char *racls,
+						const char *initacls, const char *initracls,
+						const char *owner,
 						int remoteVersion,
 						PQExpBuffer sql)
 {
-	bool		result;
 	PQExpBuffer prefix;
 
 	prefix = createPQExpBuffer();
@@ -384,14 +385,28 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 	if (nspname)
 		appendPQExpBuffer(prefix, "IN SCHEMA %s ", fmtId(nspname));
 
-	result = buildACLCommands("", NULL,
-							  type, acls, "", owner,
-							  prefix->data, remoteVersion,
-							  sql);
+	if (strlen(initacls) != 0 || strlen(initracls) != 0)
+	{
+		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
+		if (!buildACLCommands("", NULL, type, initacls, initracls, owner,
+							  prefix->data, remoteVersion, sql))
+		{
+			destroyPQExpBuffer(prefix);
+			return false;
+		}
+		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
+	}
+
+	if (!buildACLCommands("", NULL, type, acls, racls, owner,
+						  prefix->data, remoteVersion, sql))
+	{
+		destroyPQExpBuffer(prefix);
+		return false;
+	}
 
 	destroyPQExpBuffer(prefix);
 
-	return result;
+	return true;
 }
 
 /*
@@ -511,7 +526,8 @@ do { \
 		CONVERT_PRIV('X', "EXECUTE");
 	else if (strcmp(type, "LANGUAGE") == 0)
 		CONVERT_PRIV('U', "USAGE");
-	else if (strcmp(type, "SCHEMA") == 0)
+	else if (strcmp(type, "SCHEMA") == 0 ||
+			 strcmp(type, "SCHEMAS") == 0)
 	{
 		CONVERT_PRIV('C', "CREATE");
 		CONVERT_PRIV('U', "USAGE");
@@ -588,7 +604,7 @@ copyAclUserName(PQExpBuffer output, char *input)
 			while (!(*input == '"' && *(input + 1) != '"'))
 			{
 				if (*input == '\0')
-					return input;		/* really a syntax error... */
+					return input;	/* really a syntax error... */
 
 				/*
 				 * Quoting convention is to escape " as "".  Keep this code in
@@ -748,16 +764,16 @@ buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 						  "(SELECT pg_catalog.array_agg(acl) FROM "
 						  "(SELECT pg_catalog.unnest(pip.initprivs) AS acl "
 						  "EXCEPT "
-		"SELECT pg_catalog.unnest(pg_catalog.acldefault(%s,%s))) as foo) END",
+						  "SELECT pg_catalog.unnest(pg_catalog.acldefault(%s,%s))) as foo) END",
 						  obj_kind,
 						  acl_owner);
 
 		printfPQExpBuffer(init_racl_subquery,
 						  "CASE WHEN privtype = 'e' THEN "
 						  "(SELECT pg_catalog.array_agg(acl) FROM "
-			"(SELECT pg_catalog.unnest(pg_catalog.acldefault(%s,%s)) AS acl "
+						  "(SELECT pg_catalog.unnest(pg_catalog.acldefault(%s,%s)) AS acl "
 						  "EXCEPT "
-					  "SELECT pg_catalog.unnest(pip.initprivs)) as foo) END",
+						  "SELECT pg_catalog.unnest(pip.initprivs)) as foo) END",
 						  obj_kind,
 						  acl_owner);
 	}

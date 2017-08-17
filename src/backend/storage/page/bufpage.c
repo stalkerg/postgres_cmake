@@ -3,7 +3,7 @@
  * bufpage.c
  *	  POSTGRES standard buffer page code.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -237,7 +237,7 @@ PageAddItemExtended(Page page,
 		else
 		{
 			if (offsetNumber < limit)
-				needshuffle = true;		/* need to move existing linp's */
+				needshuffle = true; /* need to move existing linp's */
 		}
 	}
 	else
@@ -557,8 +557,8 @@ PageRepairFragmentation(Page page)
 		if (totallen > (Size) (pd_special - pd_lower))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-			   errmsg("corrupted item lengths: total %u, available space %u",
-					  (unsigned int) totallen, pd_special - pd_lower)));
+					 errmsg("corrupted item lengths: total %u, available space %u",
+							(unsigned int) totallen, pd_special - pd_lower)));
 
 		compactify_tuples(itemidbase, nstorage, page);
 	}
@@ -593,6 +593,33 @@ PageGetFreeSpace(Page page)
 	if (space < (int) sizeof(ItemIdData))
 		return 0;
 	space -= sizeof(ItemIdData);
+
+	return (Size) space;
+}
+
+/*
+ * PageGetFreeSpaceForMultipleTuples
+ *		Returns the size of the free (allocatable) space on a page,
+ *		reduced by the space needed for multiple new line pointers.
+ *
+ * Note: this should usually only be used on index pages.  Use
+ * PageGetHeapFreeSpace on heap pages.
+ */
+Size
+PageGetFreeSpaceForMultipleTuples(Page page, int ntups)
+{
+	int			space;
+
+	/*
+	 * Use signed arithmetic here so that we behave sensibly if pd_lower >
+	 * pd_upper.
+	 */
+	space = (int) ((PageHeader) page)->pd_upper -
+		(int) ((PageHeader) page)->pd_lower;
+
+	if (space < (int) (ntups * sizeof(ItemIdData)))
+		return 0;
+	space -= ntups * sizeof(ItemIdData);
 
 	return (Size) space;
 }
@@ -875,7 +902,7 @@ PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
 			offset != MAXALIGN(offset))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("corrupted item pointer: offset = %u, size = %u",
+					 errmsg("corrupted item pointer: offset = %u, length = %u",
 							offset, (unsigned int) size)));
 
 		if (nextitm < nitems && offnum == itemnos[nextitm])
@@ -885,7 +912,7 @@ PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
 		}
 		else
 		{
-			itemidptr->offsetindex = nused;		/* where it will go */
+			itemidptr->offsetindex = nused; /* where it will go */
 			itemidptr->itemoff = offset;
 			itemidptr->alignedlen = MAXALIGN(size);
 			totallen += itemidptr->alignedlen;
@@ -902,8 +929,8 @@ PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
 	if (totallen > (Size) (pd_special - pd_lower))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-			   errmsg("corrupted item lengths: total %u, available space %u",
-					  (unsigned int) totallen, pd_special - pd_lower)));
+				 errmsg("corrupted item lengths: total %u, available space %u",
+						(unsigned int) totallen, pd_special - pd_lower)));
 
 	/*
 	 * Looks good. Overwrite the line pointers with the copy, from which we've

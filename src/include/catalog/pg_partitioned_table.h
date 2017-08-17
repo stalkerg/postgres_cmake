@@ -5,7 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  *
  * src/include/catalog/pg_partitioned_table.h
  *
@@ -71,4 +71,4 @@ typedef FormData_pg_partitioned_table *Form_pg_partitioned_table;
 #define Anum_pg_partitioned_table_partcollation 6
 #define Anum_pg_partitioned_table_partexprs		7
 
-#endif   /* PG_PARTITIONED_TABLE_H */
+#endif							/* PG_PARTITIONED_TABLE_H */

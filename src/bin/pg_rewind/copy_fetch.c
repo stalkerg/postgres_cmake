@@ -3,18 +3,16 @@
  * copy_fetch.c
  *	  Functions for using a data directory as the source.
  *
- * Portions Copyright (c) 2013-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
 
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <string.h>
 
 #include "datapagemap.h"
 #include "fetch.h"
@@ -67,14 +65,14 @@ recurse_dir(const char *datadir, const char *parentpath,
 	while (errno = 0, (xlde = readdir(xldir)) != NULL)
 	{
 		struct stat fst;
-		char		fullpath[MAXPGPATH];
-		char		path[MAXPGPATH];
+		char		fullpath[MAXPGPATH * 2];
+		char		path[MAXPGPATH * 2];
 
 		if (strcmp(xlde->d_name, ".") == 0 ||
 			strcmp(xlde->d_name, "..") == 0)
 			continue;
 
-		snprintf(fullpath, MAXPGPATH, "%s/%s", fullparentpath, xlde->d_name);
+		snprintf(fullpath, sizeof(fullpath), "%s/%s", fullparentpath, xlde->d_name);
 
 		if (lstat(fullpath, &fst) < 0)
 		{
@@ -95,9 +93,9 @@ recurse_dir(const char *datadir, const char *parentpath,
 		}
 
 		if (parentpath)
-			snprintf(path, MAXPGPATH, "%s/%s", parentpath, xlde->d_name);
+			snprintf(path, sizeof(path), "%s/%s", parentpath, xlde->d_name);
 		else
-			snprintf(path, MAXPGPATH, "%s", xlde->d_name);
+			snprintf(path, sizeof(path), "%s", xlde->d_name);
 
 		if (S_ISREG(fst.st_mode))
 			callback(path, FILE_TYPE_REGULAR, fst.st_size, NULL);
@@ -139,7 +137,7 @@ recurse_dir(const char *datadir, const char *parentpath,
 #else
 			pg_fatal("\"%s\" is a symbolic link, but symbolic links are not supported on this platform\n",
 					 fullpath);
-#endif   /* HAVE_READLINK */
+#endif							/* HAVE_READLINK */
 		}
 	}
 

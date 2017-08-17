@@ -42,7 +42,7 @@
  * where memory fragmentation is very severe, only a tiny fraction of
  * the pages under management are consumed by this btree.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -135,7 +135,7 @@ static FreePageBtree *FreePageBtreeFindRightSibling(char *base,
 static Size FreePageBtreeFirstKey(FreePageBtree *btp);
 static FreePageBtree *FreePageBtreeGetRecycled(FreePageManager *fpm);
 static void FreePageBtreeInsertInternal(char *base, FreePageBtree *btp,
-						  Size index, Size first_page, FreePageBtree *child);
+							Size index, Size first_page, FreePageBtree *child);
 static void FreePageBtreeInsertLeaf(FreePageBtree *btp, Size index,
 						Size first_page, Size npages);
 static void FreePageBtreeRecycle(FreePageManager *fpm, Size pageno);
@@ -318,7 +318,7 @@ sum_free_pages(FreePageManager *fpm)
 
 /*
  * Compute the size of the largest run of pages that the user could
- * succesfully get.
+ * successfully get.
  */
 static Size
 FreePageManagerLargestContiguous(FreePageManager *fpm)
@@ -360,7 +360,7 @@ FreePageManagerLargestContiguous(FreePageManager *fpm)
 
 /*
  * Recompute the size of the largest run of pages that the user could
- * succesfully get, if it has been marked dirty.
+ * successfully get, if it has been marked dirty.
  */
 static void
 FreePageManagerUpdateLargest(FreePageManager *fpm)
@@ -455,7 +455,7 @@ FreePageManagerDump(FreePageManager *fpm)
 	recycle = relptr_access(base, fpm->btree_recycle);
 	if (recycle != NULL)
 	{
-		appendStringInfo(&buf, "btree recycle:");
+		appendStringInfoString(&buf, "btree recycle:");
 		FreePageManagerDumpSpans(fpm, recycle, 1, &buf);
 	}
 
@@ -468,7 +468,7 @@ FreePageManagerDump(FreePageManager *fpm)
 			continue;
 		if (!dumped_any_freelist)
 		{
-			appendStringInfo(&buf, "freelists:\n");
+			appendStringInfoString(&buf, "freelists:\n");
 			dumped_any_freelist = true;
 		}
 		appendStringInfo(&buf, "  %zu:", f + 1);
@@ -1269,13 +1269,13 @@ FreePageManagerDumpBtree(FreePageManager *fpm, FreePageBtree *btp,
 		if (btp->hdr.magic == FREE_PAGE_INTERNAL_MAGIC)
 			appendStringInfo(buf, " %zu->%zu",
 							 btp->u.internal_key[index].first_page,
-				btp->u.internal_key[index].child.relptr_off / FPM_PAGE_SIZE);
+							 btp->u.internal_key[index].child.relptr_off / FPM_PAGE_SIZE);
 		else
 			appendStringInfo(buf, " %zu(%zu)",
 							 btp->u.leaf_key[index].first_page,
 							 btp->u.leaf_key[index].npages);
 	}
-	appendStringInfo(buf, "\n");
+	appendStringInfoChar(buf, '\n');
 
 	if (btp->hdr.magic == FREE_PAGE_INTERNAL_MAGIC)
 	{
@@ -1308,7 +1308,7 @@ FreePageManagerDumpSpans(FreePageManager *fpm, FreePageSpanLeader *span,
 		span = relptr_access(base, span->next);
 	}
 
-	appendStringInfo(buf, "\n");
+	appendStringInfoChar(buf, '\n');
 }
 
 /*
@@ -1359,7 +1359,7 @@ FreePageManagerGetInternal(FreePageManager *fpm, Size npages, Size *first_page)
 			do
 			{
 				if (candidate->npages >= npages && (victim == NULL ||
-										 victim->npages > candidate->npages))
+													victim->npages > candidate->npages))
 				{
 					victim = candidate;
 					if (victim->npages == npages)
@@ -1704,7 +1704,7 @@ FreePageManagerPutInternal(FreePageManager *fpm, Size first_page, Size npages,
 			 * The act of allocating pages for use in constructing our btree
 			 * should never cause any page to become more full, so the new
 			 * split depth should be no greater than the old one, and perhaps
-			 * less if we fortutiously allocated a chunk that freed up a slot
+			 * less if we fortuitously allocated a chunk that freed up a slot
 			 * on the page we need to update.
 			 */
 			Assert(result.split_pages <= fpm->btree_recycle_count);

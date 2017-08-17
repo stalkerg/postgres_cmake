@@ -43,7 +43,7 @@ typedef union PLyTypeInput
 } PLyTypeInput;
 
 /*
- * Conversion from Python object to a Postgresql Datum.
+ * Conversion from Python object to a PostgreSQL Datum.
  *
  * The 'inarray' argument to the conversion function is true, if the
  * converted value was in an array (Python list). It is used to give a
@@ -78,7 +78,7 @@ typedef union PLyTypeOutput
 	PLyObToTuple r;
 } PLyTypeOutput;
 
-/* all we need to move Postgresql data to Python objects,
+/* all we need to move PostgreSQL data to Python objects,
  * and vice versa
  */
 typedef struct PLyTypeInfo
@@ -119,4 +119,4 @@ extern PyObject *PLyDict_FromTuple(PLyTypeInfo *info, HeapTuple tuple, TupleDesc
 /* conversion from Python objects to C strings */
 extern char *PLyObject_AsString(PyObject *plrv);
 
-#endif   /* PLPY_TYPEIO_H */
+#endif							/* PLPY_TYPEIO_H */

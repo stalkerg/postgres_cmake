@@ -128,6 +128,34 @@ where bar.f1 = ss.f1;
 
 select tableoid::regclass::text as relname, bar.* from bar order by 1,2;
 
+-- Check UPDATE with *partitioned* inherited target and an appendrel subquery
+create table some_tab (a int);
+insert into some_tab values (0);
+create table some_tab_child () inherits (some_tab);
+insert into some_tab_child values (1);
+create table parted_tab (a int, b char) partition by list (a);
+create table parted_tab_part1 partition of parted_tab for values in (1);
+create table parted_tab_part2 partition of parted_tab for values in (2);
+create table parted_tab_part3 partition of parted_tab for values in (3);
+insert into parted_tab values (1, 'a'), (2, 'a'), (3, 'a');
+
+update parted_tab set b = 'b'
+from
+  (select a from some_tab union all select a+1 from some_tab) ss (a)
+where parted_tab.a = ss.a;
+select tableoid::regclass::text as relname, parted_tab.* from parted_tab order by 1,2;
+
+truncate parted_tab;
+insert into parted_tab values (1, 'a'), (2, 'a'), (3, 'a');
+update parted_tab set b = 'b'
+from
+  (select 0 from parted_tab union all select 1 from parted_tab) ss (a)
+where parted_tab.a = ss.a;
+select tableoid::regclass::text as relname, parted_tab.* from parted_tab order by 1,2;
+
+drop table parted_tab;
+drop table some_tab cascade;
+
 /* Test multiple inheritance of column defaults */
 
 CREATE TABLE firstparent (tomorrow date default now()::date + 1);
@@ -144,6 +172,32 @@ DROP TABLE firstparent, secondparent, jointchild, thirdparent, otherchild;
 insert into d values('test','one','two','three');
 alter table a alter column aa type integer using bit_length(aa);
 select * from d;
+
+-- check that oid column is handled properly during alter table inherit
+create table oid_parent (a int) with oids;
+
+create table oid_child () inherits (oid_parent);
+select attinhcount, attislocal from pg_attribute
+  where attrelid = 'oid_child'::regclass and attname = 'oid';
+drop table oid_child;
+
+create table oid_child (a int) without oids;
+alter table oid_child inherit oid_parent;  -- fail
+alter table oid_child set with oids;
+select attinhcount, attislocal from pg_attribute
+  where attrelid = 'oid_child'::regclass and attname = 'oid';
+alter table oid_child inherit oid_parent;
+select attinhcount, attislocal from pg_attribute
+  where attrelid = 'oid_child'::regclass and attname = 'oid';
+alter table oid_child set without oids;  -- fail
+alter table oid_parent set without oids;
+select attinhcount, attislocal from pg_attribute
+  where attrelid = 'oid_child'::regclass and attname = 'oid';
+alter table oid_child set without oids;
+select attinhcount, attislocal from pg_attribute
+  where attrelid = 'oid_child'::regclass and attname = 'oid';
+
+drop table oid_parent cascade;
 
 -- Test non-inheritable parent constraints
 create table p1(ff1 int);
@@ -168,6 +222,7 @@ create table base (i integer);
 create table derived () inherits (base);
 insert into derived (i) values (0);
 select derived::base from derived;
+select NULL::derived::base;
 drop table derived;
 drop table base;
 
@@ -568,7 +623,7 @@ create table part_10_20_cd partition of part_10_20 for values in ('cd');
 create table part_21_30 partition of range_list_parted for values from (21) to (30) partition by list (b);
 create table part_21_30_ab partition of part_21_30 for values in ('ab');
 create table part_21_30_cd partition of part_21_30 for values in ('cd');
-create table part_40_inf partition of range_list_parted for values from (40) to (unbounded) partition by list (b);
+create table part_40_inf partition of range_list_parted for values from (40) to (maxvalue) partition by list (b);
 create table part_40_inf_ab partition of part_40_inf for values in ('ab');
 create table part_40_inf_cd partition of part_40_inf for values in ('cd');
 create table part_40_inf_null partition of part_40_inf for values in (null);
@@ -586,5 +641,33 @@ explain (costs off) select * from range_list_parted where b is null;
 explain (costs off) select * from range_list_parted where a is not null and a < 67;
 explain (costs off) select * from range_list_parted where a >= 30;
 
-drop table list_parted cascade;
-drop table range_list_parted cascade;
+drop table list_parted;
+drop table range_list_parted;
+
+-- check that constraint exclusion is able to cope with the partition
+-- constraint emitted for multi-column range partitioned tables
+create table mcrparted (a int, b int, c int) partition by range (a, abs(b), c);
+create table mcrparted0 partition of mcrparted for values from (minvalue, 0, 0) to (1, 1, 1);
+create table mcrparted1 partition of mcrparted for values from (1, 1, 1) to (10, 5, 10);
+create table mcrparted2 partition of mcrparted for values from (10, 5, 10) to (10, 10, 10);
+create table mcrparted3 partition of mcrparted for values from (11, 1, 1) to (20, 10, 10);
+create table mcrparted4 partition of mcrparted for values from (20, 10, 10) to (20, 20, 20);
+create table mcrparted5 partition of mcrparted for values from (20, 20, 20) to (maxvalue, 0, 0);
+explain (costs off) select * from mcrparted where a = 0;	-- scans mcrparted0
+explain (costs off) select * from mcrparted where a = 10 and abs(b) < 5;	-- scans mcrparted1
+explain (costs off) select * from mcrparted where a = 10 and abs(b) = 5;	-- scans mcrparted1, mcrparted2
+explain (costs off) select * from mcrparted where abs(b) = 5;	-- scans all partitions
+explain (costs off) select * from mcrparted where a > -1;	-- scans all partitions
+explain (costs off) select * from mcrparted where a = 20 and abs(b) = 10 and c > 10;	-- scans mcrparted4
+explain (costs off) select * from mcrparted where a = 20 and c > 20; -- scans mcrparted3, mcrparte4, mcrparte5
+drop table mcrparted;
+
+-- check that partitioned table Appends cope with being referenced in
+-- subplans
+create table parted_minmax (a int, b varchar(16)) partition by range (a);
+create table parted_minmax1 partition of parted_minmax for values from (1) to (10);
+create index parted_minmax1i on parted_minmax1 (a, b);
+insert into parted_minmax values (1,'12345');
+explain (costs off) select min(a), max(a) from parted_minmax where b = '12345';
+select min(a), max(a) from parted_minmax where b = '12345';
+drop table parted_minmax;

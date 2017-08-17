@@ -4,7 +4,7 @@
  *	  creator functions for primitive nodes. The functions here are for
  *	  the most frequently created nodes.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -210,10 +210,10 @@ makeWholeRowVar(RangeTblEntry *rte,
 		default:
 
 			/*
-			 * RTE is a join, subselect, or VALUES.  We represent this as a
-			 * whole-row Var of RECORD type. (Note that in most cases the Var
-			 * will be expanded to a RowExpr during planning, but that is not
-			 * our concern here.)
+			 * RTE is a join, subselect, tablefunc, or VALUES.  We represent
+			 * this as a whole-row Var of RECORD type. (Note that in most
+			 * cases the Var will be expanded to a RowExpr during planning,
+			 * but that is not our concern here.)
 			 */
 			result = makeVar(varno,
 							 InvalidAttrNumber,
@@ -494,6 +494,7 @@ makeColumnDef(const char *colname, Oid typeOid, int32 typmod, Oid collOid)
 	n->is_local = true;
 	n->is_not_null = false;
 	n->is_from_type = false;
+	n->is_from_parent = false;
 	n->storage = 0;
 	n->raw_default = NULL;
 	n->cooked_default = NULL;
@@ -521,8 +522,8 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args,
 	funcexpr = makeNode(FuncExpr);
 	funcexpr->funcid = funcid;
 	funcexpr->funcresulttype = rettype;
-	funcexpr->funcretset = false;		/* only allowed case here */
-	funcexpr->funcvariadic = false;		/* only allowed case here */
+	funcexpr->funcretset = false;	/* only allowed case here */
+	funcexpr->funcvariadic = false; /* only allowed case here */
 	funcexpr->funcformat = fformat;
 	funcexpr->funccollid = funccollid;
 	funcexpr->inputcollid = inputcollid;

@@ -4,7 +4,7 @@
  *	   routines for accessing the system catalogs
  *
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,6 +29,7 @@
 #include "catalog/heap.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_statistic_ext.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -40,8 +41,11 @@
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
+#include "statistics/statistics.h"
 #include "storage/bufmgr.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
@@ -63,7 +67,7 @@ static List *get_relation_constraints(PlannerInfo *root,
 						 bool include_notnull);
 static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
-
+static List *get_relation_statistics(RelOptInfo *rel, Relation relation);
 
 /*
  * get_relation_info -
@@ -75,6 +79,7 @@ static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
  *	min_attr	lowest valid AttrNumber
  *	max_attr	highest valid AttrNumber
  *	indexlist	list of IndexOptInfos for relation's indexes
+ *	statlist	list of StatisticExtInfo for relation's statistic objects
  *	serverid	if it's a foreign table, the server OID
  *	fdwroutine	if it's a foreign table, the FDW function pointers
  *	pages		number of pages
@@ -241,6 +246,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->amoptionalkey = amroutine->amoptionalkey;
 			info->amsearcharray = amroutine->amsearcharray;
 			info->amsearchnulls = amroutine->amsearchnulls;
+			info->amcanparallel = amroutine->amcanparallel;
 			info->amhasgettuple = (amroutine->amgettuple != NULL);
 			info->amhasgetbitmap = (amroutine->amgetbitmap != NULL);
 			info->amcostestimate = amroutine->amcostestimate;
@@ -348,8 +354,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			/* Build targetlist using the completed indexprs data */
 			info->indextlist = build_index_tlist(root, info, relation);
 
-			info->indrestrictinfo = NIL;		/* set later, in indxpath.c */
-			info->predOK = false;		/* set later, in indxpath.c */
+			info->indrestrictinfo = NIL;	/* set later, in indxpath.c */
+			info->predOK = false;	/* set later, in indxpath.c */
 			info->unique = index->indisunique;
 			info->immediate = index->indimmediate;
 			info->hypothetical = false;
@@ -396,6 +402,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	}
 
 	rel->indexlist = indexinfos;
+
+	rel->statlist = get_relation_statistics(rel, relation);
 
 	/* Grab foreign-table info using the relcache, while we have it */
 	if (relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
@@ -612,7 +620,7 @@ infer_arbiter_indexes(PlannerInfo *root)
 					 errmsg("whole row unique index inference specifications are not supported")));
 
 		inferAttrs = bms_add_member(inferAttrs,
-								 attno - FirstLowInvalidHeapAttributeNumber);
+									attno - FirstLowInvalidHeapAttributeNumber);
 	}
 
 	/*
@@ -707,7 +715,7 @@ infer_arbiter_indexes(PlannerInfo *root)
 
 			if (attno != 0)
 				indexedAttrs = bms_add_member(indexedAttrs,
-								 attno - FirstLowInvalidHeapAttributeNumber);
+											  attno - FirstLowInvalidHeapAttributeNumber);
 		}
 
 		/* Non-expression attributes (if any) must match */
@@ -768,7 +776,7 @@ infer_arbiter_indexes(PlannerInfo *root)
 		 */
 		predExprs = RelationGetIndexPredicate(idxRel);
 
-		if (!predicate_implied_by(predExprs, (List *) onconflict->arbiterWhere))
+		if (!predicate_implied_by(predExprs, (List *) onconflict->arbiterWhere, false))
 			goto next;
 
 		results = lappend_oid(results, idxForm->indexrelid);
@@ -819,7 +827,7 @@ infer_collation_opclass_match(InferenceElem *elem, Relation idxRel,
 							  List *idxExprs)
 {
 	AttrNumber	natt;
-	Oid			inferopfamily = InvalidOid;		/* OID of opclass opfamily */
+	Oid			inferopfamily = InvalidOid; /* OID of opclass opfamily */
 	Oid			inferopcinputtype = InvalidOid; /* OID of opclass input type */
 	int			nplain = 0;		/* # plain attrs observed */
 
@@ -1141,7 +1149,7 @@ get_relation_constraints(PlannerInfo *root,
 	Index		varno = rel->relid;
 	Relation	relation;
 	TupleConstr *constr;
-	List		*pcqual;
+	List	   *pcqual;
 
 	/*
 	 * We assume the relation has already been safely locked.
@@ -1228,7 +1236,7 @@ get_relation_constraints(PlannerInfo *root,
 	}
 
 	/* Append partition predicates, if any */
-	pcqual = RelationGetPartitionQual(relation, true);
+	pcqual = RelationGetPartitionQual(relation);
 	if (pcqual)
 	{
 		/*
@@ -1250,6 +1258,77 @@ get_relation_constraints(PlannerInfo *root,
 	return result;
 }
 
+/*
+ * get_relation_statistics
+ *		Retrieve extended statistics defined on the table.
+ *
+ * Returns a List (possibly empty) of StatisticExtInfo objects describing
+ * the statistics.  Note that this doesn't load the actual statistics data,
+ * just the identifying metadata.  Only stats actually built are considered.
+ */
+static List *
+get_relation_statistics(RelOptInfo *rel, Relation relation)
+{
+	List	   *statoidlist;
+	List	   *stainfos = NIL;
+	ListCell   *l;
+
+	statoidlist = RelationGetStatExtList(relation);
+
+	foreach(l, statoidlist)
+	{
+		Oid			statOid = lfirst_oid(l);
+		Form_pg_statistic_ext staForm;
+		HeapTuple	htup;
+		Bitmapset  *keys = NULL;
+		int			i;
+
+		htup = SearchSysCache1(STATEXTOID, ObjectIdGetDatum(statOid));
+		if (!htup)
+			elog(ERROR, "cache lookup failed for statistics object %u", statOid);
+		staForm = (Form_pg_statistic_ext) GETSTRUCT(htup);
+
+		/*
+		 * First, build the array of columns covered.  This is ultimately
+		 * wasted if no stats within the object have actually been built, but
+		 * it doesn't seem worth troubling over that case.
+		 */
+		for (i = 0; i < staForm->stxkeys.dim1; i++)
+			keys = bms_add_member(keys, staForm->stxkeys.values[i]);
+
+		/* add one StatisticExtInfo for each kind built */
+		if (statext_is_kind_built(htup, STATS_EXT_NDISTINCT))
+		{
+			StatisticExtInfo *info = makeNode(StatisticExtInfo);
+
+			info->statOid = statOid;
+			info->rel = rel;
+			info->kind = STATS_EXT_NDISTINCT;
+			info->keys = bms_copy(keys);
+
+			stainfos = lcons(info, stainfos);
+		}
+
+		if (statext_is_kind_built(htup, STATS_EXT_DEPENDENCIES))
+		{
+			StatisticExtInfo *info = makeNode(StatisticExtInfo);
+
+			info->statOid = statOid;
+			info->rel = rel;
+			info->kind = STATS_EXT_DEPENDENCIES;
+			info->keys = bms_copy(keys);
+
+			stainfos = lcons(info, stainfos);
+		}
+
+		ReleaseSysCache(htup);
+		bms_free(keys);
+	}
+
+	list_free(statoidlist);
+
+	return stainfos;
+}
 
 /*
  * relation_excluded_by_constraints
@@ -1270,6 +1349,9 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	List	   *constraint_pred;
 	List	   *safe_constraints;
 	ListCell   *lc;
+
+	/* As of now, constraint exclusion works only with simple relations. */
+	Assert(IS_SIMPLE_REL(rel));
 
 	/*
 	 * Regardless of the setting of constraint_exclusion, detect
@@ -1317,7 +1399,7 @@ relation_excluded_by_constraints(PlannerInfo *root,
 			safe_restrictions = lappend(safe_restrictions, rinfo->clause);
 	}
 
-	if (predicate_refuted_by(safe_restrictions, safe_restrictions))
+	if (predicate_refuted_by(safe_restrictions, safe_restrictions, false))
 		return true;
 
 	/* Only plain relations have constraints */
@@ -1356,7 +1438,7 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	 * have volatile and nonvolatile subclauses, and it's OK to make
 	 * deductions with the nonvolatile parts.
 	 */
-	if (predicate_refuted_by(safe_constraints, rel->baserestrictinfo))
+	if (predicate_refuted_by(safe_constraints, rel->baserestrictinfo, false))
 		return true;
 
 	return false;
@@ -1380,8 +1462,9 @@ relation_excluded_by_constraints(PlannerInfo *root,
  * dropped cols.
  *
  * We also support building a "physical" tlist for subqueries, functions,
- * values lists, and CTEs, since the same optimization can occur in
- * SubqueryScan, FunctionScan, ValuesScan, CteScan, and WorkTableScan nodes.
+ * values lists, table expressions, and CTEs, since the same optimization can
+ * occur in SubqueryScan, FunctionScan, ValuesScan, CteScan, TableFunc,
+ * NamedTuplestoreScan, and WorkTableScan nodes.
  */
 List *
 build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
@@ -1453,8 +1536,10 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 			break;
 
 		case RTE_FUNCTION:
+		case RTE_TABLEFUNC:
 		case RTE_VALUES:
 		case RTE_CTE:
+		case RTE_NAMEDTUPLESTORE:
 			/* Not all of these can have dropped cols, but share code anyway */
 			expandRTE(rte, varno, 0, -1, true /* include dropped */ ,
 					  NULL, &colvars);
@@ -1522,7 +1607,7 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 
 			if (indexkey < 0)
 				att_tup = SystemAttributeDefinition(indexkey,
-										   heapRelation->rd_rel->relhasoids);
+													heapRelation->rd_rel->relhasoids);
 			else
 				att_tup = heapRelation->rd_att->attrs[indexkey - 1];
 

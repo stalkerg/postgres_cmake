@@ -3,7 +3,7 @@
  * shmem.c
  *	  create shared memory and initialize shared memory data structures.
  *
- * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -75,7 +75,7 @@
 
 /* shared memory global variables */
 
-static PGShmemHeader *ShmemSegHdr;		/* shared mem segment header */
+static PGShmemHeader *ShmemSegHdr;	/* shared mem segment header */
 
 static void *ShmemBase;			/* start address of shared memory */
 
@@ -314,7 +314,7 @@ InitShmemIndex(void)
  * for NULL.
  */
 HTAB *
-ShmemInitHash(const char *name, /* table string name for shmem index */
+ShmemInitHash(const char *name,		/* table string name for shmem index */
 			  long init_size,	/* initial table size */
 			  long max_size,	/* max size of the table */
 			  HASHCTL *infoP,	/* info about key and bucket size */
@@ -418,8 +418,8 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 		LWLockRelease(ShmemIndexLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-		errmsg("could not create ShmemIndex entry for data structure \"%s\"",
-			   name)));
+				 errmsg("could not create ShmemIndex entry for data structure \"%s\"",
+						name)));
 	}
 
 	if (*foundPtr)
@@ -433,9 +433,9 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 		{
 			LWLockRelease(ShmemIndexLock);
 			ereport(ERROR,
-				  (errmsg("ShmemIndex entry size is wrong for data structure"
-						  " \"%s\": expected %zu, actual %zu",
-						  name, size, result->size)));
+					(errmsg("ShmemIndex entry size is wrong for data structure"
+							" \"%s\": expected %zu, actual %zu",
+							name, size, result->size)));
 		}
 		structPtr = result->location;
 	}
