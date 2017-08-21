@@ -21,6 +21,7 @@ add_custom_command(
 	OUTPUT ${gen_fmgrtab_output}
 	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrprotos.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgrprotos.h
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
@@ -129,9 +130,11 @@ set(access_SRCS
 	access/brin/brin_inclusion.c
 	access/brin/brin_validate.c
 
+	access/common/bufmask.c
 	access/common/heaptuple.c
 	access/common/indextuple.c
 	access/common/printtup.c
+	access/common/printsimple.c
 	access/common/reloptions.c
 	access/common/scankey.c
 	access/common/tupconvert.c
@@ -174,6 +177,7 @@ set(access_SRCS
 	access/hash/hashsort.c
 	access/hash/hashutil.c
 	access/hash/hashvalidate.c
+	access/hash/hash_xlog.c
 
 	access/heap/heapam.c
 	access/heap/hio.c
@@ -304,11 +308,16 @@ set(POSTGRES_BKI_SRCS
 	${postgres_include_catalog}/pg_init_privs.h
 	${postgres_include_catalog}/pg_seclabel.h
 	${postgres_include_catalog}/pg_shseclabel.h
+	${postgres_include_catalog}/pg_statistic_ext.h
+	${postgres_include_catalog}/pg_subscription_rel.h
 	${postgres_include_catalog}/pg_collation.h
 	${postgres_include_catalog}/pg_partitioned_table.h
 	${postgres_include_catalog}/pg_range.h
 	${postgres_include_catalog}/pg_transform.h
 	${postgres_include_catalog}/pg_sequence.h
+	${postgres_include_catalog}/pg_publication.h
+	${postgres_include_catalog}/pg_publication_rel.h
+	${postgres_include_catalog}/pg_subscription.h
 	${postgres_include_catalog}/toasting.h
 	${postgres_include_catalog}/indexing.h
 )
@@ -334,6 +343,8 @@ set(catalog_SRCS
 	catalog/pg_namespace.c
 	catalog/pg_operator.c
 	catalog/pg_proc.c
+	catalog/pg_publication.c
+	catalog/pg_subscription.c
 	catalog/pg_range.c
 	catalog/pg_db_role_setting.c
 	catalog/pg_shdepend.c
@@ -390,9 +401,12 @@ set(commands_SRCS
 	commands/portalcmds.c
 	commands/prepare.c
 	commands/proclang.c
+	commands/publicationcmds.c
 	commands/schemacmds.c
 	commands/seclabel.c
 	commands/sequence.c
+	commands/statscmds.c
+	commands/subscriptioncmds.c
 	commands/tablecmds.c
 	commands/tablespace.c
 	commands/trigger.c
@@ -414,10 +428,13 @@ set(executor_SRCS
 	executor/execMain.c
 	executor/execProcnode.c
 	executor/execParallel.c
-	executor/execQual.c
 	executor/execScan.c
 	executor/execTuples.c
 	executor/execUtils.c
+	executor/execExpr.c
+	executor/execExprInterp.c
+	executor/execReplication.c
+	executor/execSRF.c
 	executor/functions.c
 	executor/instrument.c
 	executor/tqueue.c
@@ -457,6 +474,10 @@ set(executor_SRCS
 	executor/nodeTidscan.c
 	executor/nodeForeignscan.c
 	executor/nodeWindowAgg.c
+	executor/nodeGatherMerge.c
+	executor/nodeNamedtuplestorescan.c
+	executor/nodeProjectSet.c
+	executor/nodeTableFuncscan.c
 	executor/tstoreReceiver.c
 	executor/spi.c
 )
@@ -469,6 +490,7 @@ set(lib_SRCS
 	lib/pairingheap.c
 	lib/rbtree.c
 	lib/stringinfo.c
+	lib/knapsack.c
 )
 
 if(OPENSSL_FOUND)
@@ -486,6 +508,7 @@ set(libpq_SRCS
 	libpq/pqmq.c
 	libpq/pqsignal.c
 	libpq/ifaddr.c
+	libpq/auth-scram.c
 	${libpq_ssl_SRCS}
 )
 
@@ -510,6 +533,8 @@ set(utils_SRCS
 	utils/mmgr/mcxt.c
 	utils/mmgr/portalmem.c
 	utils/mmgr/freepage.c
+	utils/mmgr/memdebug.c
+	utils/mmgr/slab.c
 	utils/adt/acl.c
 	utils/adt/arrayfuncs.c
 	utils/adt/array_expanded.c
@@ -604,6 +629,7 @@ set(utils_SRCS
 	utils/adt/xid.c
 	utils/adt/xml.c
 	utils/adt/network_spgist.c
+	utils/adt/mac8.c
 	utils/fmgr/dfmgr.c
 	utils/fmgr/fmgr.c
 	utils/fmgr/funcapi.c
@@ -633,6 +659,7 @@ set(utils_SRCS
 	utils/misc/timeout.c
 	utils/misc/tzparser.c
 	utils/misc/backend_random.c
+	utils/misc/queryenvironment.c
 	utils/mb/encnames.c
 	utils/mb/conv.c
 	utils/mb/mbutils.c
@@ -694,7 +721,6 @@ set(optimizer_SRCS
 	optimizer/plan/subselect.c
 	optimizer/prep/prepjointree.c
 	optimizer/prep/prepqual.c
-	optimizer/prep/prepsecurity.c
 	optimizer/prep/preptlist.c
 	optimizer/prep/prepunion.c
 	optimizer/util/clauses.c
@@ -737,6 +763,7 @@ set(parser_SRCS
 	parser/parse_target.c
 	parser/parse_type.c
 	parser/parse_utilcmd.c
+	parser/parse_enr.c
 	parser/scansup.c
 	${PROJECT_SOURCE_DIR}/src/backend/parser/gram.c
 	${PROJECT_SOURCE_DIR}/src/backend/parser/scan.c
@@ -946,6 +973,12 @@ set(replication_SRCS
 	replication/logical/origin.c
 	replication/logical/snapbuild.c
 	replication/logical/message.c
+	replication/logical/launcher.c
+	replication/logical/proto.c
+	replication/logical/relation.c
+	replication/logical/tablesync.c
+	replication/logical/worker.c
+
 	${BISON_REPL_GRAM_OUTPUTS}
 	${BISON_SYNC_GRAM_OUTPUTS}
 )
@@ -954,6 +987,12 @@ set(timezone_SRCS
 	${PROJECT_SOURCE_DIR}/src/timezone/localtime.c
 	${PROJECT_SOURCE_DIR}/src/timezone/strftime.c
 	${PROJECT_SOURCE_DIR}/src/timezone/pgtz.c
+)
+
+set(statistics_SRCS
+	statistics/extended_stats.c
+	statistics/dependencies.c
+	statistics/mvdistinct.c
 )
 
 add_custom_command(
@@ -967,8 +1006,8 @@ set_source_files_properties(utils/sort/tuplesort.c
 	PROPERTIES OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/src/backend/utils/sort/qsort_tuple.c")
 
 set(postgres_SRCS
-	${storage_SRCS}
 	${access_SRCS}
+	${storage_SRCS}
 	${bootstrap_SRCS}
 	${commands_SRCS}
 	${catalog_SRCS}
@@ -988,6 +1027,7 @@ set(postgres_SRCS
 	${backend_port_SRCS}
 	${replication_SRCS}
 	${timezone_SRCS}
+	${statistics_SRCS}
 	main/main.c
 )
 
@@ -1073,23 +1113,37 @@ add_library(pqwalreceiver ${PLUGIN_TYPE}
 	${backend_port_darwin_SRC}
 )
 
+add_library(pgoutput ${PLUGIN_TYPE}
+	replication/pgoutput/pgoutput.c
+	${backend_port_win32_SRC}
+	${backend_port_darwin_SRC}
+)
+
 if(MSVC)
 	gen_def(pqwalreceiver)
+	gen_def(pgoutput)
 	gen_def(postgres)
 endif()
 
 if(WIN32)
 	target_link_libraries(pqwalreceiver postgres)
+	target_link_libraries(pgoutput postgres)
 endif()
 
 #Strange logic
 if(MINGW)
 	target_compile_definitions(pqwalreceiver PRIVATE -DBUILDING_DLL)
+	target_compile_definitions(pgoutput PRIVATE -DBUILDING_DLL)
 endif()
 
 target_link_libraries(pqwalreceiver pq)
+target_link_libraries(pgoutput pq)
 
 install(TARGETS postgres pqwalreceiver
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})
+
+install(TARGETS postgres pgoutput
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
@@ -1109,5 +1163,5 @@ add_subdirectory(utils/mb/conversion_procs)
 add_subdirectory(snowball)
 
 if(ENABLE_NLS)
-	MAKE_MO(postgres "de;es;fr;id;it;ja;pl;pt_BR;ru;zh_CN")
+	MAKE_MO(postgres "de;es;fr;id;it;ja;pl;pt_BR;ru;zh_CN;ko")
 endif()

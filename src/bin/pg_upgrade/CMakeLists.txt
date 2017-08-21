@@ -35,5 +35,7 @@ install(TARGETS pg_upgrade
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
-
+if(ENABLE_NLS)
+	MAKE_MO(pg_rewind "fr;ru")
+endif()
 

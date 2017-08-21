@@ -38,6 +38,7 @@ set(regerss_checks
 	replorigin
 	time
 	messages
+	slot
 )
 
 set(regress_options

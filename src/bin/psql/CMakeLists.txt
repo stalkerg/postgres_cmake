@@ -19,6 +19,7 @@ flex_target(SCANSLASH_SCAN
 set(psql_SRCS
 	command.c
 	common.c
+	conditional.c
 	help.c
 	help.h
 	input.c
@@ -67,6 +68,6 @@ install(TARGETS psql
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pslq "cs;de;es;fr;it;ja;pl;pt_BR;ru;zh_CN;zh_TW")
+	MAKE_MO(pslq "cs;de;es;fr;it;ja;pl;pt_BR;ru;zh_CN;zh_TW;he;ko;sv")
 endif()
 

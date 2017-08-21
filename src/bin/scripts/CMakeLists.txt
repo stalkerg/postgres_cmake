@@ -22,28 +22,6 @@ set(common_libs
 	${LIB_M}
 )
 
-add_executable(createlang
-	createlang.c
-)
-
-target_link_libraries(createlang
-	common_print
-	${common_libs}
-)
-
-CMAKE_SET_TARGET_FOLDER(createlang bin)
-
-add_executable(droplang
-	droplang.c
-)
-
-target_link_libraries(droplang
-	common_print
-	${common_libs}
-)
-
-CMAKE_SET_TARGET_FOLDER(droplang bin)
-
 add_executable(pg_isready
 	pg_isready.c
 	common.c
@@ -80,12 +58,12 @@ foreach(loop_var IN ITEMS ${dump_modules_list})
 endforeach()
 
 
-install(TARGETS ${dump_modules_list} createlang droplang pg_isready
+install(TARGETS ${dump_modules_list} pg_isready
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pgscripts "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN")
+	MAKE_MO(pgscripts "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;sv;zh_CN;he")
 endif()
 
 if(PROVE)

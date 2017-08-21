@@ -17,3 +17,8 @@ CMAKE_SET_TARGET_FOLDER(pg_archivecleanup bin)
 install(TARGETS pg_archivecleanup
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
+
+
+if(ENABLE_NLS)
+	MAKE_MO(initdb "de;es;fr;pl;ru;sv;")
+endif()

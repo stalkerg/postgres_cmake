@@ -20,3 +20,6 @@ install(TARGETS pg_test_fsync
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
+if(ENABLE_NLS)
+	MAKE_MO(pg_rewind "es;fr;pl;ru;sv")
+endif()

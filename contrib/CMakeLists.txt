@@ -73,7 +73,6 @@ if(OPENSSL_FOUND)
 endif()
 add_subdirectory(tablefunc)
 add_subdirectory(tcn)
-add_subdirectory(tsearch2)
 add_subdirectory(tsm_system_rows)
 add_subdirectory(tsm_system_time)
 add_subdirectory(unaccent)
@@ -86,6 +85,7 @@ if(LIBXML2_FOUND)
 endif()
 
 add_subdirectory(test_decoding)
+add_subdirectory(amcheck)
 
 if(CMAKE_GENERATOR STREQUAL "Ninja")
 	add_custom_target(contrib_check

@@ -13,7 +13,16 @@ set(pgcommon_srv_SRCS
 	keywords.c
 	md5.c
 	ip.c
+	base64.c
+	saslprep.c
+	scram-common.c
 )
+
+if(OPENSSL_FOUND)
+	set(pgcommon_srv_SRCS ${pgcommon_srv_SRCS} sha2_openssl.c)
+else()
+	set(pgcommon_srv_SRCS ${pgcommon_srv_SRCS} sha2.c)
+endif()
 
 set(pgcommon_SRCS
 	${pgcommon_srv_SRCS}

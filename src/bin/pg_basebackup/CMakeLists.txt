@@ -24,7 +24,7 @@ target_link_libraries(common_basebackup
 
 set(basebackup_list 
 	pg_basebackup
-	pg_receivexlog
+	pg_receivewal
 	pg_recvlogical
 )
 
@@ -46,7 +46,7 @@ install(TARGETS ${basebackup_list}
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pg_basebackup "de;es;fr;it;ko;pl;pt_BR;ru;zh_CN")
+	MAKE_MO(pg_basebackup "de;es;fr;it;ko;pl;pt_BR;ru;zh_CN;he")
 endif()
 
 if(PROVE)

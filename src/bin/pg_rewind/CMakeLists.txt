@@ -33,7 +33,7 @@ install(TARGETS pg_rewind
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pg_rewind "de;es;fr;it;ko;pl;ru;zh_CN")
+	MAKE_MO(pg_rewind "de;es;fr;it;ko;pl;ru;zh_CN;ja;pt_BR;sv")
 endif()
 
 if(PROVE)

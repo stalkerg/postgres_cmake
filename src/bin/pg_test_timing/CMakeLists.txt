@@ -20,4 +20,6 @@ install(TARGETS pg_test_timing
 		RUNTIME DESTINATION ${PGBINDIR}
 		LIBRARY DESTINATION ${LIBDIR})
 
-
+if(ENABLE_NLS)
+	MAKE_MO(pg_rewind "de;es;fr;pl;ru;sv")
+endif()

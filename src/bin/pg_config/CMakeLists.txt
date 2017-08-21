@@ -20,7 +20,7 @@ install(TARGETS pg_config
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pg_config "cs;de;es;fr;it;ja;ko;nb;pl;pt_BR;ro;ru;sv;ta;tr;zh_CN;zh_TW")
+	MAKE_MO(pg_config "cs;de;es;fr;it;ja;ko;nb;pl;pt_BR;ro;ru;sv;ta;tr;zh_CN;zh_TW;he")
 endif()
 
 if(PROVE)

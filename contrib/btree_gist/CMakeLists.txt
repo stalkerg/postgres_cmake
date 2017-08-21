@@ -18,6 +18,7 @@ add_library(${extension_name} ${PLUGIN_TYPE}
 	btree_date.c
 	btree_interval.c
 	btree_macaddr.c
+	btree_macaddr8.c
 	btree_inet.c
 	btree_text.c
 	btree_bytea.c
@@ -38,6 +39,8 @@ install(TARGETS ${extension_name}
 install(FILES
 	${extension_name}.control
 	${extension_name}--1.2.sql
+	${extension_name}--1.4--1.5.sql
+	${extension_name}--1.3--1.4.sql
 	${extension_name}--1.2--1.3.sql
 	${extension_name}--1.1--1.2.sql
 	${extension_name}--1.0--1.1.sql

@@ -84,7 +84,7 @@ install(TARGETS pg_dump pg_restore pg_dumpall
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(pg_dump "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN")
+	MAKE_MO(pg_dump "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN;sv")
 endif()
 
 if(PROVE)

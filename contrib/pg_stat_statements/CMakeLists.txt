@@ -18,9 +18,15 @@ install(TARGETS ${extension_name}
 install(FILES
 	${extension_name}.control
 	${extension_name}--1.4.sql
+	${extension_name}--1.4--1.5.sql
 	${extension_name}--1.3--1.4.sql
 	${extension_name}--1.2--1.3.sql
 	${extension_name}--1.1--1.2.sql
 	${extension_name}--1.0--1.1.sql
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
+
+set(regres_files
+	${extension_name}
+)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regres_files}")

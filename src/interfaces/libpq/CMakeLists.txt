@@ -5,7 +5,9 @@ include_directories(BEFORE
 
 if(USE_OPENSSL)
 	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
-	set(pq_ssl_SRCS fe-secure-openssl.c)
+	set(pq_ssl_SRCS fe-secure-openssl.c sha2_openssl.c)
+else()
+	set(pq_ssl_SRCS sha2.c)
 endif(USE_OPENSSL)
 
 set(pq_SRCS
@@ -17,6 +19,7 @@ set(pq_SRCS
 	fe-lobj.c
 	fe-protocol2.c
 	fe-protocol3.c
+	fe-auth-scram.c
 	pqexpbuffer.c
 	fe-secure.c
 	libpq-events.c
@@ -30,6 +33,10 @@ set(pq_SRCS
 
 	${PROJECT_SOURCE_DIR}/src/common/ip.c
 	${PROJECT_SOURCE_DIR}/src/common/md5.c
+	${PROJECT_SOURCE_DIR}/src/common/base64.c
+	${PROJECT_SOURCE_DIR}/src/common/scram-common.c
+	${PROJECT_SOURCE_DIR}/src/common/saslprep.c
+	${PROJECT_SOURCE_DIR}/src/common/unicode_norm.c
 	${MB_UTILS_BACKEND_DIR}/encnames.c
 	${MB_UTILS_BACKEND_DIR}/wchar.c
 
@@ -39,6 +46,12 @@ set(pq_SRCS
 
 if(USE_REPL_SNPRINTF)
 	set(pq_SRCS ${pq_SRCS} ${PORT_DIR}/snprintf.c)
+endif()
+
+if(HAVE_STRONG_RANDOM)
+	set(pq_SRCS ${pq_SRCS} pg_strong_random.c)
+else()
+	set(pq_SRCS ${pq_SRCS} erand48.c)
 endif()
 
 set(RES_FILES "")
@@ -101,7 +114,7 @@ install(TARGETS pq
 		LIBRARY DESTINATION ${LIBDIR})
 
 if(ENABLE_NLS)
-	MAKE_MO(libpq "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;tr;zh_CN;zh_TW")
+	MAKE_MO(libpq "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;tr;zh_CN;zh_TW;he;sv")
 endif()
 
 #TODO 

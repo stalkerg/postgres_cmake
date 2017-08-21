@@ -87,6 +87,7 @@ set(sql_tests
 	quote
 	show
 	insupd
+	twophase
 )
 
 set(thread_tests
@@ -130,8 +131,6 @@ macro(ECPG_CHECK TARGET_LIST FOLDER PREPROC_OPTS)
 			ecpg_compat
 			pgtypes
 			pq
-			#pgcommon
-			#port
 		)
 		set_target_properties(ecpg_regress_${FOLDER}_${test}
 			PROPERTIES

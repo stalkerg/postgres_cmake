@@ -33,5 +33,5 @@ install(FILES plpgsql.control plpgsql--1.0.sql plpgsql--unpackaged--1.0.sql
 		DESTINATION ${PGSHAREDIR}/extension)
 
 if(ENABLE_NLS)
-	MAKE_MO(plpgsql "cs;de;es;fr;it;ja;ko;pl;pt_BR;ro;ru;zh_CN;zh_TW")
+	MAKE_MO(plpgsql "cs;de;es;fr;it;ja;ko;pl;pt_BR;ro;ru;zh_CN;zh_TW;sv")
 endif()

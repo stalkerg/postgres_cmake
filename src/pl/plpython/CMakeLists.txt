@@ -88,5 +88,5 @@ else()
 endif()
 
 if(ENABLE_NLS)
-	MAKE_MO(plpython "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN")
+	MAKE_MO(plpython "cs;de;es;fr;it;ja;ko;pl;pt_BR;ru;zh_CN;sv")
 endif()
