@@ -52,9 +52,9 @@ if(USE_REPL_SNPRINTF)
 endif()
 
 if(HAVE_STRONG_RANDOM)
-	set(pq_SRCS ${pq_SRCS} pg_strong_random.c)
+	set(pq_SRCS ${pq_SRCS} ${PORT_DIR}/pg_strong_random.c)
 else()
-	set(pq_SRCS ${pq_SRCS} erand48.c)
+	set(pq_SRCS ${pq_SRCS} ${PORT_DIR}/erand48.c)
 endif()
 
 set(RES_FILES "")
