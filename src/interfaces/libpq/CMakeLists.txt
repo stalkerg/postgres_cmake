@@ -5,7 +5,10 @@ include_directories(BEFORE
 
 if(USE_OPENSSL)
 	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
-	set(pq_ssl_SRCS fe-secure-openssl.c sha2_openssl.c)
+	set(pq_ssl_SRCS
+		fe-secure-openssl.c
+		${PROJECT_SOURCE_DIR}/src/common/sha2_openssl.c
+	)
 else()
 	set(pq_ssl_SRCS sha2.c)
 endif(USE_OPENSSL)
