@@ -1114,6 +1114,7 @@ add_library(pqwalreceiver ${PLUGIN_TYPE}
 )
 
 add_library(pgoutput ${PLUGIN_TYPE}
+	${gen_lwlocknames_output}
 	replication/pgoutput/pgoutput.c
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
