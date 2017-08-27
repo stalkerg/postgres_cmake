@@ -27,4 +27,8 @@ install(TARGETS ${extension_name}
 install(FILES ${extension_name}.control ${extension_name}--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
-CONTRIB_REGRESS_CHECK(${extension_name} "" "amcheck")
+SET(regress_files
+	check
+	check_btree
+)
+CONTRIB_REGRESS_CHECK(${extension_name} "" "${regress_files}")

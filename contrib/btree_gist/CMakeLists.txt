@@ -25,6 +25,7 @@ add_library(${extension_name} ${PLUGIN_TYPE}
 	btree_bit.c
 	btree_numeric.c
 	btree_uuid.c
+	btree_enum.c
 )
 target_link_libraries(${extension_name} ${contrib_libs} ${LIB_M})
 set_target_properties(${extension_name} PROPERTIES PREFIX "")

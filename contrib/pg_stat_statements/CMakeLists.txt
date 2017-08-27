@@ -29,4 +29,9 @@ install(FILES
 set(regres_files
 	${extension_name}
 )
-CONTRIB_REGRESS_CHECK(${extension_name} "" "${regres_files}")
+set(REGRESS_OPTS
+	--temp-config ${PROJECT_SOURCE_DIR}/contrib/pg_stat_statements/pg_stat_statements.conf
+)
+# Only for make check and not for installcheck
+set(contrib_check_targets ${contrib_check_targets} ${extension_name}_installcheck_tmp PARENT_SCOPE)
+REGRESS_CHECK("${extension_name}" "${REGRESS_OPTS}" "${regres_files}")
