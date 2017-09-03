@@ -1,3 +1,7 @@
+if(OPENSSL_FOUND)
+	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
+endif()
+
 set(pgcommon_srv_SRCS
 	exec.c
 	pg_lzcompress.c
