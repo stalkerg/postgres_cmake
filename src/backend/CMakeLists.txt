@@ -13,6 +13,7 @@ set(gen_fmgrtab_depend
 )
 set(gen_fmgrtab_output
 	${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
+	${PROJECT_SOURCE_DIR}/src/include/utils/fmgrprotos.h
 	${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrtab.c
 )
 
