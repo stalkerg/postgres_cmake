@@ -108,6 +108,8 @@ Postgres CMake build options
 
 **-DWITH_TCL** default OFF, optional
 
+**-DWITH_ICU** default OFF, optional
+
 **-DENABLE_NLS** default OFF
 
 **-DENABLE_GSS** default OFF

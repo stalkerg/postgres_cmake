@@ -1038,6 +1038,9 @@ endif()
 if(LIBXML2_FOUND)
 	include_directories(BEFORE	${LIBXML2_INCLUDE_DIR})
 endif()
+if(ICU_FOUND)
+	include_directories(BEFORE	${ICU_INCLUDE_DIRS})
+endif()
 #include_directories(BEFORE
 #	${OPENSSL_INCLUDE_DIR}
 #	${LIBXML2_INCLUDE_DIR}
@@ -1064,6 +1067,7 @@ target_link_libraries(postgres
 	${DL_LIBRARIES}
 	${LIB_M}
 	${GSS_LIBS}
+	${ICU_LIBRARIES}
 )
 
 if(OPENSSL_FOUND)
@@ -1109,6 +1113,7 @@ add_custom_target(duplicate_oids
 
 add_library(pqwalreceiver ${PLUGIN_TYPE}
 	${PROJECT_SOURCE_DIR}/src/include/storage/lwlocknames.h
+	${PROJECT_SOURCE_DIR}/src/include/utils/fmgrprotos.h
 	replication/libpqwalreceiver/libpqwalreceiver.c
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}

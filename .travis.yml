@@ -14,4 +14,4 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -qq cmake; fi
 script:
   - cd ${TRAVIS_BUILD_DIR}
-  - mkdir build && cd build && cmake .. -DWITH_PERL=ON -DWITH_PYTHON=ON -DWITH_TCL=ON -DWITH_OPENSSL=ON && make && make check && make isolation_check && make contrib_check && make plperl_check && make plpython_check && make pltcl_check && make ecpg_check && make modules_check
+  - mkdir build && cd build && cmake .. -DWITH_PERL=ON -DWITH_PYTHON=ON -DWITH_TCL=ON -DWITH_OPENSSL=ON -DWITH_ICU=ON && make && make check && make isolation_check && make contrib_check && make plperl_check && make plpython_check && make pltcl_check && make ecpg_check && make modules_check
