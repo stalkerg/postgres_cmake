@@ -1279,6 +1279,11 @@ if(NEED_REPL_SNPRINTF)
 	option(USE_REPL_SNPRINTF "Use replacement snprintf() functions." ON)
 endif()
 
+find_program(SED_EXECUTABLE sed)
+if(NOT SED_EXECUTABLE)
+	message(FATAL_ERROR "sed programm not found")
+endif(NOT SED_EXECUTABLE)
+
 include(GenDef)
 #Not work correctly for postgres see bug: 
 #https://gitlab.kitware.com/cmake/cmake/issues/16161

@@ -38,7 +38,7 @@ set(gen_probe_output
 add_custom_command(
 	MAIN_DEPENDENCY ${gen_probe_depend}
 	OUTPUT ${gen_probe_output}
-	COMMAND sed -f Gen_dummy_probes.sed probes.d >  ${gen_probe_output}
+	COMMAND ${SED_EXECUTABLE} -f Gen_dummy_probes.sed probes.d >  ${gen_probe_output}
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
