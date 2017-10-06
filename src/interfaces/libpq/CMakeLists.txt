@@ -10,7 +10,7 @@ if(USE_OPENSSL)
 		${PROJECT_SOURCE_DIR}/src/common/sha2_openssl.c
 	)
 else()
-	set(pq_ssl_SRCS sha2.c)
+	set(pq_ssl_SRCS ${PROJECT_SOURCE_DIR}/src/common/sha2.c)
 endif(USE_OPENSSL)
 
 set(pq_SRCS
