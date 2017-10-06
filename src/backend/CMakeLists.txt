@@ -1118,6 +1118,7 @@ add_library(pqwalreceiver ${PLUGIN_TYPE}
 	${backend_port_win32_SRC}
 	${backend_port_darwin_SRC}
 )
+set_target_properties(pqwalreceiver PROPERTIES PREFIX "lib")
 
 add_library(pgoutput ${PLUGIN_TYPE}
 	${gen_lwlocknames_output}
