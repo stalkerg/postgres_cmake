@@ -29,16 +29,7 @@
  * builtins.h; we #define it out of the way.
  */
 #define uuid_hash bsd_uuid_hash
-
-#if defined(HAVE_UUID_H)
 #include <uuid.h>
-#elif defined(HAVE_OSSP_UUID_H)
-#include <ossp/uuid.h>
-#elif defined(HAVE_UUID_UUID_H)
-#include <uuid/uuid.h>
-#else
-#error "please use configure's --with-uuid switch to select a UUID library"
-#endif
 
 #undef uuid_hash
 

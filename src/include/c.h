@@ -72,6 +72,10 @@
 #undef errcode
 #endif
 
+#if _MSC_VER >= 1800 && defined(USE_FP_STRICT)
+#pragma fenv_access (off)
+#endif
+
 /*
  * We have to include stdlib.h here because it defines many of these macros
  * on some platforms, and we only want our definitions used if stdlib.h doesn't
@@ -315,8 +319,7 @@ typedef unsigned long long int uint64;
  *		There currently is only a limited support for the type. E.g. 128bit
  *		literals and snprintf are not supported; but math is.
  */
-#if defined(PG_INT128_TYPE)
-#define HAVE_INT128
+#if defined(HAVE_INT128)
 typedef PG_INT128_TYPE int128;
 typedef unsigned PG_INT128_TYPE uint128;
 #endif

@@ -1,0 +1,947 @@
+#ifndef AUTO_CONFIG_H
+#define AUTO_CONFIG_H
+
+/* Define to the type of arg 1 of 'accept' */
+#define ACCEPT_TYPE_ARG1 @ACCEPT_TYPE_ARG1@
+
+/* Define to the type of arg 2 of 'accept' */
+#define ACCEPT_TYPE_ARG2 @ACCEPT_TYPE_ARG2@
+
+/* Define to the type of arg 3 of 'accept' */
+#define ACCEPT_TYPE_ARG3 @ACCEPT_TYPE_ARG3@
+
+/* Define to the return type of 'accept' */
+#define ACCEPT_TYPE_RETURN @ACCEPT_TYPE_RETURN@
+
+/* The normal alignment of `double', in bytes. */
+#define ALIGNOF_DOUBLE @ALIGNOF_DOUBLE@
+
+/* The normal alignment of `int', in bytes. */
+#define ALIGNOF_INT @ALIGNOF_INT@
+
+/* The normal alignment of `long', in bytes. */
+#define ALIGNOF_LONG @ALIGNOF_LONG@
+
+/* The normal alignment of `long long int', in bytes. */
+#define ALIGNOF_LONG_LONG_INT @ALIGNOF_LONG_LONG_INT@
+
+/* The normal alignment of `short', in bytes. */
+#define ALIGNOF_SHORT @ALIGNOF_SHORT@
+
+/* Size of a disk block --- this also limits the size of a tuple. You can set
+   it bigger if you need bigger tuples (although TOAST should reduce the need
+   to have large tuples, since fields can be spread across multiple tuples).
+   BLCKSZ must be a power of 2. The maximum possible value of BLCKSZ is
+   currently 2^15 (32768). This is determined by the 15-bit widths of the
+   lp_off and lp_len fields in ItemIdData (see include/storage/itemid.h).
+   Changing BLCKSZ requires an initdb. */
+#define BLCKSZ @BLCKSZ@
+
+/* Define to the default TCP port number on which the server listens and to
+   which clients will try to connect. This can be overridden at run-time, but
+   it's convenient if your clients have the right default compiled in.
+   (-DPGPORT=PORTNUM) */
+#define DEF_PGPORT @PGPORT@
+
+/* Define to the default TCP port number as a string constant. */
+#define DEF_PGPORT_STR "@PGPORT@"
+
+/* Define to build with GSSAPI support. */
+#cmakedefine ENABLE_GSS
+
+#cmakedefine ENABLE_NLS
+
+#cmakedefine ENABLE_THREAD_SAFETY 1
+
+/* Define to nothing if C supports flexible array members, and to 1 if it does
+   not. That way, with a declaration like `struct s { int n; double
+   d[FLEXIBLE_ARRAY_MEMBER]; };', the struct hack can be used with pre-C99
+   compilers. When computing the size of such an object, don't use 'sizeof
+   (struct s)' as it overestimates the size. Use 'offsetof (struct s, d)'
+   instead. Don't use 'offsetof (struct s, d[0])', as this doesn't work with
+   MSVC and with C++ compilers. */
+#define FLEXIBLE_ARRAY_MEMBER @FLEXIBLE_ARRAY_MEMBER@
+
+/* float4 values are passed by value if 'true', by reference if 'false' */
+#define FLOAT4PASSBYVAL @FLOAT4PASSBYVAL@
+
+/* float8, int8, and related values are passed by value if 'true', by
+   reference if 'false' */
+#define FLOAT8PASSBYVAL @FLOAT8PASSBYVAL@
+
+#cmakedefine GETTIMEOFDAY_1ARG
+
+#ifdef GETTIMEOFDAY_1ARG
+#	define gettimeofday(a,b) gettimeofday(a)
+#endif
+
+/* Define if you have the `append_history' function. */
+#cmakedefine HAVE_APPEND_HISTORY
+
+/* Define if you want to use atomics if available. */
+#cmakedefine HAVE_ATOMICS
+
+/* Define to 1 if you have the <atomic.h> header file. */
+#cmakedefine HAVE_ATOMIC_H 1
+
+/* Define if you have the `cbrt' function. */
+#cmakedefine HAVE_CBRT 1
+
+/* Define to 1 if you have the `class' function. */
+#cmakedefine HAVE_CLASS 1
+
+/* Define to 1 if you have the <crtdefs.h> header file. */
+#cmakedefine HAVE_CRTDEFS_H 1
+
+/* Define if you have the `crypt' function. */
+#cmakedefine HAVE_CRYPT
+
+/* Define if you have the <crypt.h> header file. */
+#cmakedefine HAVE_CRYPT_H
+
+/* Define to 1 if you have the declaration of `fdatasync' */
+#cmakedefine HAVE_DECL_FDATASYNC 1
+
+/* Define to 1 if you have the declaration of `F_FULLFSYNC' */
+#cmakedefine HAVE_DECL_F_FULLFSYNC 1
+
+/* Define to 1 if you have the declaration of `posix_fadvise' */
+#cmakedefine HAVE_DECL_POSIX_FADVISE 1
+
+/* Define to 1 if you have the declaration of `snprintf', and to 0 if you
+   don't. */
+#define HAVE_DECL_SNPRINTF @HAVE_DECL_SNPRINTF@
+
+/* Define to 1 if you have the declaration of `strlcat', and to 0 if you
+   don't. */
+#define HAVE_DECL_STRLCAT @HAVE_DECL_STRLCAT@
+
+/* Define to 1 if you have the declaration of `strlcpy', and to 0 if you
+   don't. */
+#define HAVE_DECL_STRLCPY @HAVE_DECL_STRLCPY@
+
+/* Define to 1 if you have the declaration of `sys_siglist', and to 0 if you
+   don't. */
+#cmakedefine HAVE_DECL_SYS_SIGLIST 1
+
+/* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
+   don't. */
+#define HAVE_DECL_VSNPRINTF @HAVE_DECL_VSNPRINTF@
+
+/* Define to 1 if you have the <dld.h> header file. */
+#cmakedefine HAVE_DLD_H
+
+/* Define to 1 if you have the `dlopen' function. */
+#cmakedefine HAVE_DLOPEN 1
+
+/* Define to 1 if you have the <editline/history.h> header file. */
+#cmakedefine HAVE_EDITLINE_HISTORY_H
+
+/* Define to 1 if you have the <editline/readline.h> header file. */
+#cmakedefine HAVE_EDITLINE_READLINE_H
+
+/* Define to 1 if you have the `fdatasync' function. */
+#cmakedefine HAVE_FDATASYNC 1
+
+/* Define to 1 if you have the `fls' function. */
+#cmakedefine HAVE_FLS
+
+/* Define to 1 if you have the `fpclass' function. */
+#cmakedefine HAVE_FPCLASS 1
+
+/* Define to 1 if you have the `fp_class' function. */
+#cmakedefine HAVE_FP_CLASS 1
+
+/* Define to 1 if you have the `fp_class_d' function. */
+#cmakedefine HAVE_FP_CLASS_D 1
+
+/* Define to 1 if you have the <fp_class.h> header file. */
+#cmakedefine HAVE_FP_CLASS_H 1
+
+/* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
+#cmakedefine HAVE_FSEEKO 1
+
+/* Define to 1 if your compiler understands __func__. */
+#cmakedefine HAVE_FUNCNAME__FUNC
+
+/* Define to 1 if your compiler understands __FUNCTION__. */
+#cmakedefine HAVE_FUNCNAME__FUNCTION
+
+/* Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int). */
+#cmakedefine HAVE_GCC__ATOMIC_INT32_CAS 1
+
+/* Define to 1 if you have __atomic_compare_exchange_n(int64 *, int *, int64).
+   */
+#cmakedefine HAVE_GCC__ATOMIC_INT64_CAS 1
+
+/* Define to 1 if you have __sync_lock_test_and_set(char *) and friends. */
+#cmakedefine HAVE_GCC__SYNC_CHAR_TAS 1
+
+/* Define to 1 if you have __sync_compare_and_swap(int *, int, int). */
+#cmakedefine HAVE_GCC__SYNC_INT32_CAS 1
+
+/* Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
+#cmakedefine HAVE_GCC__SYNC_INT32_TAS 1
+
+/* Define to 1 if you have __sync_compare_and_swap(int64 *, int64, int64). */
+#cmakedefine HAVE_GCC__SYNC_INT64_CAS 1
+
+/* Define to 1 if you have the `getaddrinfo' function. */
+#cmakedefine HAVE_GETADDRINFO 1
+
+/* Define to 1 if you have the `gethostbyname_r' function. */
+#cmakedefine HAVE_GETHOSTBYNAME_R 1
+
+/* Define to 1 if you have the `getifaddrs' function. */
+#cmakedefine HAVE_GETIFADDRS 1
+
+/* Define to 1 if you have the `getopt' function. */
+#cmakedefine HAVE_GETOPT 1
+
+/* Define to 1 if you have the <getopt.h> header file. */
+#cmakedefine HAVE_GETOPT_H 1
+
+/* Define to 1 if you have the `getopt_long' function. */
+#cmakedefine HAVE_GETOPT_LONG 1
+
+/* Define to 1 if you have the `getpeereid' function. */
+#cmakedefine HAVE_GETPEEREID 1
+
+/* Define to 1 if you have the `getpeerucred' function. */
+#cmakedefine HAVE_GETPEERUCRED 1
+
+/* Define to 1 if you have the `getpwuid_r' function. */
+#cmakedefine HAVE_GETPWUID_R 1
+
+/* Define to 1 if you have the `getrlimit' function. */
+#cmakedefine HAVE_GETRLIMIT 1
+
+/* Define to 1 if you have the `getrusage' function. */
+#cmakedefine HAVE_GETRUSAGE 1
+
+/* Define to 1 if you have the `gettimeofday' function. */
+#cmakedefine HAVE_GETTIMEOFDAY 1
+
+/* Define to 1 if you have the <gssapi/gssapi.h> header file. */
+#cmakedefine HAVE_GSSAPI_GSSAPI_H 1
+
+/* Define to 1 if you have the <gssapi.h> header file. */
+#cmakedefine HAVE_GSSAPI_H 1
+
+/* Define to 1 if you have the <history.h> header file. */
+#cmakedefine HAVE_HISTORY_H 1
+
+/* Define to 1 if you have the `history_truncate_file' function. */
+#cmakedefine HAVE_HISTORY_TRUNCATE_FILE 1
+
+/* Define to 1 if you have the <ieeefp.h> header file. */
+#cmakedefine HAVE_IEEEFP_H @HAVE_IEEEFP_H@
+
+/* Define to 1 if you have the <ifaddrs.h> header file. */
+#cmakedefine HAVE_IFADDRS_H 1
+
+/* Define to 1 if you have the `inet_aton' function. */
+#cmakedefine HAVE_INET_ATON 1
+
+/* Define to 1 if the system has the type `int64'. */
+#cmakedefine HAVE_INT64 1
+
+/* Define to 1 if the system has the type `int8'. */
+#cmakedefine HAVE_INT8 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if the system has the type `intptr_t'. */
+/*#cmakedefine HAVE_INTPTR_T 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <inttypes.h> header file. */
+/*#cmakedefine HAVE_INTTYPES_H 1*/
+
+/* Define to 1 if you have the global variable 'int opterr'. */
+#cmakedefine HAVE_INT_OPTERR 1
+
+/* Define to 1 if you have the global variable 'int optreset'. */
+#cmakedefine HAVE_INT_OPTRESET 1
+
+/* Define to 1 if you have the global variable 'int timezone'. */
+#cmakedefine HAVE_INT_TIMEZONE 1
+
+/* Define to 1 if you have support for IPv6. */
+#cmakedefine HAVE_IPV6 1
+
+/* Define to 1 if you have isinf(). */
+#cmakedefine HAVE_ISINF 1
+
+/* Define to 1 if you have the <langinfo.h> header file. */
+#cmakedefine HAVE_LANGINFO_H 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <ldap.h> header file. */
+/*#cmakedefine HAVE_LDAP_H 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `crypto' library (-lcrypto). */
+/*#cmakedefine HAVE_LIBCRYPTO 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `ldap' library (-lldap). */
+/*#cmakedefine HAVE_LIBLDAP 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `ldap_r' library (-lldap_r). */
+/*#cmakedefine HAVE_LIBLDAP_R 1*/
+
+/* TODO BUT NOT NEED:Define to 1 if you have the `m' library (-lm). */
+/*#cmakedefine HAVE_LIBM*/
+
+/* TODO BUT NOT NEED:Define to 1 if you have the `pam' library (-lpam). */
+/*#cmakedefine HAVE_LIBPAM 1*/
+
+/* Define if you have a function readline library */
+#cmakedefine HAVE_LIBREADLINE 1
+
+/* TODO BUT NOT NEED:Define to 1 if you have the `selinux' library (-lselinux). */
+/*#cmakedefine HAVE_LIBSELINUX 1*/
+
+/* TODO BUT NOT NEED:Define to 1 if you have the `ssl' library (-lssl). */
+/*#cmakedefine HAVE_LIBSSL 1*/
+
+/* TODO BUT NOT NEED:Define to 1 if you have the `wldap32' library (-lwldap32). */
+/*#cmakedefine HAVE_LIBWLDAP32 1*/
+
+/* Define to 1 if you have the `xml2' library (-lxml2). */
+#cmakedefine HAVE_LIBXML2 1
+
+/* Define to 1 if you have the `xslt' library (-lxslt). */
+#cmakedefine HAVE_LIBXSLT 1
+
+/* Define to 1 if you have the `z' library (-lz). */
+#cmakedefine HAVE_LIBZ 1
+
+/* Define to 1 if constants of type 'long long int' should have the suffix LL.
+   */
+#cmakedefine HAVE_LL_CONSTANTS 1
+
+/* Define to 1 if the system has the type `locale_t'. */
+#cmakedefine HAVE_LOCALE_T
+
+/* Define to 1 if `long int' works and is 64 bits. */
+#cmakedefine HAVE_LONG_INT_64 1
+
+/* Define to 1 if the system has the type `long long int'. */
+#cmakedefine HAVE_LONG_LONG_INT 1
+
+/* Define to 1 if `long long int' works and is 64 bits. */
+#cmakedefine HAVE_LONG_LONG_INT_64 1
+
+/* Define to 1 if you have the <mbarrier.h> header file. */
+#cmakedefine HAVE_MBARRIER_H 1
+
+/* Define to 1 if you have the `mbstowcs_l' function. */
+#cmakedefine HAVE_MBSTOWCS_L 1
+
+/* Define to 1 if you have the `memmove' function. */
+#cmakedefine HAVE_MEMMOVE 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <memory.h> header file. */
+/*#cmakedefine HAVE_MEMORY_H 1*/
+
+/* Define to 1 if the system has the type `MINIDUMP_TYPE'. */
+#cmakedefine HAVE_MINIDUMP_TYPE 1
+
+/* Define to 1 if you have the `mkdtemp' function. */
+#cmakedefine HAVE_MKDTEMP 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <netinet/in.h> header file. */
+/*#cmakedefine HAVE_NETINET_IN_H 1*/
+
+/* Define to 1 if you have the <netinet/tcp.h> header file. */
+#cmakedefine HAVE_NETINET_TCP_H 1
+
+/* Define to 1 if you have the <net/if.h> header file. */
+#cmakedefine HAVE_NET_IF_H 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <ossp/uuid.h> header file. */
+/*#cmakedefine HAVE_OSSP_UUID_H 1*/
+
+/* Define to 1 if you have the <pam/pam_appl.h> header file. */
+#cmakedefine HAVE_PAM_PAM_APPL_H 1
+
+/* Define to 1 if you have the `poll' function. */
+#cmakedefine HAVE_POLL 1
+
+/* Define to 1 if you have the <poll.h> header file. */
+#cmakedefine HAVE_POLL_H 1
+
+/* Define to 1 if you have the `posix_fadvise' function. */
+#cmakedefine HAVE_POSIX_FADVISE 1
+
+/* Define to 1 if the assembler supports PPC's LWARX mutex hint bit. */
+#cmakedefine HAVE_PPC_LWARX_MUTEX_HINT 1
+
+/* Define to 1 if you have the `pstat' function. */
+#cmakedefine HAVE_PSTAT 1
+
+/* Define to 1 if the PS_STRINGS thing exists. */
+#cmakedefine HAVE_PS_STRINGS 1
+
+/* TODO BUT DO NOT NEED:Define if you have POSIX threads libraries and header files. */
+/*#cmakedefine HAVE_PTHREAD 1*/
+
+/* Define to 1 if you have the `pthread_is_threaded_np' function. */
+#cmakedefine HAVE_PTHREAD_IS_THREADED_NP 1
+
+/* TODO BUT DO NOT NEED:Have PTHREAD_PRIO_INHERIT. */
+/*#cmakedefine HAVE_PTHREAD_PRIO_INHERIT 1*/
+
+/* Define to 1 if you have the <pwd.h> header file. */
+#cmakedefine HAVE_PWD_H 1
+
+/* Define to 1 if you have the `random' function. */
+#cmakedefine HAVE_RANDOM 1
+
+/* Define to 1 if you have the <readline.h> header file. */
+#cmakedefine HAVE_READLINE_H 1
+
+/* Define to 1 if you have the <readline/history.h> header file. */
+#cmakedefine HAVE_READLINE_HISTORY_H 1
+
+/* Define to 1 if you have the <readline/readline.h> header file. */
+#cmakedefine HAVE_READLINE_READLINE_H 1
+
+/* Define to 1 if you have the `readlink' function. */
+#cmakedefine HAVE_READLINK 1
+
+/* Define to 1 if you have the `rint' function. */
+#cmakedefine HAVE_RINT 1
+
+/* Define to 1 if you have the global variable
+   'rl_completion_append_character'. */
+#cmakedefine HAVE_RL_COMPLETION_APPEND_CHARACTER 1
+
+/* Define to 1 if you have the `rl_completion_matches' function. */
+#cmakedefine HAVE_RL_COMPLETION_MATCHES 1
+
+/* Define to 1 if you have the `rl_filename_completion_function' function. */
+#cmakedefine HAVE_RL_FILENAME_COMPLETION_FUNCTION 1
+
+/* Define to 1 if you have the `rl_reset_screen_size' function. */
+#cmakedefine HAVE_RL_RESET_SCREEN_SIZE 1
+
+/* Define to 1 if you have the <security/pam_appl.h> header file. */
+#cmakedefine HAVE_SECURITY_PAM_APPL_H 1
+
+/* Define to 1 if you have the `setproctitle' function. */
+#cmakedefine HAVE_SETPROCTITLE 1
+
+/* Define to 1 if you have the `setsid' function. */
+#cmakedefine HAVE_SETSID 1
+
+/* Define to 1 if you have the `shm_open' function. */
+#cmakedefine HAVE_SHM_OPEN 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `snprintf' function. */
+/*#cmakedefine HAVE_SNPRINTF 1*/
+
+/* Define to 1 if you have spinlocks. */
+#cmakedefine HAVE_SPINLOCKS 1
+
+/* Define to 1 if you have the `srandom' function. */
+#cmakedefine HAVE_SRANDOM 1
+
+/* Define to 1 if you have the `SSL_get_current_compression' function. */
+#cmakedefine HAVE_SSL_GET_CURRENT_COMPRESSION 1
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#cmakedefine HAVE_STDINT_H 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <stdlib.h> header file. */
+/*#cmakedefine HAVE_STDLIB_H 1*/
+
+/* Define to 1 if you have the `strerror' function. */
+#cmakedefine HAVE_STRERROR 1
+
+/* Define to 1 if you have the `strerror_r' function. */
+#cmakedefine HAVE_STRERROR_R 1
+
+/* Define to 1 if you have the <strings.h> header file. */
+#cmakedefine HAVE_STRINGS_H 1
+
+/* Define to 1 if you have the <string.h> header file. */
+#cmakedefine HAVE_STRING_H 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `strlcat' function. */
+/*#cmakedefine HAVE_STRLCAT 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `strlcpy' function. */
+/*#cmakedefine HAVE_STRLCPY 1*/
+
+/* Define to use have a strong random number source */
+#cmakedefine HAVE_STRONG_RANDOM 1
+
+/* Define to 1 if you have the `strtoll' function. */
+#cmakedefine HAVE_STRTOLL 1
+
+/* Define to 1 if you have the `strtoq' function. */
+#cmakedefine HAVE_STRTOQ 1
+
+/* Define to 1 if you have the `strtoull' function. */
+#cmakedefine HAVE_STRTOULL 1
+
+/* Define to 1 if you have the `strtouq' function. */
+#cmakedefine HAVE_STRTOUQ 1
+
+/* Define to 1 if the system has the type `struct addrinfo'. */
+#cmakedefine HAVE_STRUCT_ADDRINFO 1
+
+/* Define to 1 if the system has the type `struct cmsgcred'. */
+#cmakedefine HAVE_STRUCT_CMSGCRED 1
+
+/* Define to 1 if the system has the type `struct option'. */
+#cmakedefine HAVE_STRUCT_OPTION 1
+
+/* Define to 1 if `sa_len' is a member of `struct sockaddr'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_SA_LEN 1
+
+/* Define to 1 if the system has the type `struct sockaddr_storage'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE 1
+
+/* Define to 1 if `ss_family' is a member of `struct sockaddr_storage'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY 1
+
+/* Define to 1 if `ss_len' is a member of `struct sockaddr_storage'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN 1
+
+/* Define to 1 if `__ss_family' is a member of `struct sockaddr_storage'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE___SS_FAMILY 1
+
+/* Define to 1 if `__ss_len' is a member of `struct sockaddr_storage'. */
+#cmakedefine HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN 1
+
+/* Define to 1 if `tm_zone' is a member of `struct tm'. */
+#cmakedefine HAVE_STRUCT_TM_TM_ZONE 1
+
+/* Define to 1 if you have the `symlink' function. */
+#cmakedefine HAVE_SYMLINK 1
+
+/* Define to 1 if you have the `sync_file_range' function. */
+#cmakedefine HAVE_SYNC_FILE_RANGE 1
+
+/* Define to 1 if you have the syslog interface. */
+#cmakedefine HAVE_SYSLOG 1
+
+/* Define to 1 if you have the <sys/epoll.h> header file. */
+#cmakedefine HAVE_SYS_EPOLL_H 1
+
+/* Define to 1 if you have the <sys/ioctl.h> header file. */
+#cmakedefine HAVE_SYS_IOCTL_H 1
+
+/* Define to 1 if you have the <sys/ipc.h> header file. */
+#cmakedefine HAVE_SYS_IPC_H 1
+
+/* Define to 1 if you have the <sys/poll.h> header file. */
+#cmakedefine HAVE_SYS_POLL_H 1
+
+/* Define to 1 if you have the <sys/pstat.h> header file. */
+#cmakedefine HAVE_SYS_PSTAT_H 1
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#cmakedefine HAVE_SYS_RESOURCE_H 1
+
+/* Define to 1 if you have the <sys/select.h> header file. */
+#cmakedefine HAVE_SYS_SELECT_H 1
+
+/* Define to 1 if you have the <sys/sem.h> header file. */
+#cmakedefine HAVE_SYS_SEM_H 1
+
+/* Define to 1 if you have the <sys/shm.h> header file. */
+#cmakedefine HAVE_SYS_SHM_H 1
+
+/* Define to 1 if you have the <sys/socket.h> header file. */
+#cmakedefine HAVE_SYS_SOCKET_H 1
+
+/* Define to 1 if you have the <sys/sockio.h> header file. */
+#cmakedefine HAVE_SYS_SOCKIO_H 1
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#cmakedefine HAVE_SYS_STAT_H 1
+
+/* Define to 1 if you have the <sys/tas.h> header file. */
+#cmakedefine HAVE_SYS_TAS_H 1
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+#cmakedefine HAVE_SYS_TIME_H 1
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#cmakedefine HAVE_SYS_TYPES_H 1
+
+/* Define to 1 if you have the <sys/ucred.h> header file. */
+#cmakedefine HAVE_SYS_UCRED_H 1
+
+/* Define to 1 if you have the <sys/un.h> header file. */
+#cmakedefine HAVE_SYS_UN_H 1
+
+/* Define to 1 if you have the <termios.h> header file. */
+#cmakedefine HAVE_TERMIOS_H 1
+
+/* Define to 1 if your `struct tm' has `tm_zone'. Deprecated, use
+   `HAVE_STRUCT_TM_TM_ZONE' instead. */
+#cmakedefine HAVE_TM_ZONE 1
+
+/* Define to 1 if you have the `towlower' function. */
+#cmakedefine HAVE_TOWLOWER 1
+
+/* Define to 1 if you have the external array `tzname'. */
+#cmakedefine HAVE_TZNAME 1
+
+/* Define to 1 if you have the <ucred.h> header file. */
+#cmakedefine HAVE_UCRED_H 1
+
+/* Define to 1 if the system has the type `uint64'. */
+#cmakedefine HAVE_UINT64 1
+
+/* Define to 1 if the system has the type `uint8'. */
+#cmakedefine HAVE_UINT8 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if the system has the type `uintptr_t'. */
+/*#cmakedefine HAVE_UINTPTR_T 1*/
+
+/* Define to 1 if the system has the type `union semun'. */
+#cmakedefine HAVE_UNION_SEMUN 1
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#cmakedefine HAVE_UNISTD_H 1
+
+/* Define to 1 if you have unix sockets. */
+#cmakedefine HAVE_UNIX_SOCKETS 1
+
+/* Define to 1 if you have the `unsetenv' function. */
+#cmakedefine HAVE_UNSETENV 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if the system has the type `unsigned long long int'. */
+/*#cmakedefine HAVE_UNSIGNED_LONG_LONG_INT 1*/
+
+/* Define to 1 if you have the `utime' function. */
+#cmakedefine HAVE_UTIME 1
+
+/* Define to 1 if you have the `utimes' function. */
+#cmakedefine HAVE_UTIMES 1
+
+/* Define to 1 if you have the <utime.h> header file. */
+#cmakedefine HAVE_UTIME_H 1
+
+/* Define to 1 if you have BSD UUID support. */
+#cmakedefine HAVE_UUID_BSD 1
+
+/* Define to 1 if you have E2FS UUID support. */
+#cmakedefine HAVE_UUID_E2FS 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <uuid.h> header file. */
+/*#cmakedefine HAVE_UUID_H 1*/
+
+/* Define to 1 if you have OSSP UUID support. */
+#cmakedefine HAVE_UUID_OSSP 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the <uuid/uuid.h> header file. */
+/*#cmakedefine HAVE_UUID_UUID_H 1*/
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the `vsnprintf' function. */
+/*#cmakedefine HAVE_VSNPRINTF 1*/
+
+/* Define to 1 if you have the <wchar.h> header file. */
+#cmakedefine HAVE_WCHAR_H 1
+
+/* Define to 1 if you have the `wcstombs' function. */
+#cmakedefine HAVE_WCSTOMBS 1
+
+/* Define to 1 if you have the `wcstombs_l' function. */
+#cmakedefine HAVE_WCSTOMBS_L 1
+
+/* Define to 1 if you have the <wctype.h> header file. */
+#cmakedefine HAVE_WCTYPE_H 1
+
+/* Define to 1 if you have the <winldap.h> header file. */
+#cmakedefine HAVE_WINLDAP_H 1
+
+/* Define to 1 if your compiler understands __builtin_bswap32. */
+#cmakedefine HAVE__BUILTIN_BSWAP32 1
+
+/* Define to 1 if your compiler understands __builtin_bswap64. */
+#cmakedefine HAVE__BUILTIN_BSWAP64 1
+
+/* Define to 1 if your compiler understands __builtin_constant_p. */
+#cmakedefine HAVE__BUILTIN_CONSTANT_P 1
+
+/* Define to 1 if your compiler understands __builtin_types_compatible_p. */
+#cmakedefine HAVE__BUILTIN_TYPES_COMPATIBLE_P 1
+
+/* Define to 1 if your compiler understands __builtin_unreachable. */
+#cmakedefine HAVE__BUILTIN_UNREACHABLE 1
+
+/* Define to 1 if you have __cpuid. */
+#cmakedefine HAVE__CPUID 1
+
+/* Define to 1 if you have __cpuid. */
+#cmakedefine HAVE__GET_CPUID 1
+
+/* Define to 1 if your compiler understands _Static_assert. */
+#cmakedefine HAVE__STATIC_ASSERT 1
+
+/* Define to 1 if your compiler understands __VA_ARGS__ in macros. */
+#cmakedefine HAVE__VA_ARGS 1
+
+/* Define to the appropriate snprintf length modifier for 64-bit ints. */
+#define INT64_MODIFIER "@LONG_LONG_INT_MODIFIER@"
+
+/* Define to 1 if `locale_t' requires <xlocale.h>. */
+#cmakedefine LOCALE_T_IN_XLOCALE 1
+
+/* Define as the maximum alignment requirement of any C data type. */
+#define MAXIMUM_ALIGNOF @MAXIMUM_ALIGNOF@
+
+/* Define bytes to use libc memset(). */
+#define MEMSET_LOOP_LIMIT @MEMSET_LOOP_LIMIT@
+
+/* Define to the address where bug reports for this package should be sent. */
+#define PACKAGE_BUGREPORT "@PACKAGE_BUGREPORT@"
+
+/* TODO BUT DO NOT NEED:Define to the full name of this package. */
+/*#define PACKAGE_NAME "@PACKAGE_NAME@"*/
+
+/* TODO:Define to the full name and version of this package. */
+/*#define PACKAGE_STRING "@PACKAGE_STRING@"*/
+
+/* TODO BUT DO NOT NEED:Define to the one symbol short name of this package. */
+/*#define PACKAGE_TARNAME "@PACKAGE_TARNAME@"*/
+
+/* TODO BUT DO NOT NEED:Define to the home page for this package. */
+/*#define PACKAGE_URL "@PACKAGE_URL@"*/
+
+/* TODO BUT DO NOT NEED:Define to the version of this package. */
+/*#define PACKAGE_VERSION "@PACKAGE_VERSION@"*/
+
+/* Define to the name of a signed 128-bit integer type. */
+#define PG_INT128_TYPE @PG_INT128_TYPE@
+
+/* Define to the name of a signed 64-bit integer type. */
+#define PG_INT64_TYPE @PG_INT64_TYPE@
+
+/* Define to the name of the default PostgreSQL service principal in Kerberos
+   (GSSAPI). */
+#define PG_KRB_SRVNAM "@PG_KRB_SRVNAM@"
+
+/* PostgreSQL major version as a string */
+#define PG_MAJORVERSION "@POSTGRES_MAJOR_VERSION@"
+
+/* Define to gnu_printf if compiler supports it, else printf. */
+#define PG_PRINTF_ATTRIBUTE @PG_PRINTF_ATTRIBUTE@
+
+/* PostgreSQL version as a string */
+#define PG_VERSION "@PG_VERSION@"
+
+/* PostgreSQL version as a number */
+#define PG_VERSION_NUM @PG_VERSION_NUM@
+
+/* A string containing the version number, platform, and C compiler */
+#define PG_VERSION_STR "PostgreSQL @PG_VERSION@ on @CMAKE_SYSTEM_NAME@, compiled by @CMAKE_C_COMPILER_ID@, @VOID_POINTER_SIZE_BIT@-bit"
+
+/* Define to 1 to allow profiling output to be saved separately for each
+   process. */
+#cmakedefine PROFILE_PID_DIR 1
+
+/* TODO BUT DO NOT NEED:Define to necessary symbol if this constant uses a non-standard name on
+   your system. */
+/*#cmakedefine PTHREAD_CREATE_JOINABLE*/
+
+/* RELSEG_SIZE is the maximum number of blocks allowed in one disk file. Thus,
+   the maximum size of a single file is RELSEG_SIZE * BLCKSZ; relations bigger
+   than that are divided into multiple files. RELSEG_SIZE * BLCKSZ must be
+   less than your OS' limit on file size. This is often 2 GB or 4GB in a
+   32-bit operating system, unless you have large file support enabled. By
+   default, we make the limit 1 GB to avoid any possible integer-overflow
+   problems within the OS. A limit smaller than necessary only means we divide
+   a large relation into more chunks than necessary, so it seems best to err
+   in the direction of a small limit. A power-of-2 value is recommended to
+   save a few cycles in md.c, but is not absolutely required. Changing
+   RELSEG_SIZE requires an initdb. */
+#define RELSEG_SIZE @RELSEG_SIZE@
+
+/* The size of `long', as computed by sizeof. */
+#define SIZEOF_LONG @SIZEOF_LONG@
+
+/* TODO BUT DO NOT NEED:The size of `off_t', as computed by sizeof. */
+/*#define SIZEOF_OFF_T @SIZEOF_OFF_T@*/
+
+/* The size of `size_t', as computed by sizeof. */
+#define SIZEOF_SIZE_T @SIZEOF_SIZE_T@
+
+/* The size of `void *', as computed by sizeof. */
+#define SIZEOF_VOID_P @CMAKE_SIZEOF_VOID_P@
+
+/* TODO BUT DO NOT NEED:Define to 1 if you have the ANSI C header files. */
+/*#cmakedefine STDC_HEADERS 1*/
+
+/* Define to 1 if strerror_r() returns a int. */
+#cmakedefine STRERROR_R_INT 1
+
+/* TODO BUT DO NOT NEED:Define to 1 if your <sys/time.h> declares `struct tm'. */
+/*#cmakedefine TM_IN_SYS_TIME 1*/
+
+/* Define to 1 to build with assertion checks. (--enable-cassert) */
+#cmakedefine USE_ASSERT_CHECKING 1
+
+/* Define to 1 to build with Bonjour support. (--with-bonjour) */
+#cmakedefine USE_BONJOUR 1
+
+/* Define to 1 to build with BSD Authentication support. (--with-bsd-auth) */
+#cmakedefine USE_BSD_AUTH 1
+
+/* Define to use /dev/urandom for random number generation */
+#cmakedefine USE_DEV_URANDOM 1
+
+/* Define to 1 if you want float4 values to be passed by value. */
+#cmakedefine USE_FLOAT4_BYVAL 1
+
+/* Define to 1 if you want float8, int8, etc values to be passed by value. */
+#cmakedefine USE_FLOAT8_BYVAL 1
+
+/* Define to 1 if you want 64-bit integer timestamp and interval support. */
+#cmakedefine USE_INTEGER_DATETIMES 1
+
+/* Define to 1 if build with ICU support. */
+#cmakedefine USE_ICU 1
+
+/* Define to 1 to build with LDAP support. */
+#cmakedefine USE_LDAP 1
+
+/* Define to 1 to build with XML support. (-DWITH_LIBXML) */
+#cmakedefine USE_LIBXML 1
+
+/* Define to 1 to use XSLT support when building contrib/xml2. */
+#cmakedefine USE_LIBXSLT 1
+
+/* Define to select named POSIX semaphores. */
+#cmakedefine USE_NAMED_POSIX_SEMAPHORES 1
+
+/* Define to build with OpenSSL support. (--with-openssl) */
+#cmakedefine USE_OPENSSL 1
+
+/* Define to use OpenSSL for random number generation */
+#cmakedefine USE_OPENSSL_RANDOM 1
+
+/* Define to 1 to build with PAM support. (--with-pam) */
+#cmakedefine USE_PAM 1
+
+/* Use replacement snprintf() functions. */
+#cmakedefine USE_REPL_SNPRINTF 1
+
+/* Define to 1 to use Intel SSE 4.2 CRC instructions with a runtime check. */
+#cmakedefine USE_SLICING_BY_8_CRC32C 1
+
+/* Define to 1 use Intel SSE 4.2 CRC instructions. */
+#cmakedefine USE_SSE42_CRC32C 1
+
+/* Define to 1 to use Intel SSSE 4.2 CRC instructions with a runtime check. */
+#cmakedefine USE_SSE42_CRC32C_WITH_RUNTIME_CHECK 1
+
+/* Define to build with systemd support. (--with-systemd) */
+#cmakedefine USE_SYSTEMD
+
+/* Define to select SysV-style semaphores. */
+#cmakedefine USE_SYSV_SEMAPHORES
+
+/* Define to select SysV-style shared memory. */
+#cmakedefine USE_SYSV_SHARED_MEMORY
+
+/* Define to select unnamed POSIX semaphores. */
+#cmakedefine USE_UNNAMED_POSIX_SEMAPHORES
+
+/* Define to use native Windows API for random number generation */
+#cmakedefine USE_WIN32_RANDOM 1
+
+/* Define to select Win32-style semaphores. */
+#cmakedefine USE_WIN32_SEMAPHORES
+
+/* TODO BUT DO NOT NEED:Define to select Win32-style shared memory. */
+/*#cmakedefine USE_WIN32_SHARED_MEMORY*/
+
+/* Define to 1 if `wcstombs_l' requires <xlocale.h>. */
+#cmakedefine WCSTOMBS_L_IN_XLOCALE 1
+
+/* NOT NEED:Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+/*#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif*/
+
+/* Size of a WAL file block. This need have no particular relation to BLCKSZ.
+   XLOG_BLCKSZ must be a power of 2, and if your system supports O_DIRECT I/O,
+   XLOG_BLCKSZ must be a multiple of the alignment requirement for direct-I/O
+   buffers, else direct I/O may fail. Changing XLOG_BLCKSZ requires an initdb.
+   */
+#define XLOG_BLCKSZ @XLOG_BLCKSZ@
+
+/* XLOG_SEG_SIZE is the size of a single WAL file. This must be a power of 2
+   and larger than XLOG_BLCKSZ (preferably, a great deal larger than
+   XLOG_BLCKSZ). Changing XLOG_SEG_SIZE requires an initdb. */
+#define XLOG_SEG_SIZE @XLOG_SEG_SIZE@
+
+/* TODO BUT DO NOT NEED:Number of bits in a file offset, on hosts where this is settable. */
+/*#undef _FILE_OFFSET_BITS*/
+
+/* TODO BUT DO NOT NEED:Define to 1 to make fseeko visible on some hosts (e.g. glibc 2.2). */
+/*#undef _LARGEFILE_SOURCE*/
+
+/* TODO BUT DO NOT NEED:Define for large files, on AIX-style hosts. */
+/*#undef _LARGE_FILES*/
+
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
+#undef inline
+#endif
+
+/* Define to the type of a signed integer type wide enough to hold a pointer,
+   if such a type exists, and if the system does not define it. */
+/*#undef intptr_t*/
+
+/* Define to empty if the C compiler does not understand signed types. */
+/*#undef signed*/
+
+/* Define to the type of an unsigned integer type wide enough to hold a
+   pointer, if such a type exists, and if the system does not define it. */
+/*#undef uintptr_t*/
+
+#cmakedefine HAVE_INT128
+
+#ifdef WIN32
+#undef PG_INT128_TYPE
+#endif
+
+#define LONG_LONG_INT_MODIFIER @LONG_LONG_INT_MODIFIER@
+
+#define POSTGRES_MAJOR_VERSION @POSTGRES_MAJOR_VERSION@
+
+#define POSTGRES_MINOR_VERSION @POSTGRES_MINOR_VERSION@
+
+#define POSTGRES_PATCH_VERSION @POSTGRES_PATCH_VERSION@
+
+#ifdef __APPLE__
+#	if __BIG_ENDIAN
+#		define WORDS_BIGENDIAN 1
+#	endif
+#else
+#cmakedefine WORDS_BIGENDIAN 1
+#endif
+
+#define DLSUFFIX "@CMAKE_SHARED_MODULE_SUFFIX@"
+
+#cmakedefine HAVE_MKSTEMP 1
+
+#cmakedefine HAVE_NBTOOL_CONFIG_H 1
+
+/*#include "@pgos_include_SRCS@"*/
+
+#cmakedefine USE_FP_STRICT 1
+
+#endif  // AUTO_CONFIG_H

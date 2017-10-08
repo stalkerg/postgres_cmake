@@ -1,0 +1,25 @@
+include_directories(
+	"${PROJECT_SOURCE_DIR}/src/include"
+	"${PROJECT_SOURCE_DIR}/src/interfaces/libpq"
+)
+
+set(extension_name oid2name)
+
+add_library(${extension_name} ${PLUGIN_TYPE} ${extension_name}.c)
+target_link_libraries(${extension_name} ${contrib_libs})
+if(MSVC)
+	gen_def(${extension_name})
+endif()
+
+if(MSVC OR MINGW)
+	target_link_libraries(${extension_name} pgcommon pq)
+endif()
+
+if(NOT PGXS)
+	CMAKE_SET_TARGET_FOLDER(${extension_name} contrib)
+endif()
+set_target_properties(${extension_name} PROPERTIES PREFIX "")
+add_dependencies(${extension_name} postgres)
+install(TARGETS ${extension_name}
+		RUNTIME DESTINATION ${PGBINDIR}
+		LIBRARY DESTINATION ${LIBDIR})

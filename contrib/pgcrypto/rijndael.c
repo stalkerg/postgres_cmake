@@ -78,8 +78,9 @@ static void gen_tabs(void);
 #endif
 
 #ifdef PRE_CALC_TABLES
-
-#include "rijndael.tbl"
+/* WRAP_INCLUDE for remove CMake circular dependency */
+#define WRAP_INCLUDE(x) x
+#include WRAP_INCLUDE("rijndael.tbl")
 #define tab_gen		1
 #else							/* !PRE_CALC_TABLES */
 
