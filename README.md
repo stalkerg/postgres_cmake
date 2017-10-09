@@ -118,6 +118,25 @@ AIX 7.1, Power8, gcc 4.8:
 
 CFLAGS="-std=c11 -mcpu=power8 -mtune=power8 -mveclibabi=mass -maix64" LDFLAGS="-Wl,-bbigtoc"  cmake ..
 
+Minimal build for Windows 7/10 with VisualStudio 2015/2017
+==========================================================
+
+First, you should install next programms:
+CMake - https://cmake.org/ (64 bit if you have 64 bit windows)
+Perl - https://www.activestate.com/activeperl/downloads (not forget add perl to %PATH% in options, 64 bit for build 64 bit Postgres with Perl)
+Bison and Flex - https://sourceforge.net/projects/winflexbison/  (after unzip to folder please add this folder to %PATH%)
+Sed - http://gnuwin32.sourceforge.net/packages/sed.htm
+Diff - http://gnuwin32.sourceforge.net/packages/diffutils.htm
+
+After installing Sed and Diff please add "C:/Program Files (x86)/GnuWin32/bin/" to %PATH% .
+How change %PATH% on windows? Look here https://www.computerhope.com/issues/ch000549.htm .
+Now you can clone our repo create "build" dir inside and open CMake GUI.
+In CMake GUI you should choose current repo folder and new "build" as for build and click "Configure".
+After this process, you should change CMAKE_INSTALL_PREFIX variable to something like "C:\\postgres_bin" (and create this folder). 
+Now you can click on "Generate" for generation MSVC solution and after you can open this solution in your MSVC. 
+In MSVC important find ALL_BUILD "project" and build this target. After complete, you should build INSTALL. 
+Also, after all, that you can run build "insatllcheck".
+
 
 PostgreSQL Database Management System
 =====================================
