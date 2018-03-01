@@ -3,7 +3,7 @@
  * pgoutput.c
  *		Logical Replication output plugin
  *
- * Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/replication/pgoutput/pgoutput.c
@@ -21,6 +21,7 @@
 
 #include "utils/inval.h"
 #include "utils/int8.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -115,7 +116,7 @@ parse_output_parameters(List *options, uint32 *protocol_version,
 			if (parsed > PG_UINT32_MAX || parsed < 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("proto_verson \"%s\" out of range",
+						 errmsg("proto_version \"%s\" out of range",
 								strVal(defel->arg))));
 
 			*protocol_version = (uint32) parsed;
@@ -151,9 +152,7 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 	/* Create our memory context for private allocations. */
 	data->context = AllocSetContextCreate(ctx->context,
 										  "logical replication output context",
-										  ALLOCSET_DEFAULT_MINSIZE,
-										  ALLOCSET_DEFAULT_INITSIZE,
-										  ALLOCSET_DEFAULT_MAXSIZE);
+										  ALLOCSET_DEFAULT_SIZES);
 
 	ctx->output_plugin_private = data;
 
@@ -263,6 +262,9 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	MemoryContext old;
 	RelationSyncEntry *relentry;
 
+	if (!is_publishable_relation(relation))
+		return;
+
 	relentry = get_rel_sync_entry(data, RelationGetRelid(relation));
 
 	/* First check the table filter */
@@ -303,7 +305,7 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		 */
 		for (i = 0; i < desc->natts; i++)
 		{
-			Form_pg_attribute att = desc->attrs[i];
+			Form_pg_attribute att = TupleDescAttr(desc, i);
 
 			if (att->attisdropped)
 				continue;
@@ -508,6 +510,31 @@ get_rel_sync_entry(PGOutputData *data, Oid relid)
 		foreach(lc, data->publications)
 		{
 			Publication *pub = lfirst(lc);
+
+			/*
+			 * Skip tables that look like they are from a heap rewrite (see
+			 * make_new_heap()).  We need to skip them because the subscriber
+			 * won't have a table by that name to receive the data.  That
+			 * means we won't ship the new data in, say, an added column with
+			 * a DEFAULT, but if the user applies the same DDL manually on the
+			 * subscriber, then this will work out for them.
+			 *
+			 * We only need to consider the alltables case, because such a
+			 * transient heap won't be an explicit member of a publication.
+			 */
+			if (pub->alltables)
+			{
+				char	   *relname = get_rel_name(relid);
+				unsigned int u;
+				int			n;
+
+				if (sscanf(relname, "pg_temp_%u%n", &u, &n) == 1 &&
+					relname[n] == '\0')
+				{
+					if (get_rel_relkind(u) == RELKIND_RELATION)
+						break;
+				}
+			}
 
 			if (pub->alltables || list_member_oid(pubids, pub->oid))
 			{

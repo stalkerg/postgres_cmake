@@ -32,6 +32,10 @@ CREATE OPERATOR #%# (
    procedure = numeric_fac
 );
 
+-- Test operator created above
+SELECT point '(1,2)' <% widget '(0,0,3)' AS t,
+       point '(1,2)' <% widget '(0,0,1)' AS f;
+
 -- Test comments
 COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad right unary';
 
@@ -179,3 +183,17 @@ CREATE OPERATOR #*# (
    procedure = fn_op6
 );
 ROLLBACK;
+
+-- invalid: non-lowercase quoted identifiers
+CREATE OPERATOR ===
+(
+	"Leftarg" = box,
+	"Rightarg" = box,
+	"Procedure" = area_equal_procedure,
+	"Commutator" = ===,
+	"Negator" = !==,
+	"Restrict" = area_restriction_procedure,
+	"Join" = area_join_procedure,
+	"Hashes",
+	"Merges"
+);

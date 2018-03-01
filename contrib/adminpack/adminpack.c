@@ -3,7 +3,7 @@
  * adminpack.c
  *
  *
- * Copyright (c) 2002-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2018, PostgreSQL Global Development Group
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
@@ -319,7 +319,7 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 		if (!fctx->dirdesc)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not read directory \"%s\": %m",
+					 errmsg("could not open directory \"%s\": %m",
 							fctx->location)));
 
 		funcctx->user_fctx = fctx;

@@ -3,7 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1055,18 +1055,10 @@ lock_and_open_sequence(SeqTable seq)
 		ResourceOwner currentOwner;
 
 		currentOwner = CurrentResourceOwner;
-		PG_TRY();
-		{
-			CurrentResourceOwner = TopTransactionResourceOwner;
-			LockRelationOid(seq->relid, RowExclusiveLock);
-		}
-		PG_CATCH();
-		{
-			/* Ensure CurrentResourceOwner is restored on error */
-			CurrentResourceOwner = currentOwner;
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		CurrentResourceOwner = TopTransactionResourceOwner;
+
+		LockRelationOid(seq->relid, RowExclusiveLock);
+
 		CurrentResourceOwner = currentOwner;
 
 		/* Flag that we have a lock in the current xact */
@@ -1941,7 +1933,7 @@ ResetSequenceCaches(void)
 void
 seq_mask(char *page, BlockNumber blkno)
 {
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_unused_space(page);
 }

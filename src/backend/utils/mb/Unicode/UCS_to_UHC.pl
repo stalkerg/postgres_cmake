@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2017, PostgreSQL Global Development Group
+# Copyright (c) 2007-2018, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_GB18030.pl
 #
@@ -16,7 +16,7 @@
 use strict;
 use convutils;
 
-my $this_script = $0;
+my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_UHC.pl';
 
 # Read the input
 

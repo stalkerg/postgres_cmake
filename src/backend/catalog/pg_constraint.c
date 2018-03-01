@@ -3,7 +3,7 @@
  * pg_constraint.c
  *	  routines to support manipulation of the pg_constraint relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -748,6 +748,43 @@ AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
 }
 
 /*
+ * ConstraintSetParentConstraint
+ *		Set a partition's constraint as child of its parent table's
+ *
+ * This updates the constraint's pg_constraint row to show it as inherited, and
+ * add a dependency to the parent so that it cannot be removed on its own.
+ */
+void
+ConstraintSetParentConstraint(Oid childConstrId, Oid parentConstrId)
+{
+	Relation		constrRel;
+	Form_pg_constraint constrForm;
+	HeapTuple		tuple,
+					newtup;
+	ObjectAddress	depender;
+	ObjectAddress	referenced;
+
+	constrRel = heap_open(ConstraintRelationId, RowExclusiveLock);
+	tuple = SearchSysCache1(CONSTROID, ObjectIdGetDatum(childConstrId));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for constraint %u", childConstrId);
+	newtup = heap_copytuple(tuple);
+	constrForm = (Form_pg_constraint) GETSTRUCT(newtup);
+	constrForm->conislocal = false;
+	constrForm->coninhcount++;
+	CatalogTupleUpdate(constrRel, &tuple->t_self, newtup);
+	ReleaseSysCache(tuple);
+
+	ObjectAddressSet(referenced, ConstraintRelationId, parentConstrId);
+	ObjectAddressSet(depender, ConstraintRelationId, childConstrId);
+
+	recordDependencyOn(&depender, &referenced, DEPENDENCY_INTERNAL_AUTO);
+
+	heap_close(constrRel, RowExclusiveLock);
+}
+
+
+/*
  * get_relation_constraint_oid
  *		Find a constraint on the specified relation with the specified name.
  *		Returns constraint's OID.
@@ -803,6 +840,143 @@ get_relation_constraint_oid(Oid relid, const char *conname, bool missing_ok)
 	heap_close(pg_constraint, AccessShareLock);
 
 	return conOid;
+}
+
+/*
+ * get_relation_constraint_attnos
+ *		Find a constraint on the specified relation with the specified name
+ *		and return the constrained columns.
+ *
+ * Returns a Bitmapset of the column attnos of the constrained columns, with
+ * attnos being offset by FirstLowInvalidHeapAttributeNumber so that system
+ * columns can be represented.
+ *
+ * *constraintOid is set to the OID of the constraint, or InvalidOid on
+ * failure.
+ */
+Bitmapset *
+get_relation_constraint_attnos(Oid relid, const char *conname,
+							   bool missing_ok, Oid *constraintOid)
+{
+	Bitmapset  *conattnos = NULL;
+	Relation	pg_constraint;
+	HeapTuple	tuple;
+	SysScanDesc scan;
+	ScanKeyData skey[1];
+
+	/* Set *constraintOid, to avoid complaints about uninitialized vars */
+	*constraintOid = InvalidOid;
+
+	/*
+	 * Fetch the constraint tuple from pg_constraint.  There may be more than
+	 * one match, because constraints are not required to have unique names;
+	 * if so, error out.
+	 */
+	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(pg_constraint, ConstraintRelidIndexId, true,
+							  NULL, 1, skey);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tuple);
+		Datum		adatum;
+		bool		isNull;
+		ArrayType  *arr;
+		int16	   *attnums;
+		int			numcols;
+		int			i;
+
+		/* Check the constraint name */
+		if (strcmp(NameStr(con->conname), conname) != 0)
+			continue;
+		if (OidIsValid(*constraintOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("table \"%s\" has multiple constraints named \"%s\"",
+							get_rel_name(relid), conname)));
+
+		*constraintOid = HeapTupleGetOid(tuple);
+
+		/* Extract the conkey array, ie, attnums of constrained columns */
+		adatum = heap_getattr(tuple, Anum_pg_constraint_conkey,
+							  RelationGetDescr(pg_constraint), &isNull);
+		if (isNull)
+			continue;			/* no constrained columns */
+
+		arr = DatumGetArrayTypeP(adatum);	/* ensure not toasted */
+		numcols = ARR_DIMS(arr)[0];
+		if (ARR_NDIM(arr) != 1 ||
+			numcols < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != INT2OID)
+			elog(ERROR, "conkey is not a 1-D smallint array");
+		attnums = (int16 *) ARR_DATA_PTR(arr);
+
+		/* Construct the result value */
+		for (i = 0; i < numcols; i++)
+		{
+			conattnos = bms_add_member(conattnos,
+									   attnums[i] - FirstLowInvalidHeapAttributeNumber);
+		}
+	}
+
+	systable_endscan(scan);
+
+	/* If no such constraint exists, complain */
+	if (!OidIsValid(*constraintOid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("constraint \"%s\" for table \"%s\" does not exist",
+						conname, get_rel_name(relid))));
+
+	heap_close(pg_constraint, AccessShareLock);
+
+	return conattnos;
+}
+
+/*
+ * Return the OID of the constraint associated with the given index in the
+ * given relation; or InvalidOid if no such index is catalogued.
+ */
+Oid
+get_relation_idx_constraint_oid(Oid relationId, Oid indexId)
+{
+	Relation	pg_constraint;
+	SysScanDesc	scan;
+	ScanKeyData	key;
+	HeapTuple	tuple;
+	Oid			constraintId = InvalidOid;
+
+	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relationId));
+	scan = systable_beginscan(pg_constraint, ConstraintRelidIndexId,
+							  true, NULL, 1, &key);
+	while ((tuple = systable_getnext(scan)) != NULL)
+	{
+		Form_pg_constraint	constrForm;
+
+		constrForm = (Form_pg_constraint) GETSTRUCT(tuple);
+		if (constrForm->conindid == indexId)
+		{
+			constraintId = HeapTupleGetOid(tuple);
+			break;
+		}
+	}
+	systable_endscan(scan);
+
+	heap_close(pg_constraint, AccessShareLock);
+	return constraintId;
 }
 
 /*
@@ -958,7 +1132,7 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 
 /*
  * Determine whether a relation can be proven functionally dependent on
- * a set of grouping columns.  If so, return TRUE and add the pg_constraint
+ * a set of grouping columns.  If so, return true and add the pg_constraint
  * OIDs of the constraints needed for the proof to the *constraintDeps list.
  *
  * grouping_columns is a list of grouping expressions, in which columns of

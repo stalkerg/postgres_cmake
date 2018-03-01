@@ -5,11 +5,13 @@ include_directories(
 )
 
 set(postgres_include_catalog "${PROJECT_SOURCE_DIR}/src/include/catalog")
+set(postgres_include_dir "${PROJECT_SOURCE_DIR}/src/include")
 
 set(gen_fmgrtab_depend
 	utils/Gen_fmgrtab.pl
 	${CMAKE_CURRENT_SOURCE_DIR}/catalog/Catalog.pm
 	${postgres_include_catalog}/pg_proc.h
+	${postgres_include_dir}/access/transam.h
 )
 set(gen_fmgrtab_output
 	${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
@@ -20,7 +22,7 @@ set(gen_fmgrtab_output
 add_custom_command(
 	MAIN_DEPENDENCY ${gen_fmgrtab_depend}
 	OUTPUT ${gen_fmgrtab_output}
-	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
+	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl -I${postgres_include_dir} ${postgres_include_catalog}/pg_proc.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrprotos.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgrprotos.h
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
@@ -140,6 +142,7 @@ set(access_SRCS
 	access/common/scankey.c
 	access/common/tupconvert.c
 	access/common/tupdesc.c
+	access/common/session.c
 
 	access/gin/ginutil.c
 	access/gin/gininsert.c
@@ -481,6 +484,7 @@ set(executor_SRCS
 	executor/nodeTableFuncscan.c
 	executor/tstoreReceiver.c
 	executor/spi.c
+	executor/execPartition.c
 )
 
 set(lib_SRCS
@@ -492,6 +496,7 @@ set(lib_SRCS
 	lib/rbtree.c
 	lib/stringinfo.c
 	lib/knapsack.c
+	lib/dshash.c
 )
 
 if(OPENSSL_FOUND)
@@ -631,6 +636,8 @@ set(utils_SRCS
 	utils/adt/xml.c
 	utils/adt/network_spgist.c
 	utils/adt/mac8.c
+	utils/adt/cryptohashes.c
+	utils/adt/expandedrecord.c
 	utils/fmgr/dfmgr.c
 	utils/fmgr/fmgr.c
 	utils/fmgr/funcapi.c
@@ -667,6 +674,8 @@ set(utils_SRCS
 	utils/mb/wchar.c
 	utils/mb/wstrcmp.c
 	utils/mb/wstrncmp.c
+	utils/mmgr/generation.c
+	utils/sort/sharedtuplestore.c
 )
 
 set(nodes_SRCS
@@ -896,6 +905,7 @@ set(storage_SRCS
 	storage/file/buffile.c
 	storage/file/copydir.c
 	storage/file/reinit.c
+	storage/file/sharedfileset.c
 	storage/freespace/freespace.c
 	storage/freespace/fsmpage.c
 	storage/freespace/indexfsm.c
@@ -914,6 +924,7 @@ set(storage_SRCS
 	storage/ipc/sinvaladt.c
 	storage/ipc/standby.c
 	storage/ipc/latch.c
+	storage/ipc/barrier.c
 	storage/large_object/inv_api.c
 	storage/lmgr/lmgr.c # Need some for check s_lock
 	storage/lmgr/lock.c

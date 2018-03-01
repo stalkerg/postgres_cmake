@@ -3,7 +3,7 @@
  * nodeFuncs.c
  *		Various general-purpose manipulations of Node trees
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -663,7 +663,7 @@ strip_implicit_coercions(Node *node)
  *	  Test whether an expression returns a set result.
  *
  * Because we use expression_tree_walker(), this can also be applied to
- * whole targetlists; it'll produce TRUE if any one of the tlist items
+ * whole targetlists; it'll produce true if any one of the tlist items
  * returns a set.
  */
 bool
@@ -1632,9 +1632,9 @@ set_sa_opfuncid(ScalarArrayOpExpr *opexpr)
  *	check_functions_in_node -
  *	  apply checker() to each function OID contained in given expression node
  *
- * Returns TRUE if the checker() function does; for nodes representing more
- * than one function call, returns TRUE if the checker() function does so
- * for any of those functions.  Returns FALSE if node does not invoke any
+ * Returns true if the checker() function does; for nodes representing more
+ * than one function call, returns true if the checker() function does so
+ * for any of those functions.  Returns false if node does not invoke any
  * SQL-visible function.  Caller must not pass node == NULL.
  *
  * This function examines only the given node; it does not recurse into any
@@ -1714,15 +1714,6 @@ check_functions_in_node(Node *node, check_function_callback checker,
 				getTypeOutputInfo(exprType((Node *) expr->arg),
 								  &iofunc, &typisvarlena);
 				if (checker(iofunc, context))
-					return true;
-			}
-			break;
-		case T_ArrayCoerceExpr:
-			{
-				ArrayCoerceExpr *expr = (ArrayCoerceExpr *) node;
-
-				if (OidIsValid(expr->elemfuncid) &&
-					checker(expr->elemfuncid, context))
 					return true;
 			}
 			break;
@@ -2023,7 +2014,15 @@ expression_tree_walker(Node *node,
 		case T_CoerceViaIO:
 			return walker(((CoerceViaIO *) node)->arg, context);
 		case T_ArrayCoerceExpr:
-			return walker(((ArrayCoerceExpr *) node)->arg, context);
+			{
+				ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
+
+				if (walker(acoerce->arg, context))
+					return true;
+				if (walker(acoerce->elemexpr, context))
+					return true;
+			}
+			break;
 		case T_ConvertRowtypeExpr:
 			return walker(((ConvertRowtypeExpr *) node)->arg, context);
 		case T_CollateExpr:
@@ -2705,6 +2704,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, acoerce, ArrayCoerceExpr);
 				MUTATE(newnode->arg, acoerce->arg, Expr *);
+				MUTATE(newnode->elemexpr, acoerce->elemexpr, Expr *);
 				return (Node *) newnode;
 			}
 			break;

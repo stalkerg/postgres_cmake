@@ -3,7 +3,7 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
  *		ReScanExprContext
  *
  *		ExecAssignExprContext	Common code for plan node init routines.
- *		ExecAssignResultType
  *		etc
  *
  *		ExecOpenScanRelation	Common code for scan node init routines.
@@ -56,6 +55,7 @@
 #include "utils/typcache.h"
 
 
+static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc);
 static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
 
 
@@ -115,6 +115,11 @@ CreateExecutorState(void)
 	estate->es_num_result_relations = 0;
 	estate->es_result_relation_info = NULL;
 
+	estate->es_root_result_relations = NULL;
+	estate->es_num_root_result_relations = 0;
+
+	estate->es_tuple_routing_result_relations = NIL;
+
 	estate->es_trig_target_relations = NIL;
 	estate->es_trig_tuple_slot = NULL;
 	estate->es_trig_oldtup_slot = NULL;
@@ -150,6 +155,8 @@ CreateExecutorState(void)
 	estate->es_epqTupleSet = NULL;
 	estate->es_epqScanDone = NULL;
 	estate->es_sourceText = NULL;
+
+	estate->es_use_parallel_mode = false;
 
 	/*
 	 * Return the executor state structure
@@ -421,47 +428,6 @@ ExecAssignExprContext(EState *estate, PlanState *planstate)
 }
 
 /* ----------------
- *		ExecAssignResultType
- * ----------------
- */
-void
-ExecAssignResultType(PlanState *planstate, TupleDesc tupDesc)
-{
-	TupleTableSlot *slot = planstate->ps_ResultTupleSlot;
-
-	ExecSetSlotDescriptor(slot, tupDesc);
-}
-
-/* ----------------
- *		ExecAssignResultTypeFromTL
- * ----------------
- */
-void
-ExecAssignResultTypeFromTL(PlanState *planstate)
-{
-	bool		hasoid;
-	TupleDesc	tupDesc;
-
-	if (ExecContextForcesOids(planstate, &hasoid))
-	{
-		/* context forces OID choice; hasoid is now set correctly */
-	}
-	else
-	{
-		/* given free choice, don't leave space for OIDs in result tuples */
-		hasoid = false;
-	}
-
-	/*
-	 * ExecTypeFromTL needs the parse-time representation of the tlist, not a
-	 * list of ExprStates.  This is good because some plan nodes don't bother
-	 * to set up planstate->targetlist ...
-	 */
-	tupDesc = ExecTypeFromTL(planstate->plan->targetlist, hasoid);
-	ExecAssignResultType(planstate, tupDesc);
-}
-
-/* ----------------
  *		ExecGetResultType
  * ----------------
  */
@@ -497,6 +463,85 @@ ExecAssignProjectionInfo(PlanState *planstate,
 
 
 /* ----------------
+ *		ExecConditionalAssignProjectionInfo
+ *
+ * as ExecAssignProjectionInfo, but store NULL rather than building projection
+ * info if no projection is required
+ * ----------------
+ */
+void
+ExecConditionalAssignProjectionInfo(PlanState *planstate, TupleDesc inputDesc,
+									Index varno)
+{
+	if (tlist_matches_tupdesc(planstate,
+							  planstate->plan->targetlist,
+							  varno,
+							  inputDesc))
+		planstate->ps_ProjInfo = NULL;
+	else
+		ExecAssignProjectionInfo(planstate, inputDesc);
+}
+
+static bool
+tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc)
+{
+	int			numattrs = tupdesc->natts;
+	int			attrno;
+	bool		hasoid;
+	ListCell   *tlist_item = list_head(tlist);
+
+	/* Check the tlist attributes */
+	for (attrno = 1; attrno <= numattrs; attrno++)
+	{
+		Form_pg_attribute att_tup = TupleDescAttr(tupdesc, attrno - 1);
+		Var		   *var;
+
+		if (tlist_item == NULL)
+			return false;		/* tlist too short */
+		var = (Var *) ((TargetEntry *) lfirst(tlist_item))->expr;
+		if (!var || !IsA(var, Var))
+			return false;		/* tlist item not a Var */
+		/* if these Asserts fail, planner messed up */
+		Assert(var->varno == varno);
+		Assert(var->varlevelsup == 0);
+		if (var->varattno != attrno)
+			return false;		/* out of order */
+		if (att_tup->attisdropped)
+			return false;		/* table contains dropped columns */
+
+		/*
+		 * Note: usually the Var's type should match the tupdesc exactly, but
+		 * in situations involving unions of columns that have different
+		 * typmods, the Var may have come from above the union and hence have
+		 * typmod -1.  This is a legitimate situation since the Var still
+		 * describes the column, just not as exactly as the tupdesc does. We
+		 * could change the planner to prevent it, but it'd then insert
+		 * projection steps just to convert from specific typmod to typmod -1,
+		 * which is pretty silly.
+		 */
+		if (var->vartype != att_tup->atttypid ||
+			(var->vartypmod != att_tup->atttypmod &&
+			 var->vartypmod != -1))
+			return false;		/* type mismatch */
+
+		tlist_item = lnext(tlist_item);
+	}
+
+	if (tlist_item)
+		return false;			/* tlist too long */
+
+	/*
+	 * If the plan context requires a particular hasoid setting, then that has
+	 * to match, too.
+	 */
+	if (ExecContextForcesOids(ps, &hasoid) &&
+		hasoid != tupdesc->tdhasoid)
+		return false;
+
+	return true;
+}
+
+/* ----------------
  *		ExecFreeExprContext
  *
  * A plan node's ExprContext should be freed explicitly during executor
@@ -522,13 +567,9 @@ ExecFreeExprContext(PlanState *planstate)
 	planstate->ps_ExprContext = NULL;
 }
 
+
 /* ----------------------------------------------------------------
- *		the following scan type support functions are for
- *		those nodes which are stubborn and return tuples in
- *		their Scan tuple slot instead of their Result tuple
- *		slot..  luck fur us, these nodes do not do projections
- *		so we don't have to worry about getting the ProjectionInfo
- *		right for them...  -cim 6/3/91
+ *				  Scan node support
  * ----------------------------------------------------------------
  */
 
@@ -545,11 +586,11 @@ ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc)
 }
 
 /* ----------------
- *		ExecAssignScanTypeFromOuterPlan
+ *		ExecCreateSlotFromOuterPlan
  * ----------------
  */
 void
-ExecAssignScanTypeFromOuterPlan(ScanState *scanstate)
+ExecCreateScanSlotFromOuterPlan(EState *estate, ScanState *scanstate)
 {
 	PlanState  *outerPlan;
 	TupleDesc	tupDesc;
@@ -557,14 +598,8 @@ ExecAssignScanTypeFromOuterPlan(ScanState *scanstate)
 	outerPlan = outerPlanState(scanstate);
 	tupDesc = ExecGetResultType(outerPlan);
 
-	ExecAssignScanType(scanstate, tupDesc);
+	ExecInitScanTupleSlot(estate, scanstate, tupDesc);
 }
-
-
-/* ----------------------------------------------------------------
- *				  Scan node support
- * ----------------------------------------------------------------
- */
 
 /* ----------------------------------------------------------------
  *		ExecRelationIsTargetRelation
@@ -808,7 +843,7 @@ ShutdownExprContext(ExprContext *econtext, bool isCommit)
 	{
 		econtext->ecxt_callbacks = ecxt_callback->next;
 		if (isCommit)
-			(*ecxt_callback->function) (ecxt_callback->arg);
+			ecxt_callback->function(ecxt_callback->arg);
 		pfree(ecxt_callback);
 	}
 
@@ -912,9 +947,11 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 	attrno = InvalidAttrNumber;
 	for (i = 0; i < tupDesc->natts; i++)
 	{
-		if (namestrcmp(&(tupDesc->attrs[i]->attname), attname) == 0)
+		Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+
+		if (namestrcmp(&(att->attname), attname) == 0)
 		{
-			attrno = tupDesc->attrs[i]->attnum;
+			attrno = att->attnum;
 			break;
 		}
 	}

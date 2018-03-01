@@ -9,7 +9,7 @@
  * verification).
  *
  *
- * Copyright (c) 2017, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/amcheck/verify_nbtree.c
@@ -295,9 +295,7 @@ bt_check_every_level(Relation rel, bool readonly)
 	/* Create context for page */
 	state->targetcontext = AllocSetContextCreate(CurrentMemoryContext,
 												 "amcheck context",
-												 ALLOCSET_DEFAULT_MINSIZE,
-												 ALLOCSET_DEFAULT_INITSIZE,
-												 ALLOCSET_DEFAULT_MAXSIZE);
+												 ALLOCSET_DEFAULT_SIZES);
 	state->checkstrategy = GetAccessStrategy(BAS_BULKREAD);
 
 	/* Get true root block from meta-page */
@@ -1195,7 +1193,7 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 
 	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 
-	if (opaque->btpo_flags & BTP_META && blocknum != BTREE_METAPAGE)
+	if (P_ISMETA(opaque) && blocknum != BTREE_METAPAGE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg("invalid meta page found at block %u in index \"%s\"",
@@ -1206,7 +1204,7 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 	{
 		BTMetaPageData *metad = BTPageGetMeta(page);
 
-		if (!(opaque->btpo_flags & BTP_META) ||
+		if (!P_ISMETA(opaque) ||
 			metad->btm_magic != BTREE_MAGIC)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),

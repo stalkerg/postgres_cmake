@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2001-2017, PostgreSQL Global Development Group
+# Copyright (c) 2001-2018, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/convutils.pm
 
@@ -7,6 +7,7 @@ package convutils;
 
 use strict;
 
+use Carp;
 use Exporter 'import';
 
 our @EXPORT =
@@ -698,7 +699,7 @@ sub make_charmap
 {
 	my ($out, $charset, $direction, $verbose) = @_;
 
-	die "unacceptable direction : $direction"
+	croak "unacceptable direction : $direction"
 	  if ($direction != TO_UNICODE && $direction != FROM_UNICODE);
 
 	# In verbose mode, print a large comment with the source and comment of
@@ -759,7 +760,7 @@ sub make_charmap_combined
 {
 	my ($charset, $direction) = @_;
 
-	die "unacceptable direction : $direction"
+	croak "unacceptable direction : $direction"
 	  if ($direction != TO_UNICODE && $direction != FROM_UNICODE);
 
 	my @combined;
@@ -812,7 +813,7 @@ sub ucs2utf
 		  (((($ucs & 0x3ffff) >> 12) | 0x80) << 16) |
 		  (((($ucs & 0x0fc0) >> 6) | 0x80) << 8) | (($ucs & 0x003f) | 0x80);
 	}
-	return ($utf);
+	return $utf;
 }
 
 1;

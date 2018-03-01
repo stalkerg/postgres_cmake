@@ -1910,6 +1910,28 @@ copy rc_test from stdin;
 500	1000
 \.
 
+create function return_unnamed_refcursor() returns refcursor as $$
+declare
+    rc refcursor;
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+
+create function use_refcursor(rc refcursor) returns int as $$
+declare
+    rc refcursor;
+    x record;
+begin
+    rc := return_unnamed_refcursor();
+    fetch next from rc into x;
+    return x.a;
+end
+$$ language plpgsql;
+
+select use_refcursor(return_unnamed_refcursor());
+
 create function return_refcursor(rc refcursor) returns refcursor as $$
 begin
     open rc for select a from rc_test;
@@ -2284,241 +2306,6 @@ end;$$ language plpgsql;
 
 select raise_exprs();
 drop function raise_exprs();
-
--- continue statement
-create table conttesttbl(idx serial, v integer);
-insert into conttesttbl(v) values(10);
-insert into conttesttbl(v) values(20);
-insert into conttesttbl(v) values(30);
-insert into conttesttbl(v) values(40);
-
-create function continue_test1() returns void as $$
-declare _i integer = 0; _r record;
-begin
-  raise notice '---1---';
-  loop
-    _i := _i + 1;
-    raise notice '%', _i;
-    continue when _i < 10;
-    exit;
-  end loop;
-
-  raise notice '---2---';
-  <<lbl>>
-  loop
-    _i := _i - 1;
-    loop
-      raise notice '%', _i;
-      continue lbl when _i > 0;
-      exit lbl;
-    end loop;
-  end loop;
-
-  raise notice '---3---';
-  <<the_loop>>
-  while _i < 10 loop
-    _i := _i + 1;
-    continue the_loop when _i % 2 = 0;
-    raise notice '%', _i;
-  end loop;
-
-  raise notice '---4---';
-  for _i in 1..10 loop
-    begin
-      -- applies to outer loop, not the nested begin block
-      continue when _i < 5;
-      raise notice '%', _i;
-    end;
-  end loop;
-
-  raise notice '---5---';
-  for _r in select * from conttesttbl loop
-    continue when _r.v <= 20;
-    raise notice '%', _r.v;
-  end loop;
-
-  raise notice '---6---';
-  for _r in execute 'select * from conttesttbl' loop
-    continue when _r.v <= 20;
-    raise notice '%', _r.v;
-  end loop;
-
-  raise notice '---7---';
-  for _i in 1..3 loop
-    raise notice '%', _i;
-    continue when _i = 3;
-  end loop;
-
-  raise notice '---8---';
-  _i := 1;
-  while _i <= 3 loop
-    raise notice '%', _i;
-    _i := _i + 1;
-    continue when _i = 3;
-  end loop;
-
-  raise notice '---9---';
-  for _r in select * from conttesttbl order by v limit 1 loop
-    raise notice '%', _r.v;
-    continue;
-  end loop;
-
-  raise notice '---10---';
-  for _r in execute 'select * from conttesttbl order by v limit 1' loop
-    raise notice '%', _r.v;
-    continue;
-  end loop;
-end; $$ language plpgsql;
-
-select continue_test1();
-
-drop function continue_test1();
-drop table conttesttbl;
-
--- should fail: CONTINUE is only legal inside a loop
-create function continue_error1() returns void as $$
-begin
-    begin
-        continue;
-    end;
-end;
-$$ language plpgsql;
-
--- should fail: unlabeled EXIT is only legal inside a loop
-create function exit_error1() returns void as $$
-begin
-    begin
-        exit;
-    end;
-end;
-$$ language plpgsql;
-
--- should fail: no such label
-create function continue_error2() returns void as $$
-begin
-    begin
-        loop
-            continue no_such_label;
-        end loop;
-    end;
-end;
-$$ language plpgsql;
-
--- should fail: no such label
-create function exit_error2() returns void as $$
-begin
-    begin
-        loop
-            exit no_such_label;
-        end loop;
-    end;
-end;
-$$ language plpgsql;
-
--- should fail: CONTINUE can't reference the label of a named block
-create function continue_error3() returns void as $$
-begin
-    <<begin_block1>>
-    begin
-        loop
-            continue begin_block1;
-        end loop;
-    end;
-end;
-$$ language plpgsql;
-
--- On the other hand, EXIT *can* reference the label of a named block
-create function exit_block1() returns void as $$
-begin
-    <<begin_block1>>
-    begin
-        loop
-            exit begin_block1;
-            raise exception 'should not get here';
-        end loop;
-    end;
-end;
-$$ language plpgsql;
-
-select exit_block1();
-drop function exit_block1();
-
--- verbose end block and end loop
-create function end_label1() returns void as $$
-<<blbl>>
-begin
-  <<flbl1>>
-  for _i in 1 .. 10 loop
-    exit flbl1;
-  end loop flbl1;
-  <<flbl2>>
-  for _i in 1 .. 10 loop
-    exit flbl2;
-  end loop;
-end blbl;
-$$ language plpgsql;
-
-select end_label1();
-drop function end_label1();
-
--- should fail: undefined end label
-create function end_label2() returns void as $$
-begin
-  for _i in 1 .. 10 loop
-    exit;
-  end loop flbl1;
-end;
-$$ language plpgsql;
-
--- should fail: end label does not match start label
-create function end_label3() returns void as $$
-<<outer_label>>
-begin
-  <<inner_label>>
-  for _i in 1 .. 10 loop
-    exit;
-  end loop outer_label;
-end;
-$$ language plpgsql;
-
--- should fail: end label on a block without a start label
-create function end_label4() returns void as $$
-<<outer_label>>
-begin
-  for _i in 1 .. 10 loop
-    exit;
-  end loop outer_label;
-end;
-$$ language plpgsql;
-
--- using list of scalars in fori and fore stmts
-create function for_vect() returns void as $proc$
-<<lbl>>declare a integer; b varchar; c varchar; r record;
-begin
-  -- fori
-  for i in 1 .. 3 loop
-    raise notice '%', i;
-  end loop;
-  -- fore with record var
-  for r in select gs as aa, 'BB' as bb, 'CC' as cc from generate_series(1,4) gs loop
-    raise notice '% % %', r.aa, r.bb, r.cc;
-  end loop;
-  -- fore with single scalar
-  for a in select gs from generate_series(1,4) gs loop
-    raise notice '%', a;
-  end loop;
-  -- fore with multiple scalars
-  for a,b,c in select gs, 'BB','CC' from generate_series(1,4) gs loop
-    raise notice '% % %', a, b, c;
-  end loop;
-  -- using qualified names in fors, fore is enabled, disabled only for fori
-  for lbl.a, lbl.b, lbl.c in execute $$select gs, 'bb','cc' from generate_series(1,4) gs$$ loop
-    raise notice '% % %', a, b, c;
-  end loop;
-end;
-$proc$ language plpgsql;
-
-select for_vect();
 
 -- regression test: verify that multiple uses of same plpgsql datum within
 -- a SQL command all get mapped to the same $n parameter.  The return value
@@ -3580,72 +3367,6 @@ select stacked_diagnostics_test();
 
 drop function stacked_diagnostics_test();
 
--- test CASE statement
-
-create or replace function case_test(bigint) returns text as $$
-declare a int = 10;
-        b int = 1;
-begin
-  case $1
-    when 1 then
-      return 'one';
-    when 2 then
-      return 'two';
-    when 3,4,3+5 then
-      return 'three, four or eight';
-    when a then
-      return 'ten';
-    when a+b, a+b+1 then
-      return 'eleven, twelve';
-  end case;
-end;
-$$ language plpgsql immutable;
-
-select case_test(1);
-select case_test(2);
-select case_test(3);
-select case_test(4);
-select case_test(5); -- fails
-select case_test(8);
-select case_test(10);
-select case_test(11);
-select case_test(12);
-select case_test(13); -- fails
-
-create or replace function catch() returns void as $$
-begin
-  raise notice '%', case_test(6);
-exception
-  when case_not_found then
-    raise notice 'caught case_not_found % %', SQLSTATE, SQLERRM;
-end
-$$ language plpgsql;
-
-select catch();
-
--- test the searched variant too, as well as ELSE
-create or replace function case_test(bigint) returns text as $$
-declare a int = 10;
-begin
-  case
-    when $1 = 1 then
-      return 'one';
-    when $1 = a + 2 then
-      return 'twelve';
-    else
-      return 'other';
-  end case;
-end;
-$$ language plpgsql immutable;
-
-select case_test(1);
-select case_test(2);
-select case_test(12);
-select case_test(13);
-
-drop function catch();
-drop function case_test(bigint);
-
 -- test variadic functions
 
 create or replace function vari(variadic int[])
@@ -4255,6 +3976,8 @@ language plpgsql as $$
   begin return $1[1]; end;
 $$ stable;
 
+select consumes_rw_array(returns_rw_array(42));
+
 -- bug #14174
 explain (verbose, costs off)
 select i, a from
@@ -4276,6 +3999,13 @@ select consumes_rw_array(a), a from
 
 select consumes_rw_array(a), a from
   (values (returns_rw_array(1)), (returns_rw_array(2))) v(a);
+
+do $$
+declare a int[] := array[1,2];
+begin
+  a := a || 3;
+  raise notice 'a = %', a;
+end$$;
 
 
 --
@@ -4678,14 +4408,14 @@ CREATE FUNCTION transition_table_level2_bad_usage_func()
   LANGUAGE plpgsql
 AS $$
   BEGIN
-    INSERT INTO d VALUES (1000000, 1000000, 'x');
+    INSERT INTO dx VALUES (1000000, 1000000, 'x');
     RETURN NULL;
   END;
 $$;
 
 CREATE TRIGGER transition_table_level2_bad_usage_trigger
   AFTER DELETE ON transition_table_level2
-  REFERENCING OLD TABLE AS d
+  REFERENCING OLD TABLE AS dx
   FOR EACH STATEMENT EXECUTE PROCEDURE
     transition_table_level2_bad_usage_func();
 
@@ -4774,6 +4504,32 @@ UPDATE alter_table_under_transition_tables
   SET id = id;
 
 --
+-- Test multiple reference to a transition table
+--
+
+CREATE TABLE multi_test (i int);
+INSERT INTO multi_test VALUES (1);
+
+CREATE OR REPLACE FUNCTION multi_test_trig() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE NOTICE 'count = %', (SELECT COUNT(*) FROM new_test);
+    RAISE NOTICE 'count union = %',
+      (SELECT COUNT(*)
+       FROM (SELECT * FROM new_test UNION ALL SELECT * FROM new_test) ss);
+    RETURN NULL;
+END$$;
+
+CREATE TRIGGER my_trigger AFTER UPDATE ON multi_test
+  REFERENCING NEW TABLE AS new_test OLD TABLE as old_test
+  FOR EACH STATEMENT EXECUTE PROCEDURE multi_test_trig();
+
+UPDATE multi_test SET i = i;
+
+DROP TABLE multi_test;
+DROP FUNCTION multi_test_trig();
+
+--
 -- Check type parsing and record fetching from partitioned tables
 --
 
@@ -4811,3 +4567,12 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 
 SELECT * FROM list_partitioned_table() AS t;
+
+--
+-- Check argument name is used instead of $n in error message
+--
+CREATE FUNCTION fx(x WSlot) RETURNS void AS $$
+BEGIN
+  GET DIAGNOSTICS x = ROW_COUNT;
+  RETURN;
+END; $$ LANGUAGE plpgsql;

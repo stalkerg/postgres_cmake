@@ -15,7 +15,7 @@
  * re-perform the status update on redo; so we need make no additional XLOG
  * entry here.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/commit_ts.c
@@ -531,7 +531,7 @@ BootStrapCommitTs(void)
 
 /*
  * Initialize (or reinitialize) a page of CommitTs to zeroes.
- * If writeXlog is TRUE, also emit an XLOG record saying we did this.
+ * If writeXlog is true, also emit an XLOG record saying we did this.
  *
  * The page is not actually written, just set up in shared memory.
  * The slot number of the new page is returned.

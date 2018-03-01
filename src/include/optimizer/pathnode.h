@@ -4,7 +4,7 @@
  *	  prototypes for pathnode.c, relnode.c.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/pathnode.h
@@ -14,6 +14,7 @@
 #ifndef PATHNODE_H
 #define PATHNODE_H
 
+#include "nodes/bitmapset.h"
 #include "nodes/relation.h"
 
 
@@ -63,9 +64,11 @@ extern BitmapOrPath *create_bitmap_or_path(PlannerInfo *root,
 					  List *bitmapquals);
 extern TidPath *create_tidscan_path(PlannerInfo *root, RelOptInfo *rel,
 					List *tidquals, Relids required_outer);
-extern AppendPath *create_append_path(RelOptInfo *rel, List *subpaths,
-				   Relids required_outer, int parallel_workers,
-				   List *partitioned_rels);
+extern AppendPath *create_append_path(RelOptInfo *rel,
+				   List *subpaths, List *partial_subpaths,
+				   Relids required_outer,
+				   int parallel_workers, bool parallel_aware,
+				   List *partitioned_rels, double rows);
 extern MergeAppendPath *create_merge_append_path(PlannerInfo *root,
 						 RelOptInfo *rel,
 						 List *subpaths,
@@ -150,6 +153,7 @@ extern HashPath *create_hashjoin_path(PlannerInfo *root,
 					 JoinPathExtraData *extra,
 					 Path *outer_path,
 					 Path *inner_path,
+					 bool parallel_hash,
 					 List *restrict_clauses,
 					 Relids required_outer,
 					 List *hashclauses);
@@ -238,6 +242,7 @@ extern ModifyTablePath *create_modifytable_path(PlannerInfo *root,
 						RelOptInfo *rel,
 						CmdType operation, bool canSetTag,
 						Index nominalRelation, List *partitioned_rels,
+						bool partColsUpdated,
 						List *resultRelations, List *subpaths,
 						List *subroots,
 						List *withCheckOptionLists, List *returningLists,
@@ -251,6 +256,8 @@ extern LimitPath *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 extern Path *reparameterize_path(PlannerInfo *root, Path *path,
 					Relids required_outer,
 					double loop_count);
+extern Path *reparameterize_path_by_child(PlannerInfo *root, Path *path,
+							 RelOptInfo *child_rel);
 
 /*
  * prototypes for relnode.c
@@ -290,5 +297,9 @@ extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 							Relids required_outer);
 extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,
 					 Relids required_outer);
+extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
+					 RelOptInfo *outer_rel, RelOptInfo *inner_rel,
+					 RelOptInfo *parent_joinrel, List *restrictlist,
+					 SpecialJoinInfo *sjinfo, JoinType jointype);
 
 #endif							/* PATHNODE_H */

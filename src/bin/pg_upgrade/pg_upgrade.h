@@ -1,7 +1,7 @@
 /*
  *	pg_upgrade.h
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
 
@@ -95,10 +95,12 @@ extern char *output_files[];
 #endif
 
 
-/* OID system catalog preservation added during PG 9.0 development */
-#define TABLE_SPACE_SUBDIRS_CAT_VER 201001111
-/* postmaster/postgres -b (binary_upgrade) flag added during PG 9.1 development */
+/*
+ * postmaster/postgres -b (binary_upgrade) flag added during PG 9.1
+ * development
+ */
 #define BINARY_UPGRADE_SERVER_FLAG_CAT_VER 201104251
+
 /*
  *	Visibility map changed with this 9.2 commit,
  *	8f9fe6edce358f7904e0db119416b4d1080a83aa; pick later catalog version.
@@ -109,6 +111,7 @@ extern char *output_files[];
  * The format of visibility map is changed with this 9.6 commit,
  */
 #define VISIBILITY_MAP_FROZEN_BIT_CAT_VER 201603011
+
 /*
  * pg_multixact format changed in 9.3 commit 0ac5ad5134f2769ccbaefec73844f85,
  * ("Improve concurrency of foreign key locking") which also updated catalog
@@ -127,6 +130,7 @@ extern char *output_files[];
  * change in JSONB format during 9.4 beta
  */
 #define JSONB_FORMAT_CHANGE_CAT_VER 201409291
+
 
 /*
  * Each relation is represented by a relinfo structure.
@@ -280,7 +284,7 @@ typedef struct
 typedef struct
 {
 	FILE	   *internal;		/* internal log FILE */
-	bool		verbose;		/* TRUE -> be verbose in messages */
+	bool		verbose;		/* true -> be verbose in messages */
 	bool		retain;			/* retain log files on success */
 } LogOpts;
 
@@ -290,7 +294,7 @@ typedef struct
 */
 typedef struct
 {
-	bool		check;			/* TRUE -> ask user for permission to make
+	bool		check;			/* true -> ask user for permission to make
 								 * changes */
 	transferMode transfer_mode; /* copy files or link them? */
 	int			jobs;
@@ -356,7 +360,7 @@ void		generate_old_dump(void);
 #define EXEC_PSQL_ARGS "--echo-queries --set ON_ERROR_STOP=on --no-psqlrc --dbname=template1"
 
 bool exec_prog(const char *log_file, const char *opt_log_file,
-		  bool throw_error, const char *fmt,...) pg_attribute_printf(4, 5);
+		  bool report_error, bool exit_on_error, const char *fmt,...) pg_attribute_printf(5, 6);
 void		verify_directories(void);
 bool		pid_lock_file_exists(const char *datadir);
 
@@ -370,7 +374,9 @@ void linkFile(const char *src, const char *dst,
 void rewriteVisibilityMap(const char *fromfile, const char *tofile,
 					 const char *schemaName, const char *relName);
 void		check_hard_link(void);
-FILE	   *fopen_priv(const char *path, const char *mode);
+
+/* fopen_priv() is no longer different from fopen() */
+#define fopen_priv(path, mode)	fopen(path, mode)
 
 /* function.c */
 
@@ -412,8 +418,8 @@ PGresult   *executeQueryOrDie(PGconn *conn, const char *fmt,...) pg_attribute_pr
 
 char	   *cluster_conn_opts(ClusterInfo *cluster);
 
-bool		start_postmaster(ClusterInfo *cluster, bool throw_error);
-void		stop_postmaster(bool fast);
+bool		start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error);
+void		stop_postmaster(bool in_atexit);
 uint32		get_major_server_version(ClusterInfo *cluster);
 void		check_pghost_envvar(void);
 

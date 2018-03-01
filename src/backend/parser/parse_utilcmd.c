@@ -16,7 +16,7 @@
  * a quick copyObject() call before manipulating the query tree.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/parser/parse_utilcmd.c
@@ -92,6 +92,7 @@ typedef struct
 	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
 	bool		ispartitioned;	/* true if table is partitioned */
 	PartitionBoundSpec *partbound;	/* transformed FOR VALUES */
+	bool		ofType;			/* true if statement contains OF typename */
 } CreateStmtContext;
 
 /* State shared by transformCreateSchemaStmt and its subroutines */
@@ -117,9 +118,6 @@ static void transformTableLikeClause(CreateStmtContext *cxt,
 						 TableLikeClause *table_like_clause);
 static void transformOfType(CreateStmtContext *cxt,
 				TypeName *ofTypename);
-static IndexStmt *generateClonedIndexStmt(CreateStmtContext *cxt,
-						Relation source_idx,
-						const AttrNumber *attmap, int attmap_length);
 static List *get_collation(Oid collation, Oid actual_datatype);
 static List *get_opclass(Oid opclass, Oid actual_datatype);
 static void transformIndexConstraints(CreateStmtContext *cxt);
@@ -135,6 +133,7 @@ static void transformConstraintAttrs(CreateStmtContext *cxt,
 static void transformColumnType(CreateStmtContext *cxt, ColumnDef *column);
 static void setSchemaName(char *context_schema, char **stmt_schema_name);
 static void transformPartitionCmd(CreateStmtContext *cxt, PartitionCmd *cmd);
+static void validateInfiniteBounds(ParseState *pstate, List *blist);
 static Const *transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 							 const char *colName, Oid colType, int32 colTypmod);
 
@@ -239,6 +238,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.alist = NIL;
 	cxt.pkey = NULL;
 	cxt.ispartitioned = stmt->partspec != NULL;
+	cxt.partbound = stmt->partbound;
+	cxt.ofType = (stmt->ofTypename != NULL);
 
 	/*
 	 * Notice that we allow OIDs here only for plain tables, even though
@@ -472,6 +473,14 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	cxt->blist = lappend(cxt->blist, seqstmt);
 
 	/*
+	 * Store the identity sequence name that we decided on.  ALTER TABLE
+	 * ... ADD COLUMN ... IDENTITY needs this so that it can fill the new
+	 * column with values from the sequence, while the association of the
+	 * sequence with the table is not set until after the ALTER TABLE.
+	 */
+	column->identitySequence = seqstmt->sequence;
+
+	/*
 	 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence as
 	 * owned by this column, and add it to the list of things to be done after
 	 * this CREATE/ALTER TABLE.
@@ -627,7 +636,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 									column->colname, cxt->relation->relname),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
-				column->is_not_null = FALSE;
+				column->is_not_null = false;
 				saw_nullable = true;
 				break;
 
@@ -639,7 +648,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 									column->colname, cxt->relation->relname),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
-				column->is_not_null = TRUE;
+				column->is_not_null = true;
 				saw_nullable = true;
 				break;
 
@@ -661,6 +670,15 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					Type		ctype;
 					Oid			typeOid;
 
+					if (cxt->ofType)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("identity columns are not supported on typed tables")));
+					if (cxt->partbound)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("identity columns are not supported on partitions")));
+
 					ctype = typenameType(cxt->pstate, column->typeName, NULL);
 					typeOid = HeapTupleGetOid(ctype);
 					ReleaseSysCache(ctype);
@@ -679,7 +697,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 
 					column->identity = constraint->generated_when;
 					saw_identity = true;
-					column->is_not_null = TRUE;
+					column->is_not_null = true;
 					break;
 				}
 
@@ -694,12 +712,6 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 							 errmsg("primary key constraints are not supported on foreign tables"),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
-				if (cxt->ispartitioned)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("primary key constraints are not supported on partitioned tables"),
-							 parser_errposition(cxt->pstate,
-												constraint->location)));
 				/* FALL THRU */
 
 			case CONSTR_UNIQUE:
@@ -707,12 +719,6 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("unique constraints are not supported on foreign tables"),
-							 parser_errposition(cxt->pstate,
-												constraint->location)));
-				if (cxt->ispartitioned)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("unique constraints are not supported on partitioned tables"),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
 				if (constraint->keys == NIL)
@@ -811,12 +817,6 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 						 errmsg("primary key constraints are not supported on foreign tables"),
 						 parser_errposition(cxt->pstate,
 											constraint->location)));
-			if (cxt->ispartitioned)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("primary key constraints are not supported on partitioned tables"),
-						 parser_errposition(cxt->pstate,
-											constraint->location)));
 			cxt->ixconstraints = lappend(cxt->ixconstraints, constraint);
 			break;
 
@@ -825,12 +825,6 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("unique constraints are not supported on foreign tables"),
-						 parser_errposition(cxt->pstate,
-											constraint->location)));
-			if (cxt->ispartitioned)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("unique constraints are not supported on partitioned tables"),
 						 parser_errposition(cxt->pstate,
 											constraint->location)));
 			cxt->ixconstraints = lappend(cxt->ixconstraints, constraint);
@@ -941,7 +935,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		aclresult = pg_type_aclcheck(relation->rd_rel->reltype, GetUserId(),
 									 ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_TYPE,
+			aclcheck_error(aclresult, OBJECT_TYPE,
 						   RelationGetRelationName(relation));
 	}
 	else
@@ -949,7 +943,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		aclresult = pg_class_aclcheck(RelationGetRelid(relation), GetUserId(),
 									  ACL_SELECT);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_CLASS,
+			aclcheck_error(aclresult, get_relkind_objtype(relation->rd_rel->relkind),
 						   RelationGetRelationName(relation));
 	}
 
@@ -969,7 +963,8 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	for (parent_attno = 1; parent_attno <= tupleDesc->natts;
 		 parent_attno++)
 	{
-		Form_pg_attribute attribute = tupleDesc->attrs[parent_attno - 1];
+		Form_pg_attribute attribute = TupleDescAttr(tupleDesc,
+													parent_attno - 1);
 		char	   *attributeName = NameStr(attribute->attname);
 		ColumnDef  *def;
 
@@ -1171,8 +1166,9 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			parent_index = index_open(parent_index_oid, AccessShareLock);
 
 			/* Build CREATE INDEX statement to recreate the parent_index */
-			index_stmt = generateClonedIndexStmt(cxt, parent_index,
-												 attmap, tupleDesc->natts);
+			index_stmt = generateClonedIndexStmt(cxt->relation, InvalidOid,
+												 parent_index,
+												 attmap, tupleDesc->natts, NULL);
 
 			/* Copy comment on index, if requested */
 			if (table_like_clause->options & CREATE_TABLE_LIKE_COMMENTS)
@@ -1219,7 +1215,7 @@ transformOfType(CreateStmtContext *cxt, TypeName *ofTypename)
 	tupdesc = lookup_rowtype_tupdesc(ofTypeId, -1);
 	for (i = 0; i < tupdesc->natts; i++)
 	{
-		Form_pg_attribute attr = tupdesc->attrs[i];
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
 		ColumnDef  *n;
 
 		if (attr->attisdropped)
@@ -1249,14 +1245,15 @@ transformOfType(CreateStmtContext *cxt, TypeName *ofTypename)
 
 /*
  * Generate an IndexStmt node using information from an already existing index
- * "source_idx".  Attribute numbers should be adjusted according to attmap.
+ * "source_idx", for the rel identified either by heapRel or heapRelid.
+ *
+ * Attribute numbers should be adjusted according to attmap.
  */
-static IndexStmt *
-generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
-						const AttrNumber *attmap, int attmap_length)
+IndexStmt *
+generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
+						const AttrNumber *attmap, int attmap_length, Oid *constraintOid)
 {
 	Oid			source_relid = RelationGetRelid(source_idx);
-	Form_pg_attribute *attrs = RelationGetDescr(source_idx)->attrs;
 	HeapTuple	ht_idxrel;
 	HeapTuple	ht_idx;
 	HeapTuple	ht_am;
@@ -1273,6 +1270,9 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	Oid			keycoltype;
 	Datum		datum;
 	bool		isnull;
+
+	Assert((heapRel == NULL && OidIsValid(heapRelid)) ||
+		   (heapRel != NULL && !OidIsValid(heapRelid)));
 
 	/*
 	 * Fetch pg_class tuple of source index.  We can't use the copy in the
@@ -1309,7 +1309,8 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 
 	/* Begin building the IndexStmt */
 	index = makeNode(IndexStmt);
-	index->relation = cxt->relation;
+	index->relation = heapRel;
+	index->relationId = heapRelid;
 	index->accessMethod = pstrdup(NameStr(amrec->amname));
 	if (OidIsValid(idxrelrec->reltablespace))
 		index->tableSpace = get_tablespace_name(idxrelrec->reltablespace);
@@ -1347,6 +1348,9 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 		{
 			HeapTuple	ht_constr;
 			Form_pg_constraint conrec;
+
+			if (constraintOid)
+				*constraintOid = constraintId;
 
 			ht_constr = SearchSysCache1(CONSTROID,
 										ObjectIdGetDatum(constraintId));
@@ -1434,6 +1438,8 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	{
 		IndexElem  *iparam;
 		AttrNumber	attnum = idxrec->indkey.values[keyno];
+		Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(source_idx),
+											   keyno);
 		int16		opt = source_idx->rd_indoption[keyno];
 
 		iparam = makeNode(IndexElem);
@@ -1443,7 +1449,7 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 			/* Simple index column */
 			char	   *attname;
 
-			attname = get_relid_attribute_name(indrelid, attnum);
+			attname = get_attname(indrelid, attnum, false);
 			keycoltype = get_atttype(indrelid, attnum);
 
 			iparam->name = attname;
@@ -1481,7 +1487,7 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 		}
 
 		/* Copy the original index column name */
-		iparam->indexcolname = pstrdup(NameStr(attrs[keyno]->attname));
+		iparam->indexcolname = pstrdup(NameStr(attr->attname));
 
 		/* Add the collation name, if non-default */
 		iparam->collation = get_collation(indcollation->values[keyno], keycoltype);
@@ -1921,7 +1927,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			if (attnum > 0)
 			{
 				Assert(attnum <= heap_rel->rd_att->natts);
-				attform = heap_rel->rd_att->attrs[attnum - 1];
+				attform = TupleDescAttr(heap_rel->rd_att, attnum - 1);
 			}
 			else
 				attform = SystemAttributeDefinition(attnum,
@@ -2007,7 +2013,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		{
 			/* found column in the new table; force it to be NOT NULL */
 			if (constraint->contype == CONSTR_PRIMARY)
-				column->is_not_null = TRUE;
+				column->is_not_null = true;
 		}
 		else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
 		{
@@ -2040,7 +2046,8 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 									inh->relname)));
 				for (count = 0; count < rel->rd_att->natts; count++)
 				{
-					Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+					Form_pg_attribute inhattr = TupleDescAttr(rel->rd_att,
+															  count);
 					char	   *inhname = NameStr(inhattr->attname);
 
 					if (inhattr->attisdropped)
@@ -2693,6 +2700,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	cxt.pkey = NULL;
 	cxt.ispartitioned = (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 	cxt.partbound = NULL;
+	cxt.ofType = false;
 
 	/*
 	 * The only subtypes that currently require parse transformation handling
@@ -3272,18 +3280,39 @@ transformPartitionCmd(CreateStmtContext *cxt, PartitionCmd *cmd)
 {
 	Relation	parentRel = cxt->rel;
 
-	/* the table must be partitioned */
-	if (parentRel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("\"%s\" is not partitioned",
-						RelationGetRelationName(parentRel))));
-
-	/* transform the partition bound, if any */
-	Assert(RelationGetPartitionKey(parentRel) != NULL);
-	if (cmd->bound != NULL)
-		cxt->partbound = transformPartitionBound(cxt->pstate, parentRel,
-												 cmd->bound);
+	switch (parentRel->rd_rel->relkind)
+	{
+		case RELKIND_PARTITIONED_TABLE:
+			/* transform the partition bound, if any */
+			Assert(RelationGetPartitionKey(parentRel) != NULL);
+			if (cmd->bound != NULL)
+				cxt->partbound = transformPartitionBound(cxt->pstate, parentRel,
+														 cmd->bound);
+			break;
+		case RELKIND_PARTITIONED_INDEX:
+			/* nothing to check */
+			Assert(cmd->bound == NULL);
+			break;
+		case RELKIND_RELATION:
+			/* the table must be partitioned */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("table \"%s\" is not partitioned",
+							RelationGetRelationName(parentRel))));
+			break;
+		case RELKIND_INDEX:
+			/* the index must be partitioned */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("index \"%s\" is not partitioned",
+							RelationGetRelationName(parentRel))));
+			break;
+		default:
+			/* parser shouldn't let this case through */
+			elog(ERROR, "\"%s\" is not a partitioned table or index",
+				 RelationGetRelationName(parentRel));
+			break;
+	}
 }
 
 /*
@@ -3304,7 +3333,44 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 	/* Avoid scribbling on input */
 	result_spec = copyObject(spec);
 
-	if (strategy == PARTITION_STRATEGY_LIST)
+	if (spec->is_default)
+	{
+		if (strategy == PARTITION_STRATEGY_HASH)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("a hash-partitioned table may not have a default partition")));
+
+		/*
+		 * In case of the default partition, parser had no way to identify the
+		 * partition strategy. Assign the parent's strategy to the default
+		 * partition bound spec.
+		 */
+		result_spec->strategy = strategy;
+
+		return result_spec;
+	}
+
+	if (strategy == PARTITION_STRATEGY_HASH)
+	{
+		if (spec->strategy != PARTITION_STRATEGY_HASH)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid bound specification for a hash partition"),
+					 parser_errposition(pstate, exprLocation((Node *) spec))));
+
+		if (spec->modulus <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("modulus for hash partition must be a positive integer")));
+
+		Assert(spec->remainder >= 0);
+
+		if (spec->remainder >= spec->modulus)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("remainder for hash partition must be less than modulus")));
+	}
+	else if (strategy == PARTITION_STRATEGY_LIST)
 	{
 		ListCell   *cell;
 		char	   *colname;
@@ -3319,8 +3385,8 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 
 		/* Get the only column's name in case we need to output an error */
 		if (key->partattrs[0] != 0)
-			colname = get_relid_attribute_name(RelationGetRelid(parent),
-											   key->partattrs[0]);
+			colname = get_attname(RelationGetRelid(parent),
+								  key->partattrs[0], false);
 		else
 			colname = deparse_expression((Node *) linitial(partexprs),
 										 deparse_context_for(RelationGetRelationName(parent),
@@ -3382,6 +3448,13 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("TO must specify exactly one value per partitioning column")));
 
+		/*
+		 * Once we see MINVALUE or MAXVALUE for one column, the remaining
+		 * columns must be the same.
+		 */
+		validateInfiniteBounds(pstate, spec->lowerdatums);
+		validateInfiniteBounds(pstate, spec->upperdatums);
+
 		/* Transform all the constants */
 		i = j = 0;
 		result_spec->lowerdatums = result_spec->upperdatums = NIL;
@@ -3397,8 +3470,8 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 
 			/* Get the column's name in case we need to output an error */
 			if (key->partattrs[i] != 0)
-				colname = get_relid_attribute_name(RelationGetRelid(parent),
-												   key->partattrs[i]);
+				colname = get_attname(RelationGetRelid(parent),
+									  key->partattrs[i], false);
 			else
 			{
 				colname = deparse_expression((Node *) list_nth(partexprs, j),
@@ -3451,6 +3524,46 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 		elog(ERROR, "unexpected partition strategy: %d", (int) strategy);
 
 	return result_spec;
+}
+
+/*
+ * validateInfiniteBounds
+ *
+ * Check that a MAXVALUE or MINVALUE specification in a partition bound is
+ * followed only by more of the same.
+ */
+static void
+validateInfiniteBounds(ParseState *pstate, List *blist)
+{
+	ListCell   *lc;
+	PartitionRangeDatumKind kind = PARTITION_RANGE_DATUM_VALUE;
+
+	foreach(lc, blist)
+	{
+		PartitionRangeDatum *prd = castNode(PartitionRangeDatum, lfirst(lc));
+
+		if (kind == prd->kind)
+			continue;
+
+		switch (kind)
+		{
+			case PARTITION_RANGE_DATUM_VALUE:
+				kind = prd->kind;
+				break;
+
+			case PARTITION_RANGE_DATUM_MAXVALUE:
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("every bound following MAXVALUE must also be MAXVALUE"),
+						 parser_errposition(pstate, exprLocation((Node *) prd))));
+
+			case PARTITION_RANGE_DATUM_MINVALUE:
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("every bound following MINVALUE must also be MINVALUE"),
+						 parser_errposition(pstate, exprLocation((Node *) prd))));
+		}
+	}
 }
 
 /*

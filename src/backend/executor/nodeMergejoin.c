@@ -3,7 +3,7 @@
  * nodeMergejoin.c
  *	  routines supporting merge joins
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -510,7 +510,7 @@ MJFillInner(MergeJoinState *node)
 
 /*
  * Check that a qual condition is constant true or constant false.
- * If it is constant false (or null), set *is_const_false to TRUE.
+ * If it is constant false (or null), set *is_const_false to true.
  *
  * Constant true would normally be represented by a NIL list, but we allow an
  * actual bool Const as well.  We do expect that the planner will have thrown
@@ -1436,6 +1436,7 @@ MergeJoinState *
 ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 {
 	MergeJoinState *mergestate;
+	TupleDesc	outerDesc, innerDesc;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -1450,6 +1451,8 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	mergestate->js.ps.plan = (Plan *) node;
 	mergestate->js.ps.state = estate;
 	mergestate->js.ps.ExecProcNode = ExecMergeJoin;
+	mergestate->js.jointype = node->join.jointype;
+	mergestate->mj_ConstFalseJoin = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -1467,17 +1470,6 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	mergestate->mj_InnerEContext = CreateExprContext(estate);
 
 	/*
-	 * initialize child expressions
-	 */
-	mergestate->js.ps.qual =
-		ExecInitQual(node->join.plan.qual, (PlanState *) mergestate);
-	mergestate->js.jointype = node->join.jointype;
-	mergestate->js.joinqual =
-		ExecInitQual(node->join.joinqual, (PlanState *) mergestate);
-	mergestate->mj_ConstFalseJoin = false;
-	/* mergeclauses are handled below */
-
-	/*
 	 * initialize child nodes
 	 *
 	 * inner child must support MARK/RESTORE, unless we have detected that we
@@ -1488,10 +1480,12 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	mergestate->mj_SkipMarkRestore = node->skip_mark_restore;
 
 	outerPlanState(mergestate) = ExecInitNode(outerPlan(node), estate, eflags);
+	outerDesc = ExecGetResultType(outerPlanState(mergestate));
 	innerPlanState(mergestate) = ExecInitNode(innerPlan(node), estate,
 											  mergestate->mj_SkipMarkRestore ?
 											  eflags :
 											  (eflags | EXEC_FLAG_MARK));
+	innerDesc = ExecGetResultType(innerPlanState(mergestate));
 
 	/*
 	 * For certain types of inner child nodes, it is advantageous to issue
@@ -1502,6 +1496,10 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	 *
 	 * Currently, only Material wants the extra MARKs, and it will be helpful
 	 * only if eflags doesn't specify REWIND.
+	 *
+	 * Note that for IndexScan and IndexOnlyScan, it is *necessary* that we
+	 * not set mj_ExtraMarks; otherwise we might attempt to set a mark before
+	 * the first inner tuple, which they do not support.
 	 */
 	if (IsA(innerPlan(node), Material) &&
 		(eflags & EXEC_FLAG_REWIND) == 0 &&
@@ -1511,13 +1509,24 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 		mergestate->mj_ExtraMarks = false;
 
 	/*
+	 * Initialize result slot, type and projection.
+	 */
+	ExecInitResultTupleSlotTL(estate, &mergestate->js.ps);
+	ExecAssignProjectionInfo(&mergestate->js.ps, NULL);
+
+	/*
 	 * tuple table initialization
 	 */
-	ExecInitResultTupleSlot(estate, &mergestate->js.ps);
+	mergestate->mj_MarkedTupleSlot = ExecInitExtraTupleSlot(estate, innerDesc);
 
-	mergestate->mj_MarkedTupleSlot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(mergestate->mj_MarkedTupleSlot,
-						  ExecGetResultType(innerPlanState(mergestate)));
+	/*
+	 * initialize child expressions
+	 */
+	mergestate->js.ps.qual =
+		ExecInitQual(node->join.plan.qual, (PlanState *) mergestate);
+	mergestate->js.joinqual =
+		ExecInitQual(node->join.joinqual, (PlanState *) mergestate);
+	/* mergeclauses are handled below */
 
 	/*
 	 * detect whether we need only consider the first matching inner tuple
@@ -1538,15 +1547,13 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			mergestate->mj_FillOuter = true;
 			mergestate->mj_FillInner = false;
 			mergestate->mj_NullInnerTupleSlot =
-				ExecInitNullTupleSlot(estate,
-									  ExecGetResultType(innerPlanState(mergestate)));
+				ExecInitNullTupleSlot(estate, innerDesc);
 			break;
 		case JOIN_RIGHT:
 			mergestate->mj_FillOuter = false;
 			mergestate->mj_FillInner = true;
 			mergestate->mj_NullOuterTupleSlot =
-				ExecInitNullTupleSlot(estate,
-									  ExecGetResultType(outerPlanState(mergestate)));
+				ExecInitNullTupleSlot(estate, outerDesc);
 
 			/*
 			 * Can't handle right or full join with non-constant extra
@@ -1562,11 +1569,9 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			mergestate->mj_FillOuter = true;
 			mergestate->mj_FillInner = true;
 			mergestate->mj_NullOuterTupleSlot =
-				ExecInitNullTupleSlot(estate,
-									  ExecGetResultType(outerPlanState(mergestate)));
+				ExecInitNullTupleSlot(estate, outerDesc);
 			mergestate->mj_NullInnerTupleSlot =
-				ExecInitNullTupleSlot(estate,
-									  ExecGetResultType(innerPlanState(mergestate)));
+				ExecInitNullTupleSlot(estate, innerDesc);
 
 			/*
 			 * Can't handle right or full join with non-constant extra
@@ -1582,12 +1587,6 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			elog(ERROR, "unrecognized join type: %d",
 				 (int) node->join.jointype);
 	}
-
-	/*
-	 * initialize tuple type and projection info
-	 */
-	ExecAssignResultTypeFromTL(&mergestate->js.ps);
-	ExecAssignProjectionInfo(&mergestate->js.ps, NULL);
 
 	/*
 	 * preprocess the merge clauses

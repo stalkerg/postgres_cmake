@@ -116,16 +116,18 @@
  *			than its own active transaction must acquire an exclusive
  *			lock.
  *
- *	FirstPredicateLockMgrLock based partition locks
+ *	PredicateLockHashPartitionLock(hashcode)
  *		- The same lock protects a target, all locks on that target, and
- *			the linked list of locks on the target..
- *		- When more than one is needed, acquire in ascending order.
+ *			the linked list of locks on the target.
+ *		- When more than one is needed, acquire in ascending address order.
+ *		- When all are needed (rare), acquire in ascending index order with
+ *			PredicateLockHashPartitionLockByIndex(index).
  *
  *	SerializableXactHashLock
  *		- Protects both PredXact and SerializableXidHash.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -491,8 +493,8 @@ PredicateLockingNeededForRelation(Relation relation)
  * as RO-safe since the last call, we release all predicate locks and reset
  * MySerializableXact. That makes subsequent calls to return quickly.
  *
- * This is marked as 'inline' to make to eliminate the function call overhead
- * in the common case that serialization is not needed.
+ * This is marked as 'inline' to eliminate the function call overhead in the
+ * common case that serialization is not needed.
  */
 static inline bool
 SerializationNeededForRead(Relation relation, Snapshot snapshot)
@@ -1767,7 +1769,7 @@ GetSerializableTransactionSnapshotInt(Snapshot snapshot,
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("could not import the requested snapshot"),
-				 errdetail("The source process with pid %d is not running anymore.",
+				 errdetail("The source process with PID %d is not running anymore.",
 						   sourcepid)));
 	}
 

@@ -320,6 +320,8 @@ sub WriteItemDefinitionGroup
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>.\\$cfgname\\$self->{name}\\$self->{name}.map</MapFileName>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <!-- Permit links to MinGW-built, 32-bit DLLs (default before VS2012). -->
+      <ImageHasSafeExceptionHandlers/>
       <SubSystem>Console</SubSystem>
       <TargetMachine>$targetmachine</TargetMachine>
 EOF
@@ -479,6 +481,29 @@ sub new
 	$self->{vcver}           = '14.00';
 	$self->{PlatformToolset} = 'v140';
 	$self->{ToolsVersion}    = '14.0';
+
+	return $self;
+}
+
+package VC2017Project;
+
+#
+# Package that encapsulates a Visual C++ 2017 project file
+#
+
+use strict;
+use warnings;
+use base qw(VC2012Project);
+
+sub new
+{
+	my $classname = shift;
+	my $self      = $classname->SUPER::_new(@_);
+	bless($self, $classname);
+
+	$self->{vcver}           = '15.00';
+	$self->{PlatformToolset} = 'v141';
+	$self->{ToolsVersion}    = '15.0';
 
 	return $self;
 }

@@ -5,7 +5,7 @@
  *
  * This should be included _AFTER_ postgres.h and system include files
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
  * src/pl/plperl/plperl.h
@@ -40,6 +40,14 @@
 #ifdef USE_REPL_SNPRINTF
 #undef snprintf
 #undef vsnprintf
+#endif
+
+/*
+ * ActivePerl 5.18 and later are MinGW-built, and their headers use GCC's
+ * __inline__.  Translate to something MSVC recognizes.
+ */
+#ifdef _MSC_VER
+#define __inline__ inline
 #endif
 
 
@@ -117,6 +125,8 @@ HV		   *plperl_spi_exec_prepared(char *, HV *, int, SV **);
 SV		   *plperl_spi_query_prepared(char *, int, SV **);
 void		plperl_spi_freeplan(char *);
 void		plperl_spi_cursor_close(char *);
+void		plperl_spi_commit(void);
+void		plperl_spi_rollback(void);
 char	   *plperl_sv_to_literal(SV *, char *);
 void		plperl_util_elog(int level, SV *msg);
 

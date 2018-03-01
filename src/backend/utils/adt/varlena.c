@@ -3,7 +3,7 @@
  * varlena.c
  *	  Functions for the variable-length built-in types.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,7 +21,7 @@
 #include "access/tuptoaster.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
-#include "common/md5.h"
+#include "common/int.h"
 #include "lib/hyperloglog.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -1047,8 +1047,7 @@ text_overlay(text *t1, text *t2, int sp, int sl)
 		ereport(ERROR,
 				(errcode(ERRCODE_SUBSTRING_ERROR),
 				 errmsg("negative substring length not allowed")));
-	sp_pl_sl = sp + sl;
-	if (sp_pl_sl <= sl)
+	if (pg_add_s32_overflow(sp, sl, &sp_pl_sl))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -1379,7 +1378,7 @@ text_position_cleanup(TextPositionState *state)
  * whether arg1 is less than, equal to, or greater than arg2.
  */
 int
-varstr_cmp(char *arg1, int len1, char *arg2, int len2, Oid collid)
+varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 {
 	int			result;
 
@@ -1823,12 +1822,6 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 	 * requirements of BpChar callers.  However, if LC_COLLATE = C, we can
 	 * make things quite a bit faster with varstrfastcmp_c or bpcharfastcmp_c,
 	 * both of which use memcmp() rather than strcoll().
-	 *
-	 * There is a further exception on Windows.  When the database encoding is
-	 * UTF-8 and we are not using the C collation, complex hacks are required.
-	 * We don't currently have a comparator that handles that case, so we fall
-	 * back on the slow method of having the sort code invoke bttextcmp() (in
-	 * the case of text) via the fmgr trampoline.
 	 */
 	if (lc_collate_is_c(collid))
 	{
@@ -1839,14 +1832,8 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 
 		collate_c = true;
 	}
-#ifdef WIN32
-	else if (GetDatabaseEncoding() == PG_UTF8)
-		return;
-#endif
 	else
 	{
-		ssup->comparator = varstrfastcmp_locale;
-
 		/*
 		 * We need a collation-sensitive comparison.  To make things faster,
 		 * we'll figure out the collation based on the locale id and cache the
@@ -1867,6 +1854,22 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 			}
 			locale = pg_newlocale_from_collation(collid);
 		}
+
+		/*
+		 * There is a further exception on Windows.  When the database
+		 * encoding is UTF-8 and we are not using the C collation, complex
+		 * hacks are required.  We don't currently have a comparator that
+		 * handles that case, so we fall back on the slow method of having the
+		 * sort code invoke bttextcmp() (in the case of text) via the fmgr
+		 * trampoline.  ICU locales work just the same on Windows, however.
+		 */
+#ifdef WIN32
+		if (GetDatabaseEncoding() == PG_UTF8 &&
+			!(locale && locale->provider == COLLPROVIDER_ICU))
+			return;
+#endif
+
+		ssup->comparator = varstrfastcmp_locale;
 	}
 
 	/*
@@ -2946,8 +2949,7 @@ bytea_overlay(bytea *t1, bytea *t2, int sp, int sl)
 		ereport(ERROR,
 				(errcode(ERRCODE_SUBSTRING_ERROR),
 				 errmsg("negative substring length not allowed")));
-	sp_pl_sl = sp + sl;
-	if (sp_pl_sl <= sl)
+	if (pg_add_s32_overflow(sp, sl, &sp_pl_sl))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -3251,7 +3253,7 @@ textToQualifiedNameList(text *textval)
  *	namelist: filled with a palloc'd list of pointers to identifiers within
  *			  rawstring.  Caller should list_free() this even on error return.
  *
- * Returns TRUE if okay, FALSE if there is a syntax error in the string.
+ * Returns true if okay, false if there is a syntax error in the string.
  *
  * Note that an empty string is considered okay here, though not in
  * textToQualifiedNameList.
@@ -3379,7 +3381,7 @@ SplitIdentifierString(char *rawstring, char separator,
  *	namelist: filled with a palloc'd list of directory names.
  *			  Caller should list_free_deep() this even on error return.
  *
- * Returns TRUE if okay, FALSE if there is a syntax error in the string.
+ * Returns true if okay, false if there is a syntax error in the string.
  *
  * Note that an empty string is considered okay here.
  */
@@ -4562,53 +4564,6 @@ to_hex64(PG_FUNCTION_ARGS)
 }
 
 /*
- * Create an md5 hash of a text string and return it as hex
- *
- * md5 produces a 16 byte (128 bit) hash; double it for hex
- */
-#define MD5_HASH_LEN  32
-
-Datum
-md5_text(PG_FUNCTION_ARGS)
-{
-	text	   *in_text = PG_GETARG_TEXT_PP(0);
-	size_t		len;
-	char		hexsum[MD5_HASH_LEN + 1];
-
-	/* Calculate the length of the buffer using varlena metadata */
-	len = VARSIZE_ANY_EXHDR(in_text);
-
-	/* get the hash result */
-	if (pg_md5_hash(VARDATA_ANY(in_text), len, hexsum) == false)
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-
-	/* convert to text and return it */
-	PG_RETURN_TEXT_P(cstring_to_text(hexsum));
-}
-
-/*
- * Create an md5 hash of a bytea field and return it as a hex string:
- * 16-byte md5 digest is represented in 32 hex characters.
- */
-Datum
-md5_bytea(PG_FUNCTION_ARGS)
-{
-	bytea	   *in = PG_GETARG_BYTEA_PP(0);
-	size_t		len;
-	char		hexsum[MD5_HASH_LEN + 1];
-
-	len = VARSIZE_ANY_EXHDR(in);
-	if (pg_md5_hash(VARDATA_ANY(in), len, hexsum) == false)
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-
-	PG_RETURN_TEXT_P(cstring_to_text(hexsum));
-}
-
-/*
  * Return the size of a datum, possibly compressed
  *
  * Works on any data type
@@ -4734,10 +4689,47 @@ string_agg_finalfn(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Prepare cache with fmgr info for the output functions of the datatypes of
+ * the arguments of a concat-like function, beginning with argument "argidx".
+ * (Arguments before that will have corresponding slots in the resulting
+ * FmgrInfo array, but we don't fill those slots.)
+ */
+static FmgrInfo *
+build_concat_foutcache(FunctionCallInfo fcinfo, int argidx)
+{
+	FmgrInfo   *foutcache;
+	int			i;
+
+	/* We keep the info in fn_mcxt so it survives across calls */
+	foutcache = (FmgrInfo *) MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+												PG_NARGS() * sizeof(FmgrInfo));
+
+	for (i = argidx; i < PG_NARGS(); i++)
+	{
+		Oid			valtype;
+		Oid			typOutput;
+		bool		typIsVarlena;
+
+		valtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+		if (!OidIsValid(valtype))
+			elog(ERROR, "could not determine data type of concat() input");
+
+		getTypeOutputInfo(valtype, &typOutput, &typIsVarlena);
+		fmgr_info_cxt(typOutput, &foutcache[i], fcinfo->flinfo->fn_mcxt);
+	}
+
+	fcinfo->flinfo->fn_extra = foutcache;
+
+	return foutcache;
+}
+
+/*
  * Implementation of both concat() and concat_ws().
  *
  * sepstr is the separator string to place between values.
- * argidx identifies the first argument to concatenate (counting from zero).
+ * argidx identifies the first argument to concatenate (counting from zero);
+ * note that this must be constant across any one series of calls.
+ *
  * Returns NULL if result should be NULL, else text value.
  */
 static text *
@@ -4746,6 +4738,7 @@ concat_internal(const char *sepstr, int argidx,
 {
 	text	   *result;
 	StringInfoData str;
+	FmgrInfo   *foutcache;
 	bool		first_arg = true;
 	int			i;
 
@@ -4787,14 +4780,16 @@ concat_internal(const char *sepstr, int argidx,
 	/* Normal case without explicit VARIADIC marker */
 	initStringInfo(&str);
 
+	/* Get output function info, building it if first time through */
+	foutcache = (FmgrInfo *) fcinfo->flinfo->fn_extra;
+	if (foutcache == NULL)
+		foutcache = build_concat_foutcache(fcinfo, argidx);
+
 	for (i = argidx; i < PG_NARGS(); i++)
 	{
 		if (!PG_ARGISNULL(i))
 		{
 			Datum		value = PG_GETARG_DATUM(i);
-			Oid			valtype;
-			Oid			typOutput;
-			bool		typIsVarlena;
 
 			/* add separator if appropriate */
 			if (first_arg)
@@ -4803,12 +4798,8 @@ concat_internal(const char *sepstr, int argidx,
 				appendStringInfoString(&str, sepstr);
 
 			/* call the appropriate type output function, append the result */
-			valtype = get_fn_expr_argtype(fcinfo->flinfo, i);
-			if (!OidIsValid(valtype))
-				elog(ERROR, "could not determine data type of concat() input");
-			getTypeOutputInfo(valtype, &typOutput, &typIsVarlena);
 			appendStringInfoString(&str,
-								   OidOutputFunctionCall(typOutput, value));
+								   OutputFunctionCall(&foutcache[i], value));
 		}
 	}
 
@@ -5239,13 +5230,13 @@ text_format_parse_digits(const char **ptr, const char *end_ptr, int *value)
 
 	while (*cp >= '0' && *cp <= '9')
 	{
-		int			newval = val * 10 + (*cp - '0');
+		int8		digit = (*cp - '0');
 
-		if (newval / 10 != val) /* overflow? */
+		if (unlikely(pg_mul_s32_overflow(val, 10, &val)) ||
+			unlikely(pg_add_s32_overflow(val, digit, &val)))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("number is out of range")));
-		val = newval;
 		ADVANCE_PARSE_POINTER(cp, end_ptr);
 		found = true;
 	}

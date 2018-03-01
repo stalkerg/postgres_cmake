@@ -4,7 +4,7 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/rel.h
@@ -277,6 +277,7 @@ typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			fillfactor;		/* page fill factor in percent (0..100) */
+	int			toast_tuple_target; /* target for tuple toasting */
 	AutoVacOpts autovacuum;		/* autovacuum-related options */
 	bool		user_catalog_table; /* use as an additional catalog relation */
 	int			parallel_workers;	/* max number of parallel workers */
@@ -284,6 +285,14 @@ typedef struct StdRdOptions
 
 #define HEAP_MIN_FILLFACTOR			10
 #define HEAP_DEFAULT_FILLFACTOR		100
+
+/*
+ * RelationGetToastTupleTarget
+ *		Returns the relation's toast_tuple_target.  Note multiple eval of argument!
+ */
+#define RelationGetToastTupleTarget(relation, defaulttarg) \
+	((relation)->rd_options ? \
+	 ((StdRdOptions *) (relation)->rd_options)->toast_tuple_target : (defaulttarg))
 
 /*
  * RelationGetFillFactor

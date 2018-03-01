@@ -4,7 +4,7 @@
  *	  Definition of (and support for) access control list data structures.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/acl.h
@@ -12,9 +12,17 @@
  * NOTES
  *	  An ACL array is simply an array of AclItems, representing the union
  *	  of the privileges represented by the individual items.  A zero-length
- *	  array represents "no privileges".  There are no assumptions about the
- *	  ordering of the items, but we do expect that there are no two entries
- *	  in the array with the same grantor and grantee.
+ *	  array represents "no privileges".
+ *
+ *	  The order of items in the array is important as client utilities (in
+ *	  particular, pg_dump, though possibly other clients) expect to be able
+ *	  to issue GRANTs in the ordering of the items in the array.  The reason
+ *	  this matters is that GRANTs WITH GRANT OPTION must be before any GRANTs
+ *	  which depend on it.  This happens naturally in the backend during
+ *	  operations as we update ACLs in-place, new items are appended, and
+ *	  existing entries are only removed if there's no dependency on them (no
+ *	  GRANT can been based on it, or, if there was, those GRANTs are also
+ *	  removed).
  *
  *	  For backward-compatibility purposes we have to allow null ACL entries
  *	  in system catalogs.  A null ACL will be treated as meaning "default
@@ -155,7 +163,7 @@ typedef ArrayType Acl;
 #define ACL_ALL_RIGHTS_FUNCTION		(ACL_EXECUTE)
 #define ACL_ALL_RIGHTS_LANGUAGE		(ACL_USAGE)
 #define ACL_ALL_RIGHTS_LARGEOBJECT	(ACL_SELECT|ACL_UPDATE)
-#define ACL_ALL_RIGHTS_NAMESPACE	(ACL_USAGE|ACL_CREATE)
+#define ACL_ALL_RIGHTS_SCHEMA		(ACL_USAGE|ACL_CREATE)
 #define ACL_ALL_RIGHTS_TABLESPACE	(ACL_CREATE)
 #define ACL_ALL_RIGHTS_TYPE			(ACL_USAGE)
 
@@ -174,43 +182,12 @@ typedef enum
 	ACLCHECK_NOT_OWNER
 } AclResult;
 
-/* this enum covers all object types that can have privilege errors */
-/* currently it's only used to tell aclcheck_error what to say */
-typedef enum AclObjectKind
-{
-	ACL_KIND_COLUMN,			/* pg_attribute */
-	ACL_KIND_CLASS,				/* pg_class */
-	ACL_KIND_SEQUENCE,			/* pg_sequence */
-	ACL_KIND_DATABASE,			/* pg_database */
-	ACL_KIND_PROC,				/* pg_proc */
-	ACL_KIND_OPER,				/* pg_operator */
-	ACL_KIND_TYPE,				/* pg_type */
-	ACL_KIND_LANGUAGE,			/* pg_language */
-	ACL_KIND_LARGEOBJECT,		/* pg_largeobject */
-	ACL_KIND_NAMESPACE,			/* pg_namespace */
-	ACL_KIND_OPCLASS,			/* pg_opclass */
-	ACL_KIND_OPFAMILY,			/* pg_opfamily */
-	ACL_KIND_COLLATION,			/* pg_collation */
-	ACL_KIND_CONVERSION,		/* pg_conversion */
-	ACL_KIND_STATISTICS,		/* pg_statistic_ext */
-	ACL_KIND_TABLESPACE,		/* pg_tablespace */
-	ACL_KIND_TSDICTIONARY,		/* pg_ts_dict */
-	ACL_KIND_TSCONFIGURATION,	/* pg_ts_config */
-	ACL_KIND_FDW,				/* pg_foreign_data_wrapper */
-	ACL_KIND_FOREIGN_SERVER,	/* pg_foreign_server */
-	ACL_KIND_EVENT_TRIGGER,		/* pg_event_trigger */
-	ACL_KIND_EXTENSION,			/* pg_extension */
-	ACL_KIND_PUBLICATION,		/* pg_publication */
-	ACL_KIND_SUBSCRIPTION,		/* pg_subscription */
-	MAX_ACL_KIND				/* MUST BE LAST */
-} AclObjectKind;
-
 
 /*
  * routines used internally
  */
-extern Acl *acldefault(GrantObjectType objtype, Oid ownerId);
-extern Acl *get_user_default_acl(GrantObjectType objtype, Oid ownerId,
+extern Acl *acldefault(ObjectType objtype, Oid ownerId);
+extern Acl *get_user_default_acl(ObjectType objtype, Oid ownerId,
 					 Oid nsp_oid);
 
 extern Acl *aclupdate(const Acl *old_acl, const AclItem *mod_aip,
@@ -293,10 +270,10 @@ extern AclResult pg_foreign_data_wrapper_aclcheck(Oid fdw_oid, Oid roleid, AclMo
 extern AclResult pg_foreign_server_aclcheck(Oid srv_oid, Oid roleid, AclMode mode);
 extern AclResult pg_type_aclcheck(Oid type_oid, Oid roleid, AclMode mode);
 
-extern void aclcheck_error(AclResult aclerr, AclObjectKind objectkind,
+extern void aclcheck_error(AclResult aclerr, ObjectType objtype,
 			   const char *objectname);
 
-extern void aclcheck_error_col(AclResult aclerr, AclObjectKind objectkind,
+extern void aclcheck_error_col(AclResult aclerr, ObjectType objtype,
 				   const char *objectname, const char *colname);
 
 extern void aclcheck_error_type(AclResult aclerr, Oid typeOid);

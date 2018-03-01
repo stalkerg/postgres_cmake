@@ -4,7 +4,7 @@
  *	  WAL replay logic for btrees.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -107,8 +107,9 @@ _bt_restore_meta(XLogReaderState *record, uint8 block_id)
 	pageop->btpo_flags = BTP_META;
 
 	/*
-	 * Set pd_lower just past the end of the metadata.  This is not essential
-	 * but it makes the page look compressible to xlog.c.
+	 * Set pd_lower just past the end of the metadata.  This is essential,
+	 * because without doing so, metadata will be lost if xlog.c compresses
+	 * the page.
 	 */
 	((PageHeader) metapg)->pd_lower =
 		((char *) md + sizeof(BTMetaPageData)) - (char *) metapg;
@@ -135,7 +136,7 @@ _bt_clear_incomplete_split(XLogReaderState *record, uint8 block_id)
 		Page		page = (Page) BufferGetPage(buf);
 		BTPageOpaque pageop = (BTPageOpaque) PageGetSpecialPointer(page);
 
-		Assert((pageop->btpo_flags & BTP_INCOMPLETE_SPLIT) != 0);
+		Assert(P_INCOMPLETE_SPLIT(pageop));
 		pageop->btpo_flags &= ~BTP_INCOMPLETE_SPLIT;
 
 		PageSetLSN(page, lsn);
@@ -598,7 +599,7 @@ btree_xlog_delete_get_latestRemovedXid(XLogReaderState *record)
 			UnlockReleaseBuffer(ibuffer);
 			return InvalidTransactionId;
 		}
-		LockBuffer(hbuffer, BUFFER_LOCK_SHARE);
+		LockBuffer(hbuffer, BT_READ);
 		hpage = (Page) BufferGetPage(hbuffer);
 
 		/*
@@ -1034,7 +1035,7 @@ btree_mask(char *pagedata, BlockNumber blkno)
 	Page		page = (Page) pagedata;
 	BTPageOpaque maskopaq;
 
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_page_hint_bits(page);
 	mask_unused_space(page);

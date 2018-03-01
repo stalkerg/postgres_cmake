@@ -3,7 +3,7 @@
  * explain.h
  *	  prototypes for explain.c
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * src/include/commands/explain.h
@@ -53,7 +53,8 @@ typedef void (*ExplainOneQuery_hook_type) (Query *query,
 										   IntoClause *into,
 										   ExplainState *es,
 										   const char *queryString,
-										   ParamListInfo params);
+										   ParamListInfo params,
+										   QueryEnvironment *queryEnv);
 extern PGDLLIMPORT ExplainOneQuery_hook_type ExplainOneQuery_hook;
 
 /* Hook for plugins to get control in explain_get_index_name() */
@@ -100,5 +101,10 @@ extern void ExplainPropertyFloat(const char *qlabel, double value, int ndigits,
 					 ExplainState *es);
 extern void ExplainPropertyBool(const char *qlabel, bool value,
 					ExplainState *es);
+
+extern void ExplainOpenGroup(const char *objtype, const char *labelname,
+				 bool labeled, ExplainState *es);
+extern void ExplainCloseGroup(const char *objtype, const char *labelname,
+				  bool labeled, ExplainState *es);
 
 #endif							/* EXPLAIN_H */

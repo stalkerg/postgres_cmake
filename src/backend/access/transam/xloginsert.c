@@ -9,7 +9,7 @@
  * of XLogRecData structs by a call to XLogRecordAssemble(). See
  * access/transam/README for details.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xloginsert.c
@@ -584,7 +584,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 		if (include_image)
 		{
 			Page		page = regbuf->page;
-			uint16		compressed_len;
+			uint16		compressed_len = 0;
 
 			/*
 			 * The page needs to be backed up, so calculate its hole length
@@ -797,8 +797,8 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 /*
  * Create a compressed version of a backup block image.
  *
- * Returns FALSE if compression fails (i.e., compressed result is actually
- * bigger than original). Otherwise, returns TRUE and sets 'dlen' to
+ * Returns false if compression fails (i.e., compressed result is actually
+ * bigger than original). Otherwise, returns true and sets 'dlen' to
  * the length of compressed block image.
  */
 static bool
@@ -965,7 +965,7 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
  * log_newpage_buffer instead.
  *
  * If the page follows the standard page layout, with a PageHeader and unused
- * space between pd_lower and pd_upper, set 'page_std' to TRUE. That allows
+ * space between pd_lower and pd_upper, set 'page_std' to true. That allows
  * the unused space to be left out from the WAL record, making it smaller.
  */
 XLogRecPtr
@@ -1002,7 +1002,7 @@ log_newpage(RelFileNode *rnode, ForkNumber forkNum, BlockNumber blkno,
  * function.  This function will set the page LSN.
  *
  * If the page follows the standard page layout, with a PageHeader and unused
- * space between pd_lower and pd_upper, set 'page_std' to TRUE. That allows
+ * space between pd_lower and pd_upper, set 'page_std' to true. That allows
  * the unused space to be left out from the WAL record, making it smaller.
  */
 XLogRecPtr

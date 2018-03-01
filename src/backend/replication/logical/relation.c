@@ -2,7 +2,7 @@
  * relation.c
  *	   PostgreSQL logical replication
  *
- * Copyright (c) 2016-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/relation.c
@@ -278,15 +278,16 @@ logicalrep_rel_open(LogicalRepRelId remoteid, LOCKMODE lockmode)
 		for (i = 0; i < desc->natts; i++)
 		{
 			int			attnum;
+			Form_pg_attribute attr = TupleDescAttr(desc, i);
 
-			if (desc->attrs[i]->attisdropped)
+			if (attr->attisdropped)
 			{
 				entry->attrmap[i] = -1;
 				continue;
 			}
 
 			attnum = logicalrep_rel_att_by_name(remoterel,
-												NameStr(desc->attrs[i]->attname));
+												NameStr(attr->attname));
 
 			entry->attrmap[i] = attnum;
 			if (attnum >= 0)
@@ -453,9 +454,8 @@ logicalrep_typmap_getid(Oid remoteid)
 	{
 		if (!get_typisdefined(remoteid))
 			ereport(ERROR,
-					(errmsg("builtin type %u not found", remoteid),
-					 errhint("This can be caused by having publisher with "
-							 "higher major version than subscriber")));
+					(errmsg("built-in type %u not found", remoteid),
+					 errhint("This can be caused by having a publisher with a higher PostgreSQL major version than the subscriber.")));
 		return remoteid;
 	}
 

@@ -3,7 +3,7 @@
  * pg_prewarm.c
  *		  prewarming utilities
  *
- * Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/pg_prewarm/pg_prewarm.c
@@ -107,7 +107,7 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	rel = relation_open(relOid, AccessShareLock);
 	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_CLASS, get_rel_name(relOid));
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind), get_rel_name(relOid));
 
 	/* Check that the fork exists. */
 	RelationOpenSmgr(rel);

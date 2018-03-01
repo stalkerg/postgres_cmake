@@ -5,7 +5,7 @@
  *	  commands.  At one time acted as an interface between the Lisp and C
  *	  systems.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,6 +23,7 @@
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_inherits_fn.h"
 #include "catalog/toasting.h"
 #include "commands/alter.h"
 #include "commands/async.h"
@@ -529,7 +530,8 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DoStmt:
-			ExecuteDoStmt((DoStmt *) parsetree);
+			ExecuteDoStmt((DoStmt *) parsetree,
+						  (context != PROCESS_UTILITY_TOPLEVEL || IsTransactionBlock()));
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -655,6 +657,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				/* Allowed names are restricted if you're not superuser */
 				load_file(stmt->filename, !superuser());
 			}
+			break;
+
+		case T_CallStmt:
+			ExecuteCallStmt(castNode(CallStmt, parsetree), params,
+							(context != PROCESS_UTILITY_TOPLEVEL || IsTransactionBlock()));
 			break;
 
 		case T_ClusterStmt:
@@ -823,7 +830,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				GrantStmt  *stmt = (GrantStmt *) parsetree;
 
-				if (EventTriggerSupportsGrantObjectType(stmt->objtype))
+				if (EventTriggerSupportsObjectType(stmt->objtype))
 					ProcessUtilitySlow(pstate, pstmt, queryString,
 									   context, params, queryEnv,
 									   dest, completionTag);
@@ -1296,6 +1303,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					IndexStmt  *stmt = (IndexStmt *) parsetree;
 					Oid			relid;
 					LOCKMODE	lockmode;
+					List	   *inheritors = NIL;
 
 					if (stmt->concurrent)
 						PreventTransactionChain(isTopLevel,
@@ -1318,6 +1326,23 @@ ProcessUtilitySlow(ParseState *pstate,
 												 RangeVarCallbackOwnsRelation,
 												 NULL);
 
+					/*
+					 * CREATE INDEX on partitioned tables (but not regular
+					 * inherited tables) recurses to partitions, so we must
+					 * acquire locks early to avoid deadlocks.
+					 */
+					if (stmt->relation->inh)
+					{
+						Relation	rel;
+
+						/* already locked by RangeVarGetRelidExtended */
+						rel = heap_open(relid, NoLock);
+						if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+							inheritors = find_all_inheritors(relid, lockmode,
+															 NULL);
+						heap_close(rel, NoLock);
+					}
+
 					/* Run parse analysis ... */
 					stmt = transformIndexStmt(relid, stmt, queryString);
 
@@ -1327,6 +1352,8 @@ ProcessUtilitySlow(ParseState *pstate,
 						DefineIndex(relid,	/* OID of heap relation */
 									stmt,
 									InvalidOid, /* no predefined OID */
+									InvalidOid, /* no parent index */
+									InvalidOid, /* no parent constraint */
 									false,	/* is_alter_table */
 									true,	/* check_rights */
 									true,	/* check_not_in_use */
@@ -1342,6 +1369,8 @@ ProcessUtilitySlow(ParseState *pstate,
 													 parsetree);
 					commandCollected = true;
 					EventTriggerAlterTableEnd();
+
+					list_free(inheritors);
 				}
 				break;
 
@@ -1412,7 +1441,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterEnumStmt:	/* ALTER TYPE (enum) */
-				address = AlterEnum((AlterEnumStmt *) parsetree);
+				address = AlterEnum((AlterEnumStmt *) parsetree, isTopLevel);
 				break;
 
 			case T_ViewStmt:	/* CREATE VIEW */
@@ -1957,8 +1986,14 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_POLICY:
 			tag = "ALTER POLICY";
 			break;
+		case OBJECT_PROCEDURE:
+			tag = "ALTER PROCEDURE";
+			break;
 		case OBJECT_ROLE:
 			tag = "ALTER ROLE";
+			break;
+		case OBJECT_ROUTINE:
+			tag = "ALTER ROUTINE";
 			break;
 		case OBJECT_RULE:
 			tag = "ALTER RULE";
@@ -2261,6 +2296,12 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_FUNCTION:
 					tag = "DROP FUNCTION";
 					break;
+				case OBJECT_PROCEDURE:
+					tag = "DROP PROCEDURE";
+					break;
+				case OBJECT_ROUTINE:
+					tag = "DROP ROUTINE";
+					break;
 				case OBJECT_AGGREGATE:
 					tag = "DROP AGGREGATE";
 					break;
@@ -2359,7 +2400,20 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_AlterFunctionStmt:
-			tag = "ALTER FUNCTION";
+			switch (((AlterFunctionStmt *) parsetree)->objtype)
+			{
+				case OBJECT_FUNCTION:
+					tag = "ALTER FUNCTION";
+					break;
+				case OBJECT_PROCEDURE:
+					tag = "ALTER PROCEDURE";
+					break;
+				case OBJECT_ROUTINE:
+					tag = "ALTER ROUTINE";
+					break;
+				default:
+					tag = "???";
+			}
 			break;
 
 		case T_GrantStmt:
@@ -2438,7 +2492,10 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_CreateFunctionStmt:
-			tag = "CREATE FUNCTION";
+			if (((CreateFunctionStmt *) parsetree)->is_procedure)
+				tag = "CREATE PROCEDURE";
+			else
+				tag = "CREATE FUNCTION";
 			break;
 
 		case T_IndexStmt:
@@ -2491,6 +2548,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_LoadStmt:
 			tag = "LOAD";
+			break;
+
+		case T_CallStmt:
+			tag = "CALL";
 			break;
 
 		case T_ClusterStmt:
@@ -3007,6 +3068,10 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_DDL;
 			break;
 
+		case T_AlterOperatorStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
 		case T_AlterTableMoveAllStmt:
 		case T_AlterTableStmt:
 			lev = LOGSTMT_DDL;
@@ -3109,6 +3174,10 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_LoadStmt:
+			lev = LOGSTMT_ALL;
+			break;
+
+		case T_CallStmt:
 			lev = LOGSTMT_ALL;
 			break;
 
@@ -3288,6 +3357,14 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_DropSubscriptionStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateStatsStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_AlterCollationStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

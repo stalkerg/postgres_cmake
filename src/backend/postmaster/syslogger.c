@@ -13,7 +13,7 @@
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
- * Copyright (c) 2004-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -173,7 +173,7 @@ SysLoggerMain(int argc, char *argv[])
 
 	am_syslogger = true;
 
-	init_ps_display("logger process", "", "", "");
+	init_ps_display("logger", "", "", "");
 
 	/*
 	 * If we restarted, our stderr is already redirected into our own input

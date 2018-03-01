@@ -4,7 +4,7 @@
  *	  postgres transaction system definitions
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xact.h
@@ -350,12 +350,14 @@ extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
 extern void BeginTransactionBlock(void);
 extern bool EndTransactionBlock(void);
-extern bool PrepareTransactionBlock(char *gid);
+extern bool PrepareTransactionBlock(const char *gid);
 extern void UserAbortTransactionBlock(void);
+extern void BeginImplicitTransactionBlock(void);
+extern void EndImplicitTransactionBlock(void);
 extern void ReleaseSavepoint(List *options);
-extern void DefineSavepoint(char *name);
+extern void DefineSavepoint(const char *name);
 extern void RollbackToSavepoint(List *options);
-extern void BeginInternalSubTransaction(char *name);
+extern void BeginInternalSubTransaction(const char *name);
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);

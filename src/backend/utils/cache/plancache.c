@@ -38,7 +38,7 @@
  * be infrequent enough that more-detailed tracking is not worth the effort.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -319,7 +319,7 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
  * parserSetup: alternate method for handling query parameters
  * parserSetupArg: data to pass to parserSetup
  * cursor_options: options bitmask to pass to planner
- * fixed_result: TRUE to disallow future changes in query's result tupdesc
+ * fixed_result: true to disallow future changes in query's result tupdesc
  */
 void
 CompleteCachedPlan(CachedPlanSource *plansource,

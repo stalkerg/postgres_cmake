@@ -3,7 +3,7 @@
  * to_tsany.c
  *		to_ts* function definitions
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -271,7 +271,7 @@ Datum
 jsonb_to_tsvector_byid(PG_FUNCTION_ARGS)
 {
 	Oid			cfgId = PG_GETARG_OID(0);
-	Jsonb	   *jb = PG_GETARG_JSONB(1);
+	Jsonb	   *jb = PG_GETARG_JSONB_P(1);
 	TSVector	result;
 	TSVectorBuildState state;
 	ParsedText	prs;
@@ -293,13 +293,13 @@ jsonb_to_tsvector_byid(PG_FUNCTION_ARGS)
 Datum
 jsonb_to_tsvector(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB(0);
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	Oid			cfgId;
 
 	cfgId = getTSCurrentConfig(true);
 	PG_RETURN_DATUM(DirectFunctionCall2(jsonb_to_tsvector_byid,
 										ObjectIdGetDatum(cfgId),
-										JsonbGetDatum(jb)));
+										JsonbPGetDatum(jb)));
 }
 
 Datum

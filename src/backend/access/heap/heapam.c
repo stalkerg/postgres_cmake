@@ -3,7 +3,7 @@
  * heapam.c
  *	  heap access method code
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1066,11 +1066,11 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 			 (*(isnull) = false),
 			 HeapTupleNoNulls(tup) ?
 			 (
-			  (tupleDesc)->attrs[(attnum) - 1]->attcacheoff >= 0 ?
+			  TupleDescAttr((tupleDesc), (attnum) - 1)->attcacheoff >= 0 ?
 			  (
-			   fetchatt((tupleDesc)->attrs[(attnum) - 1],
+			   fetchatt(TupleDescAttr((tupleDesc), (attnum) - 1),
 						(char *) (tup)->t_data + (tup)->t_data->t_hoff +
-						(tupleDesc)->attrs[(attnum) - 1]->attcacheoff)
+						TupleDescAttr((tupleDesc), (attnum) - 1)->attcacheoff)
 			   )
 			  :
 			  nocachegetattr((tup), (attnum), (tupleDesc))
@@ -1293,7 +1293,8 @@ heap_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	if (r->rd_rel->relkind == RELKIND_INDEX)
+	if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an index",
@@ -1321,7 +1322,8 @@ heap_openrv(const RangeVar *relation, LOCKMODE lockmode)
 
 	r = relation_openrv(relation, lockmode);
 
-	if (r->rd_rel->relkind == RELKIND_INDEX)
+	if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an index",
@@ -1353,7 +1355,8 @@ heap_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
 
 	if (r)
 	{
-		if (r->rd_rel->relkind == RELKIND_INDEX)
+		if (r->rd_rel->relkind == RELKIND_INDEX ||
+			r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is an index",
@@ -1379,7 +1382,7 @@ heap_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
  * heap_beginscan_strat offers an extended API that lets the caller control
  * whether a nondefault buffer access strategy can be used, and whether
  * syncscan can be chosen (possibly resulting in the scan not starting from
- * block zero).  Both of these default to TRUE with plain heap_beginscan.
+ * block zero).  Both of these default to true with plain heap_beginscan.
  *
  * heap_beginscan_bm is an alternative entry point for setting up a
  * HeapScanDesc for a bitmap heap scan.  Although that scan technology is
@@ -1531,21 +1534,6 @@ heap_rescan(HeapScanDesc scan,
 	 * reinitialize scan descriptor
 	 */
 	initscan(scan, key, true);
-
-	/*
-	 * reset parallel scan, if present
-	 */
-	if (scan->rs_parallel != NULL)
-	{
-		ParallelHeapScanDesc parallel_scan;
-
-		/*
-		 * Caller is responsible for making sure that all workers have
-		 * finished the scan before calling this.
-		 */
-		parallel_scan = scan->rs_parallel;
-		pg_atomic_write_u64(&parallel_scan->phs_nallocated, 0);
-	}
 }
 
 /* ----------------
@@ -1639,7 +1627,29 @@ heap_parallelscan_initialize(ParallelHeapScanDesc target, Relation relation,
 	SpinLockInit(&target->phs_mutex);
 	target->phs_startblock = InvalidBlockNumber;
 	pg_atomic_init_u64(&target->phs_nallocated, 0);
-	SerializeSnapshot(snapshot, target->phs_snapshot_data);
+	if (IsMVCCSnapshot(snapshot))
+	{
+		SerializeSnapshot(snapshot, target->phs_snapshot_data);
+		target->phs_snapshot_any = false;
+	}
+	else
+	{
+		Assert(snapshot == SnapshotAny);
+		target->phs_snapshot_any = true;
+	}
+}
+
+/* ----------------
+ *		heap_parallelscan_reinitialize - reset a parallel scan
+ *
+ *		Call this in the leader process.  Caller is responsible for
+ *		making sure that all workers have finished the scan beforehand.
+ * ----------------
+ */
+void
+heap_parallelscan_reinitialize(ParallelHeapScanDesc parallel_scan)
+{
+	pg_atomic_write_u64(&parallel_scan->phs_nallocated, 0);
 }
 
 /* ----------------
@@ -1654,11 +1664,22 @@ heap_beginscan_parallel(Relation relation, ParallelHeapScanDesc parallel_scan)
 	Snapshot	snapshot;
 
 	Assert(RelationGetRelid(relation) == parallel_scan->phs_relid);
-	snapshot = RestoreSnapshot(parallel_scan->phs_snapshot_data);
-	RegisterSnapshot(snapshot);
+
+	if (!parallel_scan->phs_snapshot_any)
+	{
+		/* Snapshot was serialized -- restore it */
+		snapshot = RestoreSnapshot(parallel_scan->phs_snapshot_data);
+		RegisterSnapshot(snapshot);
+	}
+	else
+	{
+		/* SnapshotAny passed by caller (not serialized) */
+		snapshot = SnapshotAny;
+	}
 
 	return heap_beginscan_internal(relation, snapshot, 0, NULL, parallel_scan,
-								   true, true, true, false, false, true);
+								   true, true, true, false, false,
+								   !parallel_scan->phs_snapshot_any);
 }
 
 /* ----------------
@@ -1844,16 +1865,16 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
  * against the specified snapshot.
  *
  * If successful (tuple found and passes snapshot time qual), then *userbuf
- * is set to the buffer holding the tuple and TRUE is returned.  The caller
+ * is set to the buffer holding the tuple and true is returned.  The caller
  * must unpin the buffer when done with the tuple.
  *
  * If the tuple is not found (ie, item number references a deleted slot),
- * then tuple->t_data is set to NULL and FALSE is returned.
+ * then tuple->t_data is set to NULL and false is returned.
  *
- * If the tuple is found but fails the time qual check, then FALSE is returned
+ * If the tuple is found but fails the time qual check, then false is returned
  * but tuple->t_data is left pointing to the tuple.
  *
- * keep_buf determines what is done with the buffer in the FALSE-result cases.
+ * keep_buf determines what is done with the buffer in the false-result cases.
  * When the caller specifies keep_buf = true, we retain the pin on the buffer
  * and return it in *userbuf (so the caller must eventually unpin it); when
  * keep_buf = false, the pin is released and *userbuf is set to InvalidBuffer.
@@ -1995,15 +2016,15 @@ heap_fetch(Relation relation,
  * of a HOT chain), and buffer is the buffer holding this tuple.  We search
  * for the first chain member satisfying the given snapshot.  If one is
  * found, we update *tid to reference that tuple's offset number, and
- * return TRUE.  If no match, return FALSE without modifying *tid.
+ * return true.  If no match, return false without modifying *tid.
  *
  * heapTuple is a caller-supplied buffer.  When a match is found, we return
  * the tuple here, in addition to updating *tid.  If no match is found, the
  * contents of this buffer on return are undefined.
  *
  * If all_dead is not NULL, we check non-visible tuples to see if they are
- * globally dead; *all_dead is set TRUE if all members of the HOT chain
- * are vacuumable, FALSE if not.
+ * globally dead; *all_dead is set true if all members of the HOT chain
+ * are vacuumable, false if not.
  *
  * Unlike heap_fetch, the caller must already have pin and (at least) share
  * lock on the buffer; it is still pinned/locked at exit.  Also unlike
@@ -2120,6 +2141,9 @@ heap_hot_search_buffer(ItemPointer tid, Relation relation, Buffer buffer,
 		 * If we can't see it, maybe no one else can either.  At caller
 		 * request, check whether all chain members are dead to all
 		 * transactions.
+		 *
+		 * Note: if you change the criterion here for what is "dead", fix the
+		 * planner's get_actual_variable_range() function to match.
 		 */
 		if (all_dead && *all_dead &&
 			!HeapTupleIsSurelyDead(heapTuple, RecentGlobalXmin))
@@ -2597,15 +2621,17 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 					CommandId cid, int options)
 {
 	/*
-	 * For now, parallel operations are required to be strictly read-only.
-	 * Unlike heap_update() and heap_delete(), an insert should never create a
-	 * combo CID, so it might be possible to relax this restriction, but not
-	 * without more thought and testing.
+	 * Parallel operations are required to be strictly read-only in a parallel
+	 * worker.  Parallel inserts are not safe even in the leader in the
+	 * general case, because group locking means that heavyweight locks for
+	 * relation extension or GIN page locks will not conflict between members
+	 * of a lock group, but we don't prohibit that case here because there are
+	 * useful special cases that we can safely allow, such as CREATE TABLE AS.
 	 */
-	if (IsInParallelMode())
+	if (IsParallelWorker())
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
-				 errmsg("cannot insert tuples during a parallel operation")));
+				 errmsg("cannot insert tuples in a parallel worker")));
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -4422,7 +4448,7 @@ heap_tuple_attr_equals(TupleDesc tupdesc, int attrnum,
 	else
 	{
 		Assert(attrnum <= tupdesc->natts);
-		att = tupdesc->attrs[attrnum - 1];
+		att = TupleDescAttr(tupdesc, attrnum - 1);
 		return datumIsEqual(value1, value2, att->attbyval, att->attlen);
 	}
 }
@@ -6354,6 +6380,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
  */
 static TransactionId
 FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
+				  TransactionId relfrozenxid, TransactionId relminmxid,
 				  TransactionId cutoff_xid, MultiXactId cutoff_multi,
 				  uint16 *flags)
 {
@@ -6380,16 +6407,26 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
 		*flags |= FRM_INVALIDATE_XMAX;
 		return InvalidTransactionId;
 	}
+	else if (MultiXactIdPrecedes(multi, relminmxid))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg_internal("found multixact %u from before relminmxid %u",
+								 multi, relminmxid)));
 	else if (MultiXactIdPrecedes(multi, cutoff_multi))
 	{
 		/*
-		 * This old multi cannot possibly have members still running.  If it
-		 * was a locker only, it can be removed without any further
-		 * consideration; but if it contained an update, we might need to
-		 * preserve it.
+		 * This old multi cannot possibly have members still running, but
+		 * verify just in case.  If it was a locker only, it can be removed
+		 * without any further consideration; but if it contained an update, we
+		 * might need to preserve it.
 		 */
-		Assert(!MultiXactIdIsRunning(multi,
-									 HEAP_XMAX_IS_LOCKED_ONLY(t_infomask)));
+		if (MultiXactIdIsRunning(multi,
+								 HEAP_XMAX_IS_LOCKED_ONLY(t_infomask)))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("multixact %u from before cutoff %u found to be still running",
+									 multi, cutoff_multi)));
+
 		if (HEAP_XMAX_IS_LOCKED_ONLY(t_infomask))
 		{
 			*flags |= FRM_INVALIDATE_XMAX;
@@ -6403,13 +6440,22 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
 			/* wasn't only a lock, xid needs to be valid */
 			Assert(TransactionIdIsValid(xid));
 
+			if (TransactionIdPrecedes(xid, relfrozenxid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("found update xid %u from before relfrozenxid %u",
+										 xid, relfrozenxid)));
+
 			/*
 			 * If the xid is older than the cutoff, it has to have aborted,
 			 * otherwise the tuple would have gotten pruned away.
 			 */
 			if (TransactionIdPrecedes(xid, cutoff_xid))
 			{
-				Assert(!TransactionIdDidCommit(xid));
+				if (TransactionIdDidCommit(xid))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATA_CORRUPTED),
+							 errmsg_internal("cannot freeze committed update xid %u", xid)));
 				*flags |= FRM_INVALIDATE_XMAX;
 				xid = InvalidTransactionId; /* not strictly necessary */
 			}
@@ -6481,6 +6527,13 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
 		{
 			TransactionId xid = members[i].xid;
 
+			Assert(TransactionIdIsValid(xid));
+			if (TransactionIdPrecedes(xid, relfrozenxid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("found update xid %u from before relfrozenxid %u",
+										 xid, relfrozenxid)));
+
 			/*
 			 * It's an update; should we keep it?  If the transaction is known
 			 * aborted or crashed then it's okay to ignore it, otherwise not.
@@ -6509,18 +6562,26 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
 				update_committed = true;
 				update_xid = xid;
 			}
-
-			/*
-			 * Not in progress, not committed -- must be aborted or crashed;
-			 * we can ignore it.
-			 */
+			else
+			{
+				/*
+				 * Not in progress, not committed -- must be aborted or crashed;
+				 * we can ignore it.
+				 */
+			}
 
 			/*
 			 * Since the tuple wasn't marked HEAPTUPLE_DEAD by vacuum, the
-			 * update Xid cannot possibly be older than the xid cutoff.
+			 * update Xid cannot possibly be older than the xid cutoff. The
+			 * presence of such a tuple would cause corruption, so be paranoid
+			 * and check.
 			 */
-			Assert(!TransactionIdIsValid(update_xid) ||
-				   !TransactionIdPrecedes(update_xid, cutoff_xid));
+			if (TransactionIdIsValid(update_xid) &&
+				TransactionIdPrecedes(update_xid, cutoff_xid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("found update xid %u from before xid cutoff %u",
+										 update_xid, cutoff_xid)));
 
 			/*
 			 * If we determined that it's an Xid corresponding to an update
@@ -6591,7 +6652,7 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
  * Check to see whether any of the XID fields of a tuple (xmin, xmax, xvac)
  * are older than the specified cutoff XID and cutoff MultiXactId.  If so,
  * setup enough state (in the *frz output argument) to later execute and
- * WAL-log what we would need to do, and return TRUE.  Return FALSE if nothing
+ * WAL-log what we would need to do, and return true.  Return false if nothing
  * is to be changed.  In addition, set *totally_frozen_p to true if the tuple
  * will be totally frozen after these operations are performed and false if
  * more freezing will eventually be required.
@@ -6617,8 +6678,9 @@ FreezeMultiXactId(MultiXactId multi, uint16 t_infomask,
  * recovery.  We really need to remove old xids.
  */
 bool
-heap_prepare_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
-						  TransactionId cutoff_multi,
+heap_prepare_freeze_tuple(HeapTupleHeader tuple,
+						  TransactionId relfrozenxid, TransactionId relminmxid,
+						  TransactionId cutoff_xid, TransactionId cutoff_multi,
 						  xl_heap_freeze_tuple *frz, bool *totally_frozen_p)
 {
 	bool		changed = false;
@@ -6635,8 +6697,20 @@ heap_prepare_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 	xid = HeapTupleHeaderGetXmin(tuple);
 	if (TransactionIdIsNormal(xid))
 	{
+		if (TransactionIdPrecedes(xid, relfrozenxid))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("found xmin %u from before relfrozenxid %u",
+									 xid, relfrozenxid)));
+
 		if (TransactionIdPrecedes(xid, cutoff_xid))
 		{
+			if (!TransactionIdDidCommit(xid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("uncommitted xmin %u from before xid cutoff %u needs to be frozen",
+										 xid, cutoff_xid)));
+
 			frz->t_infomask |= HEAP_XMIN_FROZEN;
 			changed = true;
 		}
@@ -6661,6 +6735,7 @@ heap_prepare_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 		uint16		flags;
 
 		newxmax = FreezeMultiXactId(xid, tuple->t_infomask,
+									relfrozenxid, relminmxid,
 									cutoff_xid, cutoff_multi, &flags);
 
 		if (flags & FRM_INVALIDATE_XMAX)
@@ -6710,8 +6785,28 @@ heap_prepare_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 	}
 	else if (TransactionIdIsNormal(xid))
 	{
+		if (TransactionIdPrecedes(xid, relfrozenxid))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("found xmax %u from before relfrozenxid %u",
+									 xid, relfrozenxid)));
+
 		if (TransactionIdPrecedes(xid, cutoff_xid))
+		{
+			/*
+			 * If we freeze xmax, make absolutely sure that it's not an XID
+			 * that is important.  (Note, a lock-only xmax can be removed
+			 * independent of committedness, since a committed lock holder has
+			 * released the lock).
+			 */
+			if (!(tuple->t_infomask & HEAP_XMAX_LOCK_ONLY) &&
+				TransactionIdDidCommit(xid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("cannot freeze committed xmax %u",
+										 xid)));
 			freeze_xmax = true;
+		}
 		else
 			totally_frozen = false;
 	}
@@ -6816,14 +6911,17 @@ heap_execute_freeze_tuple(HeapTupleHeader tuple, xl_heap_freeze_tuple *frz)
  * Useful for callers like CLUSTER that perform their own WAL logging.
  */
 bool
-heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
-				  TransactionId cutoff_multi)
+heap_freeze_tuple(HeapTupleHeader tuple,
+				  TransactionId relfrozenxid, TransactionId relminmxid,
+				  TransactionId cutoff_xid, TransactionId cutoff_multi)
 {
 	xl_heap_freeze_tuple frz;
 	bool		do_freeze;
 	bool		tuple_totally_frozen;
 
-	do_freeze = heap_prepare_freeze_tuple(tuple, cutoff_xid, cutoff_multi,
+	do_freeze = heap_prepare_freeze_tuple(tuple,
+										  relfrozenxid, relminmxid,
+										  cutoff_xid, cutoff_multi,
 										  &frz, &tuple_totally_frozen);
 
 	/*
@@ -7239,7 +7337,7 @@ heap_tuple_needs_eventual_freeze(HeapTupleHeader tuple)
  * heap_tuple_needs_freeze
  *
  * Check to see whether any of the XID fields of a tuple (xmin, xmax, xvac)
- * are older than the specified cutoff XID or MultiXactId.  If so, return TRUE.
+ * are older than the specified cutoff XID or MultiXactId.  If so, return true.
  *
  * It doesn't matter whether the tuple is alive or dead, we are checking
  * to see if a tuple needs to be removed or frozen to avoid wraparound.
@@ -9165,7 +9263,7 @@ heap_mask(char *pagedata, BlockNumber blkno)
 	Page		page = (Page) pagedata;
 	OffsetNumber off;
 
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_page_hint_bits(page);
 	mask_unused_space(page);

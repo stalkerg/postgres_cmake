@@ -4,7 +4,7 @@
  *		Local info about tables that come from the publisher of a
  *		subscription (pg_subscription_rel).
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * -------------------------------------------------------------------------
@@ -23,15 +23,12 @@
  */
 #define SubscriptionRelRelationId			6102
 
-/* Workaround for genbki not knowing about XLogRecPtr */
-#define pg_lsn XLogRecPtr
-
 CATALOG(pg_subscription_rel,6102) BKI_WITHOUT_OIDS
 {
 	Oid			srsubid;		/* Oid of subscription */
 	Oid			srrelid;		/* Oid of relation */
 	char		srsubstate;		/* state of the relation in subscription */
-	pg_lsn		srsublsn;		/* remote lsn of the state change used for
+	XLogRecPtr	srsublsn;		/* remote lsn of the state change used for
 								 * synchronization coordination */
 } FormData_pg_subscription_rel;
 

@@ -3,7 +3,7 @@
  * policy.c
  *	  Commands for manipulating policies.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/commands/policy.c
@@ -78,7 +78,7 @@ RangeVarCallbackForPolicy(const RangeVar *rv, Oid relid, Oid oldrelid,
 
 	/* Must own relation. */
 	if (!pg_class_ownercheck(relid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, rv->relname);
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 
 	/* No system table modifications unless explicitly allowed. */
 	if (!allowSystemTableMods && IsSystemClass(relid, classform))

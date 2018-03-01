@@ -3,7 +3,7 @@
  * proclang.c
  *	  PostgreSQL PROCEDURAL LANGUAGE support code.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -97,7 +97,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 						 errmsg("must be superuser to create procedural language \"%s\"",
 								stmt->plname)));
 			if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
-				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+				aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 							   get_database_name(MyDatabaseId));
 		}
 
@@ -366,7 +366,7 @@ create_proc_lang(const char *languageName, bool replace,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("language \"%s\" already exists", languageName)));
 		if (!pg_language_ownercheck(HeapTupleGetOid(oldtup), languageOwner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_LANGUAGE,
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_LANGUAGE,
 						   languageName);
 
 		/*
@@ -513,7 +513,7 @@ find_language_template(const char *languageName)
 
 
 /*
- * This just returns TRUE if we have a valid template for a given language
+ * This just returns true if we have a valid template for a given language
  */
 bool
 PLTemplateExists(const char *languageName)

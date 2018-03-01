@@ -4,7 +4,7 @@
  *	  insert routines for the postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -185,7 +185,7 @@ ginEntryInsert(GinState *ginstate,
 	IndexTuple	itup;
 	Page		page;
 
-	insertdata.isDelete = FALSE;
+	insertdata.isDelete = false;
 
 	/* During index build, count the to-be-inserted entry */
 	if (buildStats)
@@ -221,7 +221,7 @@ ginEntryInsert(GinState *ginstate,
 		itup = addItemPointersToLeafTuple(ginstate, itup,
 										  items, nitem, buildStats);
 
-		insertdata.isDelete = TRUE;
+		insertdata.isDelete = true;
 	}
 	else
 	{
@@ -348,7 +348,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 		Page		page;
 
 		XLogBeginInsert();
-		XLogRegisterBuffer(0, MetaBuffer, REGBUF_WILL_INIT);
+		XLogRegisterBuffer(0, MetaBuffer, REGBUF_WILL_INIT | REGBUF_STANDARD);
 		XLogRegisterBuffer(1, RootBuffer, REGBUF_WILL_INIT);
 
 		recptr = XLogInsert(RM_GIN_ID, XLOG_GIN_CREATE_INDEX);
@@ -391,7 +391,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * prefers to receive tuples in TID order.
 	 */
 	reltuples = IndexBuildHeapScan(heap, index, indexInfo, false,
-								   ginBuildCallback, (void *) &buildstate);
+								   ginBuildCallback, (void *) &buildstate, NULL);
 
 	/* dump remaining entries to the index */
 	oldCtx = MemoryContextSwitchTo(buildstate.tmpCtx);
@@ -447,7 +447,7 @@ ginbuildempty(Relation index)
 	START_CRIT_SECTION();
 	GinInitMetabuffer(MetaBuffer);
 	MarkBufferDirty(MetaBuffer);
-	log_newpage_buffer(MetaBuffer, false);
+	log_newpage_buffer(MetaBuffer, true);
 	GinInitBuffer(RootBuffer, GIN_LEAF);
 	MarkBufferDirty(RootBuffer);
 	log_newpage_buffer(RootBuffer, false);

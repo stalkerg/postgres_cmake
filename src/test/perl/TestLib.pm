@@ -26,6 +26,7 @@ our @EXPORT = qw(
   slurp_dir
   slurp_file
   append_to_file
+  check_pg_config
   system_or_bail
   system_log
   run_log
@@ -39,6 +40,7 @@ our @EXPORT = qw(
   command_like
   command_like_safe
   command_fails_like
+  command_checks_all
 
   $windows_os
 );
@@ -65,7 +67,7 @@ BEGIN
 	delete $ENV{PGPORT};
 	delete $ENV{PGHOST};
 
-	$ENV{PGAPPNAME} = $0;
+	$ENV{PGAPPNAME} = basename($0);
 
 	# Must be set early
 	$windows_os = $Config{osname} eq 'MSWin32' || $Config{osname} eq 'msys';
@@ -73,6 +75,10 @@ BEGIN
 
 INIT
 {
+
+	# Return EPIPE instead of killing the process with SIGPIPE.  An affected
+	# test may still fail, but it's more likely to report useful facts.
+	$SIG{PIPE} = 'IGNORE';
 
 	# Determine output directories, and create them.  The base path is the
 	# TESTDIR environment variable, which is normally set by the invoking
@@ -216,6 +222,24 @@ sub append_to_file
 	close $fh;
 }
 
+# Check presence of a given regexp within pg_config.h for the installation
+# where tests are running, returning a match status result depending on
+# that.
+sub check_pg_config
+{
+	my ($regexp) = @_;
+	my ($stdout, $stderr);
+	my $result = IPC::Run::run [ 'pg_config', '--includedir' ], '>',
+	  \$stdout, '2>', \$stderr
+	  or die "could not execute pg_config";
+	chomp($stdout);
+
+	open my $pg_config_h, '<', "$stdout/pg_config.h" or die "$!";
+	my $match = (grep {/^$regexp/} <$pg_config_h>);
+	close $pg_config_h;
+	return $match;
+}
+
 #
 # Test functions
 #
@@ -328,6 +352,45 @@ sub command_fails_like
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
 	ok(!$result, "$test_name: exit code not 0");
 	like($stderr, $expected_stderr, "$test_name: matches");
+}
+
+# Run a command and check its status and outputs.
+# The 5 arguments are:
+# - cmd: ref to list for command, options and arguments to run
+# - ret: expected exit status
+# - out: ref to list of re to be checked against stdout (all must match)
+# - err: ref to list of re to be checked against stderr (all must match)
+# - test_name: name of test
+sub command_checks_all
+{
+	my ($cmd, $expected_ret, $out, $err, $test_name) = @_;
+
+	# run command
+	my ($stdout, $stderr);
+	print("# Running: " . join(" ", @{$cmd}) . "\n");
+	IPC::Run::run($cmd, '>', \$stdout, '2>', \$stderr);
+
+	# See http://perldoc.perl.org/perlvar.html#%24CHILD_ERROR
+	my $ret = $?;
+	die "command exited with signal " . ($ret & 127)
+	  if $ret & 127;
+	$ret = $ret >> 8;
+
+	# check status
+	ok($ret == $expected_ret,
+		"$test_name status (got $ret vs expected $expected_ret)");
+
+	# check stdout
+	for my $re (@$out)
+	{
+		like($stdout, $re, "$test_name stdout /$re/");
+	}
+
+	# check stderr
+	for my $re (@$err)
+	{
+		like($stderr, $re, "$test_name stderr /$re/");
+	}
 }
 
 1;

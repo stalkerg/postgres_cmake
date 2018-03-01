@@ -3,7 +3,7 @@
  * statscmds.c
  *	  Commands for creating and altering extended statistics objects
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -141,7 +141,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 
 		/* You must own the relation to create stats on it */
 		if (!pg_class_ownercheck(RelationGetRelid(rel), stxowner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+			aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
 	}
 
@@ -180,7 +180,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 		if (!HeapTupleIsValid(atttuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" referenced in statistics does not exist",
+					 errmsg("column \"%s\" does not exist",
 							attname)));
 		attForm = (Form_pg_attribute) GETSTRUCT(atttuple);
 
@@ -195,8 +195,8 @@ CreateStatistics(CreateStatsStmt *stmt)
 		if (type->lt_opr == InvalidOid)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("column \"%s\" cannot be used in statistics because its type has no default btree operator class",
-							attname)));
+					 errmsg("column \"%s\" cannot be used in statistics because its type %s has no default btree operator class",
+							attname, format_type_be(attForm->atttypid))));
 
 		/* Make sure no more than STATS_MAX_DIMENSIONS columns are used */
 		if (numcols >= STATS_MAX_DIMENSIONS)
@@ -242,7 +242,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 	stxkeys = buildint2vector(attnums, numcols);
 
 	/*
-	 * Parse the statistics types.
+	 * Parse the statistics kinds.
 	 */
 	build_ndistinct = false;
 	build_dependencies = false;
@@ -263,7 +263,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("unrecognized statistic type \"%s\"",
+					 errmsg("unrecognized statistics kind \"%s\"",
 							type)));
 	}
 	/* If no statistic type was specified, build them all. */

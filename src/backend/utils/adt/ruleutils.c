@@ -4,7 +4,7 @@
  *	  Functions to convert stored expressions/querytrees back to
  *	  source text
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -86,15 +86,17 @@
 #define PRETTYINDENT_LIMIT		40	/* wrap limit */
 
 /* Pretty flags */
-#define PRETTYFLAG_PAREN		1
-#define PRETTYFLAG_INDENT		2
+#define PRETTYFLAG_PAREN		0x0001
+#define PRETTYFLAG_INDENT		0x0002
+#define PRETTYFLAG_SCHEMA		0x0004
 
 /* Default line length for pretty-print wrapping: 0 means wrap always */
 #define WRAP_COLUMN_DEFAULT		0
 
-/* macro to test if pretty action needed */
+/* macros to test if pretty action needed */
 #define PRETTY_PAREN(context)	((context)->prettyFlags & PRETTYFLAG_PAREN)
 #define PRETTY_INDENT(context)	((context)->prettyFlags & PRETTYFLAG_INDENT)
+#define PRETTY_SCHEMA(context)	((context)->prettyFlags & PRETTYFLAG_SCHEMA)
 
 
 /* ----------
@@ -112,7 +114,7 @@ typedef struct
 	int			prettyFlags;	/* enabling of pretty-print functions */
 	int			wrapColumn;		/* max line length, or -1 for no limit */
 	int			indentLevel;	/* current indent level for prettyprint */
-	bool		varprefix;		/* TRUE to print prefixes on Vars */
+	bool		varprefix;		/* true to print prefixes on Vars */
 	ParseExprKind special_exprkind; /* set only for exprkinds needing special
 									 * handling */
 } deparse_context;
@@ -130,7 +132,7 @@ typedef struct
  * rtable_columns holds the column alias names to be used for each RTE.
  *
  * In some cases we need to make names of merged JOIN USING columns unique
- * across the whole query, not only per-RTE.  If so, unique_using is TRUE
+ * across the whole query, not only per-RTE.  If so, unique_using is true
  * and using_names is a list of C strings representing names already assigned
  * to USING columns.
  *
@@ -317,7 +319,7 @@ static void decompile_column_index_array(Datum column_index_array, Oid relId,
 static char *pg_get_ruledef_worker(Oid ruleoid, int prettyFlags);
 static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   const Oid *excludeOps,
-					   bool attrsOnly, bool showTblSpc,
+					   bool attrsOnly, bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok);
 static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
@@ -343,7 +345,7 @@ static void set_relation_column_names(deparse_namespace *dpns,
 						  deparse_columns *colinfo);
 static void set_join_column_names(deparse_namespace *dpns, RangeTblEntry *rte,
 					  deparse_columns *colinfo);
-static bool colname_is_unique(char *colname, deparse_namespace *dpns,
+static bool colname_is_unique(const char *colname, deparse_namespace *dpns,
 				  deparse_columns *colinfo);
 static char *make_colname_unique(char *colname, deparse_namespace *dpns,
 					deparse_columns *colinfo);
@@ -460,6 +462,7 @@ static char *generate_function_name(Oid funcid, int nargs,
 					   bool has_variadic, bool *use_variadic_p,
 					   ParseExprKind special_exprkind);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
+static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 
@@ -498,7 +501,7 @@ pg_get_ruledef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	res = pg_get_ruledef_worker(ruleoid, prettyFlags);
 
@@ -619,7 +622,7 @@ pg_get_viewdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	res = pg_get_viewdef_worker(viewoid, prettyFlags, WRAP_COLUMN_DEFAULT);
 
@@ -639,7 +642,7 @@ pg_get_viewdef_wrap(PG_FUNCTION_ARGS)
 	char	   *res;
 
 	/* calling this implies we want pretty printing */
-	prettyFlags = PRETTYFLAG_PAREN | PRETTYFLAG_INDENT;
+	prettyFlags = PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA;
 
 	res = pg_get_viewdef_worker(viewoid, prettyFlags, wrap);
 
@@ -685,7 +688,7 @@ pg_get_viewdef_name_ext(PG_FUNCTION_ARGS)
 	Oid			viewoid;
 	char	   *res;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	/* Look up view name.  Can't lock it - we might not have privileges. */
 	viewrel = makeRangeVarFromNameList(textToQualifiedNameList(viewname));
@@ -907,8 +910,8 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 
 				if (i > 0)
 					appendStringInfoString(&buf, ", ");
-				attname = get_relid_attribute_name(trigrec->tgrelid,
-												   trigrec->tgattr.values[i]);
+				attname = get_attname(trigrec->tgrelid,
+									  trigrec->tgattr.values[i], false);
 				appendStringInfoString(&buf, quote_identifier(attname));
 			}
 		}
@@ -921,8 +924,15 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 			appendStringInfoString(&buf, " TRUNCATE");
 		findx++;
 	}
+
+	/*
+	 * In non-pretty mode, always schema-qualify the target table name for
+	 * safety.  In pretty mode, schema-qualify only if not visible.
+	 */
 	appendStringInfo(&buf, " ON %s ",
-					 generate_relation_name(trigrec->tgrelid, NIL));
+					 pretty ?
+					 generate_relation_name(trigrec->tgrelid, NIL) :
+					 generate_qualified_relation_name(trigrec->tgrelid));
 
 	if (OidIsValid(trigrec->tgconstraint))
 	{
@@ -1016,7 +1026,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 		context.windowClause = NIL;
 		context.windowTList = NIL;
 		context.varprefix = true;
-		context.prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+		context.prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 		context.wrapColumn = WRAP_COLUMN_DEFAULT;
 		context.indentLevel = PRETTYINDENT_STD;
 		context.special_exprkind = EXPR_KIND_NONE;
@@ -1085,7 +1095,7 @@ pg_get_indexdef(PG_FUNCTION_ARGS)
 
 	prettyFlags = PRETTYFLAG_INDENT;
 
-	res = pg_get_indexdef_worker(indexrelid, 0, NULL, false, false,
+	res = pg_get_indexdef_worker(indexrelid, 0, NULL, false, false, false,
 								 prettyFlags, true);
 
 	if (res == NULL)
@@ -1103,10 +1113,10 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	res = pg_get_indexdef_worker(indexrelid, colno, NULL, colno != 0, false,
-								 prettyFlags, true);
+								 false, prettyFlags, true);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1122,7 +1132,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 char *
 pg_get_indexdef_string(Oid indexrelid)
 {
-	return pg_get_indexdef_worker(indexrelid, 0, NULL, false, true, 0, false);
+	return pg_get_indexdef_worker(indexrelid, 0, NULL, false, true, true, 0, false);
 }
 
 /* Internal version that just reports the column definitions */
@@ -1131,8 +1141,9 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 {
 	int			prettyFlags;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
-	return pg_get_indexdef_worker(indexrelid, 0, NULL, true, false,
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+
+	return pg_get_indexdef_worker(indexrelid, 0, NULL, true, false, false,
 								  prettyFlags, false);
 }
 
@@ -1145,7 +1156,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 static char *
 pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   const Oid *excludeOps,
-					   bool attrsOnly, bool showTblSpc,
+					   bool attrsOnly, bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok)
 {
 	/* might want a separate isConstraint parameter later */
@@ -1258,10 +1269,14 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 	if (!attrsOnly)
 	{
 		if (!isConstraint)
-			appendStringInfo(&buf, "CREATE %sINDEX %s ON %s USING %s (",
+			appendStringInfo(&buf, "CREATE %sINDEX %s ON %s%s USING %s (",
 							 idxrec->indisunique ? "UNIQUE " : "",
 							 quote_identifier(NameStr(idxrelrec->relname)),
-							 generate_relation_name(indrelid, NIL),
+							 idxrelrec->relkind == RELKIND_PARTITIONED_INDEX
+							 && !inherits ? "ONLY " : "",
+							 (prettyFlags & PRETTYFLAG_SCHEMA) ?
+							 generate_relation_name(indrelid, NIL) :
+							 generate_qualified_relation_name(indrelid),
 							 quote_identifier(NameStr(amrec->amname)));
 		else					/* currently, must be EXCLUDE constraint */
 			appendStringInfo(&buf, "EXCLUDE USING %s (",
@@ -1289,7 +1304,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			char	   *attname;
 			int32		keycoltypmod;
 
-			attname = get_relid_attribute_name(indrelid, attnum);
+			attname = get_attname(indrelid, attnum, false);
 			if (!colno || colno == keyno + 1)
 				appendStringInfoString(&buf, quote_identifier(attname));
 			get_atttypetypmodcoll(indrelid, attnum,
@@ -1532,7 +1547,7 @@ pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
 		if (colno > 0)
 			appendStringInfoString(&buf, ", ");
 
-		attname = get_relid_attribute_name(statextrec->stxrelid, attnum);
+		attname = get_attname(statextrec->stxrelid, attnum, false);
 
 		appendStringInfoString(&buf, quote_identifier(attname));
 	}
@@ -1550,7 +1565,7 @@ pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
  *
  * Returns the partition key specification, ie, the following:
  *
- * PARTITION BY { RANGE | LIST } (column opt_collation opt_opclass [, ...])
+ * PARTITION BY { RANGE | LIST | HASH } (column opt_collation opt_opclass [, ...])
  */
 Datum
 pg_get_partkeydef(PG_FUNCTION_ARGS)
@@ -1572,7 +1587,8 @@ pg_get_partkeydef_columns(Oid relid, bool pretty)
 {
 	int			prettyFlags;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+
 	return pg_get_partkeydef_worker(relid, prettyFlags, true, false);
 }
 
@@ -1654,6 +1670,10 @@ pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 
 	switch (form->partstrat)
 	{
+		case PARTITION_STRATEGY_HASH:
+			if (!attrsOnly)
+				appendStringInfo(&buf, "HASH");
+			break;
 		case PARTITION_STRATEGY_LIST:
 			if (!attrsOnly)
 				appendStringInfoString(&buf, "LIST");
@@ -1685,7 +1705,7 @@ pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 			char	   *attname;
 			int32		keycoltypmod;
 
-			attname = get_relid_attribute_name(relid, attnum);
+			attname = get_attname(relid, attnum, false);
 			appendStringInfoString(&buf, quote_identifier(attname));
 			get_atttypetypmodcoll(relid, attnum,
 								  &keycoltype, &keycoltypmod,
@@ -1750,7 +1770,7 @@ pg_get_partition_constraintdef(PG_FUNCTION_ARGS)
 
 	constr_expr = get_partition_qual_relid(relationId);
 
-	/* Quick exit if not a partition */
+	/* Quick exit if no partition constraint */
 	if (constr_expr == NULL)
 		PG_RETURN_NULL();
 
@@ -1796,7 +1816,7 @@ pg_get_constraintdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true);
 
@@ -1867,15 +1887,27 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 
 	if (fullCommand)
 	{
-		/*
-		 * Currently, callers want ALTER TABLE (without ONLY) for CHECK
-		 * constraints, and other types of constraints don't inherit anyway so
-		 * it doesn't matter whether we say ONLY or not.  Someday we might
-		 * need to let callers specify whether to put ONLY in the command.
-		 */
-		appendStringInfo(&buf, "ALTER TABLE %s ADD CONSTRAINT %s ",
-						 generate_qualified_relation_name(conForm->conrelid),
-						 quote_identifier(NameStr(conForm->conname)));
+		if (OidIsValid(conForm->conrelid))
+		{
+			/*
+			 * Currently, callers want ALTER TABLE (without ONLY) for CHECK
+			 * constraints, and other types of constraints don't inherit
+			 * anyway so it doesn't matter whether we say ONLY or not. Someday
+			 * we might need to let callers specify whether to put ONLY in the
+			 * command.
+			 */
+			appendStringInfo(&buf, "ALTER TABLE %s ADD CONSTRAINT %s ",
+							 generate_qualified_relation_name(conForm->conrelid),
+							 quote_identifier(NameStr(conForm->conname)));
+		}
+		else
+		{
+			/* Must be a domain constraint */
+			Assert(OidIsValid(conForm->contypid));
+			appendStringInfo(&buf, "ALTER DOMAIN %s ADD CONSTRAINT %s ",
+							 generate_qualified_type_name(conForm->contypid),
+							 quote_identifier(NameStr(conForm->conname)));
+		}
 	}
 
 	switch (conForm->contype)
@@ -2131,6 +2163,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 															  operators,
 															  false,
 															  false,
+															  false,
 															  prettyFlags,
 															  false));
 				break;
@@ -2176,7 +2209,7 @@ decompile_column_index_array(Datum column_index_array, Oid relId,
 	{
 		char	   *colName;
 
-		colName = get_relid_attribute_name(relId, DatumGetInt16(keys[j]));
+		colName = get_attname(relId, DatumGetInt16(keys[j]), false);
 
 		if (j == 0)
 			appendStringInfoString(buf, quote_identifier(colName));
@@ -2238,7 +2271,7 @@ pg_get_expr_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *relname;
 
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : PRETTYFLAG_INDENT;
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
 	if (OidIsValid(relid))
 	{
@@ -2322,7 +2355,7 @@ pg_get_userbyid(PG_FUNCTION_ARGS)
 
 /*
  * pg_get_serial_sequence
- *		Get the name of the sequence used by a serial column,
+ *		Get the name of the sequence used by an identity or serial column,
  *		formatted suitably for passing to setval, nextval or currval.
  *		First parameter is not treated as double-quoted, second parameter
  *		is --- see documentation for reason.
@@ -2380,13 +2413,14 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 		Form_pg_depend deprec = (Form_pg_depend) GETSTRUCT(tup);
 
 		/*
-		 * We assume any auto dependency of a sequence on a column must be
-		 * what we are looking for.  (We need the relkind test because indexes
-		 * can also have auto dependencies on columns.)
+		 * Look for an auto dependency (serial column) or internal dependency
+		 * (identity column) of a sequence on a column.  (We need the relkind
+		 * test because indexes can also have auto dependencies on columns.)
 		 */
 		if (deprec->classid == RelationRelationId &&
 			deprec->objsubid == 0 &&
-			deprec->deptype == DEPENDENCY_AUTO &&
+			(deprec->deptype == DEPENDENCY_AUTO ||
+			 deprec->deptype == DEPENDENCY_INTERNAL) &&
 			get_rel_relkind(deprec->objid) == RELKIND_SEQUENCE)
 		{
 			sequenceId = deprec->objid;
@@ -2428,6 +2462,7 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 	StringInfoData dq;
 	HeapTuple	proctup;
 	Form_pg_proc proc;
+	bool		isfunction;
 	Datum		tmp;
 	bool		isnull;
 	const char *prosrc;
@@ -2451,20 +2486,28 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an aggregate function", name)));
 
+	isfunction = (proc->prorettype != InvalidOid);
+
 	/*
 	 * We always qualify the function name, to ensure the right function gets
 	 * replaced.
 	 */
 	nsp = get_namespace_name(proc->pronamespace);
-	appendStringInfo(&buf, "CREATE OR REPLACE FUNCTION %s(",
+	appendStringInfo(&buf, "CREATE OR REPLACE %s %s(",
+					 isfunction ? "FUNCTION" : "PROCEDURE",
 					 quote_qualified_identifier(nsp, name));
 	(void) print_function_arguments(&buf, proctup, false, true);
-	appendStringInfoString(&buf, ")\n RETURNS ");
-	print_function_rettype(&buf, proctup);
+	appendStringInfoString(&buf, ")\n");
+	if (isfunction)
+	{
+		appendStringInfoString(&buf, " RETURNS ");
+		print_function_rettype(&buf, proctup);
+		appendStringInfoChar(&buf, '\n');
+	}
 
 	print_function_trftypes(&buf, proctup);
 
-	appendStringInfo(&buf, "\n LANGUAGE %s\n",
+	appendStringInfo(&buf, " LANGUAGE %s\n",
 					 quote_identifier(get_language_name(proc->prolang, false)));
 
 	/* Emit some miscellaneous options on one line */
@@ -2586,10 +2629,11 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 	 *
 	 * Since the user is likely to be editing the function body string, we
 	 * shouldn't use a short delimiter that he might easily create a conflict
-	 * with.  Hence prefer "$function$", but extend if needed.
+	 * with.  Hence prefer "$function$"/"$procedure$", but extend if needed.
 	 */
 	initStringInfo(&dq);
-	appendStringInfoString(&dq, "$function");
+	appendStringInfoChar(&dq, '$');
+	appendStringInfoString(&dq, (isfunction ? "function" : "procedure"));
 	while (strstr(prosrc, dq.data) != NULL)
 		appendStringInfoChar(&dq, 'x');
 	appendStringInfoChar(&dq, '$');
@@ -2672,6 +2716,12 @@ pg_get_function_result(PG_FUNCTION_ARGS)
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(proctup))
 		PG_RETURN_NULL();
+
+	if (((Form_pg_proc) GETSTRUCT(proctup))->prorettype == InvalidOid)
+	{
+		ReleaseSysCache(proctup);
+		PG_RETURN_NULL();
+	}
 
 	initStringInfo(&buf);
 
@@ -2998,9 +3048,9 @@ deparse_expression(Node *expr, List *dpcontext,
  * for interpreting Vars in the node tree.  It can be NIL if no Vars are
  * expected.
  *
- * forceprefix is TRUE to force all Vars to be prefixed with their table names.
+ * forceprefix is true to force all Vars to be prefixed with their table names.
  *
- * showimplicit is TRUE to force all implicit casts to be shown explicitly.
+ * showimplicit is true to force all implicit casts to be shown explicitly.
  *
  * Tries to pretty up the output according to prettyFlags and startIndent.
  *
@@ -3573,7 +3623,7 @@ set_using_names(deparse_namespace *dpns, Node *jtnode, List *parentUsing)
 		 * If there's a USING clause, select the USING column names and push
 		 * those names down to the children.  We have two strategies:
 		 *
-		 * If dpns->unique_using is TRUE, we force all USING names to be
+		 * If dpns->unique_using is true, we force all USING names to be
 		 * unique across the whole query level.  In principle we'd only need
 		 * the names of dangerous USING columns to be globally unique, but to
 		 * safely assign all USING names in a single pass, we have to enforce
@@ -3586,7 +3636,7 @@ set_using_names(deparse_namespace *dpns, Node *jtnode, List *parentUsing)
 		 * this simplifies the logic and seems likely to lead to less aliasing
 		 * overall.
 		 *
-		 * If dpns->unique_using is FALSE, we only need USING names to be
+		 * If dpns->unique_using is false, we only need USING names to be
 		 * unique within their own join RTE.  We still need to honor
 		 * pushed-down names, though.
 		 *
@@ -3698,10 +3748,12 @@ set_relation_column_names(deparse_namespace *dpns, RangeTblEntry *rte,
 
 		for (i = 0; i < ncolumns; i++)
 		{
-			if (tupdesc->attrs[i]->attisdropped)
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
+
+			if (attr->attisdropped)
 				real_colnames[i] = NULL;
 			else
-				real_colnames[i] = pstrdup(NameStr(tupdesc->attrs[i]->attname));
+				real_colnames[i] = pstrdup(NameStr(attr->attname));
 		}
 		relation_close(rel, AccessShareLock);
 	}
@@ -4097,7 +4149,7 @@ set_join_column_names(deparse_namespace *dpns, RangeTblEntry *rte,
  * dpns is query-wide info, colinfo is for the column's RTE
  */
 static bool
-colname_is_unique(char *colname, deparse_namespace *dpns,
+colname_is_unique(const char *colname, deparse_namespace *dpns,
 				  deparse_columns *colinfo)
 {
 	int			i;
@@ -4670,7 +4722,10 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	}
 
 	/* The relation the rule is fired on */
-	appendStringInfo(buf, " TO %s", generate_relation_name(ev_class, NIL));
+	appendStringInfo(buf, " TO %s",
+					 (prettyFlags & PRETTYFLAG_SCHEMA) ?
+					 generate_relation_name(ev_class, NIL) :
+					 generate_qualified_relation_name(ev_class));
 
 	/* If the rule has an event qualification, add it */
 	if (ev_qual == NULL)
@@ -5151,7 +5206,7 @@ get_simple_values_rte(Query *query)
 	ListCell   *lc;
 
 	/*
-	 * We want to return TRUE even if the Query also contains OLD or NEW rule
+	 * We want to return true even if the Query also contains OLD or NEW rule
 	 * RTEs.  So the idea is to scan the rtable and see if there is only one
 	 * inFromCl RTE that is a VALUES RTE.
 	 */
@@ -5391,7 +5446,7 @@ get_target_list(List *targetList, deparse_context *context,
 		 * Otherwise, just use what we can find in the TLE.
 		 */
 		if (resultDesc && colno <= resultDesc->natts)
-			colname = NameStr(resultDesc->attrs[colno - 1]->attname);
+			colname = NameStr(TupleDescAttr(resultDesc, colno - 1)->attname);
 		else
 			colname = tle->resname;
 
@@ -5848,6 +5903,8 @@ get_rule_windowspec(WindowClause *wc, List *targetList,
 			appendStringInfoString(buf, "RANGE ");
 		else if (wc->frameOptions & FRAMEOPTION_ROWS)
 			appendStringInfoString(buf, "ROWS ");
+		else if (wc->frameOptions & FRAMEOPTION_GROUPS)
+			appendStringInfoString(buf, "GROUPS ");
 		else
 			Assert(false);
 		if (wc->frameOptions & FRAMEOPTION_BETWEEN)
@@ -5856,12 +5913,12 @@ get_rule_windowspec(WindowClause *wc, List *targetList,
 			appendStringInfoString(buf, "UNBOUNDED PRECEDING ");
 		else if (wc->frameOptions & FRAMEOPTION_START_CURRENT_ROW)
 			appendStringInfoString(buf, "CURRENT ROW ");
-		else if (wc->frameOptions & FRAMEOPTION_START_VALUE)
+		else if (wc->frameOptions & FRAMEOPTION_START_OFFSET)
 		{
 			get_rule_expr(wc->startOffset, context, false);
-			if (wc->frameOptions & FRAMEOPTION_START_VALUE_PRECEDING)
+			if (wc->frameOptions & FRAMEOPTION_START_OFFSET_PRECEDING)
 				appendStringInfoString(buf, " PRECEDING ");
-			else if (wc->frameOptions & FRAMEOPTION_START_VALUE_FOLLOWING)
+			else if (wc->frameOptions & FRAMEOPTION_START_OFFSET_FOLLOWING)
 				appendStringInfoString(buf, " FOLLOWING ");
 			else
 				Assert(false);
@@ -5875,12 +5932,12 @@ get_rule_windowspec(WindowClause *wc, List *targetList,
 				appendStringInfoString(buf, "UNBOUNDED FOLLOWING ");
 			else if (wc->frameOptions & FRAMEOPTION_END_CURRENT_ROW)
 				appendStringInfoString(buf, "CURRENT ROW ");
-			else if (wc->frameOptions & FRAMEOPTION_END_VALUE)
+			else if (wc->frameOptions & FRAMEOPTION_END_OFFSET)
 			{
 				get_rule_expr(wc->endOffset, context, false);
-				if (wc->frameOptions & FRAMEOPTION_END_VALUE_PRECEDING)
+				if (wc->frameOptions & FRAMEOPTION_END_OFFSET_PRECEDING)
 					appendStringInfoString(buf, " PRECEDING ");
-				else if (wc->frameOptions & FRAMEOPTION_END_VALUE_FOLLOWING)
+				else if (wc->frameOptions & FRAMEOPTION_END_OFFSET_FOLLOWING)
 					appendStringInfoString(buf, " FOLLOWING ");
 				else
 					Assert(false);
@@ -5888,6 +5945,12 @@ get_rule_windowspec(WindowClause *wc, List *targetList,
 			else
 				Assert(false);
 		}
+		if (wc->frameOptions & FRAMEOPTION_EXCLUDE_CURRENT_ROW)
+			appendStringInfoString(buf, "EXCLUDE CURRENT ROW ");
+		else if (wc->frameOptions & FRAMEOPTION_EXCLUDE_GROUP)
+			appendStringInfoString(buf, "EXCLUDE GROUP ");
+		else if (wc->frameOptions & FRAMEOPTION_EXCLUDE_TIES)
+			appendStringInfoString(buf, "EXCLUDE TIES ");
 		/* we will now have a trailing space; remove it */
 		buf->len--;
 	}
@@ -5978,8 +6041,9 @@ get_insert_query_def(Query *query, deparse_context *context)
 		 * tle->resname, since resname will fail to track RENAME.
 		 */
 		appendStringInfoString(buf,
-							   quote_identifier(get_relid_attribute_name(rte->relid,
-																		 tle->resno)));
+							   quote_identifier(get_attname(rte->relid,
+															tle->resno,
+															false)));
 
 		/*
 		 * Print any indirection needed (subfields or subscripts), and strip
@@ -6282,8 +6346,9 @@ get_update_query_targetlist_def(Query *query, List *targetList,
 		 * tle->resname, since resname will fail to track RENAME.
 		 */
 		appendStringInfoString(buf,
-							   quote_identifier(get_relid_attribute_name(rte->relid,
-																		 tle->resno)));
+							   quote_identifier(get_attname(rte->relid,
+															tle->resno,
+															false)));
 
 		/*
 		 * Print any indirection needed (subfields or subscripts), and strip
@@ -6400,7 +6465,7 @@ get_utility_query_def(Query *query, deparse_context *context)
  * the Var's varlevelsup has to be interpreted with respect to a context
  * above the current one; levelsup indicates the offset.
  *
- * If istoplevel is TRUE, the Var is at the top level of a SELECT's
+ * If istoplevel is true, the Var is at the top level of a SELECT's
  * targetlist, which means we need special treatment of whole-row Vars.
  * Instead of the normal "tab.*", we'll print "tab.*::typename", which is a
  * dirty hack to prevent "tab.*" from being expanded into multiple columns.
@@ -6728,20 +6793,15 @@ get_name_for_var_field(Var *var, int fieldno,
 
 	/*
 	 * If it's a Var of type RECORD, we have to find what the Var refers to;
-	 * if not, we can use get_expr_result_type. If that fails, we try
-	 * lookup_rowtype_tupdesc, which will probably fail too, but will ereport
-	 * an acceptable message.
+	 * if not, we can use get_expr_result_tupdesc().
 	 */
 	if (!IsA(var, Var) ||
 		var->vartype != RECORDOID)
 	{
-		if (get_expr_result_type((Node *) var, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
-			tupleDesc = lookup_rowtype_tupdesc_copy(exprType((Node *) var),
-													exprTypmod((Node *) var));
-		Assert(tupleDesc);
+		tupleDesc = get_expr_result_tupdesc((Node *) var, false);
 		/* Got the tupdesc, so we can extract the field name */
 		Assert(fieldno >= 1 && fieldno <= tupleDesc->natts);
-		return NameStr(tupleDesc->attrs[fieldno - 1]->attname);
+		return NameStr(TupleDescAttr(tupleDesc, fieldno - 1)->attname);
 	}
 
 	/* Find appropriate nesting depth */
@@ -6844,8 +6904,8 @@ get_name_for_var_field(Var *var, int fieldno,
 		case RTE_NAMEDTUPLESTORE:
 
 			/*
-			 * This case should not occur: a column of a table or values list
-			 * shouldn't have type RECORD.  Fall through and fail (most
+			 * This case should not occur: a column of a table, values list,
+			 * or ENR shouldn't have type RECORD.  Fall through and fail (most
 			 * likely) at the bottom.
 			 */
 			break;
@@ -7041,17 +7101,12 @@ get_name_for_var_field(Var *var, int fieldno,
 
 	/*
 	 * We now have an expression we can't expand any more, so see if
-	 * get_expr_result_type() can do anything with it.  If not, pass to
-	 * lookup_rowtype_tupdesc() which will probably fail, but will give an
-	 * appropriate error message while failing.
+	 * get_expr_result_tupdesc() can do anything with it.
 	 */
-	if (get_expr_result_type(expr, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
-		tupleDesc = lookup_rowtype_tupdesc_copy(exprType(expr),
-												exprTypmod(expr));
-	Assert(tupleDesc);
+	tupleDesc = get_expr_result_tupdesc(expr, false);
 	/* Got the tupdesc, so we can extract the field name */
 	Assert(fieldno >= 1 && fieldno <= tupleDesc->natts);
-	return NameStr(tupleDesc->attrs[fieldno - 1]->attname);
+	return NameStr(TupleDescAttr(tupleDesc, fieldno - 1)->attname);
 }
 
 /*
@@ -8180,7 +8235,7 @@ get_rule_expr(Node *node, deparse_context *context,
 					Node	   *e = (Node *) lfirst(arg);
 
 					if (tupdesc == NULL ||
-						!tupdesc->attrs[i]->attisdropped)
+						!TupleDescAttr(tupdesc, i)->attisdropped)
 					{
 						appendStringInfoString(buf, sep);
 						/* Whole-row Vars need special treatment here */
@@ -8193,7 +8248,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				{
 					while (i < tupdesc->natts)
 					{
-						if (!tupdesc->attrs[i]->attisdropped)
+						if (!TupleDescAttr(tupdesc, i)->attisdropped)
 						{
 							appendStringInfoString(buf, sep);
 							appendStringInfoString(buf, "NULL");
@@ -8697,8 +8752,23 @@ get_rule_expr(Node *node, deparse_context *context,
 				ListCell   *cell;
 				char	   *sep;
 
+				if (spec->is_default)
+				{
+					appendStringInfoString(buf, "DEFAULT");
+					break;
+				}
+
 				switch (spec->strategy)
 				{
+					case PARTITION_STRATEGY_HASH:
+						Assert(spec->modulus > 0 && spec->remainder >= 0);
+						Assert(spec->modulus > spec->remainder);
+
+						appendStringInfoString(buf, "FOR VALUES");
+						appendStringInfo(buf, " WITH (modulus %d, remainder %d)",
+										 spec->modulus, spec->remainder);
+						break;
+
 					case PARTITION_STRATEGY_LIST:
 						Assert(spec->listdatums != NIL);
 
@@ -10298,8 +10368,8 @@ processIndirection(Node *node, deparse_context *context)
 			 * target lists, but this function cannot be used for that case.
 			 */
 			Assert(list_length(fstore->fieldnums) == 1);
-			fieldname = get_relid_attribute_name(typrelid,
-												 linitial_int(fstore->fieldnums));
+			fieldname = get_attname(typrelid,
+									linitial_int(fstore->fieldnums), false);
 			appendStringInfo(buf, ".%s", quote_identifier(fieldname));
 
 			/*
@@ -10600,7 +10670,7 @@ generate_qualified_relation_name(Oid relid)
  * means a FuncExpr or Aggref, not some other way of calling a function), then
  * has_variadic must specify whether variadic arguments have been merged,
  * and *use_variadic_p will be set to indicate whether to print VARIADIC in
- * the output.  For non-FuncExpr cases, has_variadic should be FALSE and
+ * the output.  For non-FuncExpr cases, has_variadic should be false and
  * use_variadic_p can be NULL.
  *
  * The result includes all necessary quoting and schema-prefixing.
@@ -10777,6 +10847,42 @@ generate_operator_name(Oid operid, Oid arg1, Oid arg2)
 	ReleaseSysCache(opertup);
 
 	return buf.data;
+}
+
+/*
+ * generate_qualified_type_name
+ *		Compute the name to display for a type specified by OID
+ *
+ * This is different from format_type_be() in that we unconditionally
+ * schema-qualify the name.  That also means no special syntax for
+ * SQL-standard type names ... although in current usage, this should
+ * only get used for domains, so such cases wouldn't occur anyway.
+ */
+static char *
+generate_qualified_type_name(Oid typid)
+{
+	HeapTuple	tp;
+	Form_pg_type typtup;
+	char	   *typname;
+	char	   *nspname;
+	char	   *result;
+
+	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for type %u", typid);
+	typtup = (Form_pg_type) GETSTRUCT(tp);
+	typname = NameStr(typtup->typname);
+
+	nspname = get_namespace_name(typtup->typnamespace);
+	if (!nspname)
+		elog(ERROR, "cache lookup failed for namespace %u",
+			 typtup->typnamespace);
+
+	result = quote_qualified_identifier(nspname, typname);
+
+	ReleaseSysCache(tp);
+
+	return result;
 }
 
 /*

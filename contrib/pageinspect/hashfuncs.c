@@ -2,7 +2,7 @@
  * hashfuncs.c
  *		Functions to investigate the content of HASH indexes
  *
- * Copyright (c) 2017, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/hashfuncs.c
@@ -313,9 +313,9 @@ hash_page_items(PG_FUNCTION_ARGS)
 
 		fctx = SRF_FIRSTCALL_INIT();
 
-		page = verify_hash_page(raw_page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
-
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
+
+		page = verify_hash_page(raw_page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 
 		uargs = palloc(sizeof(struct user_args));
 

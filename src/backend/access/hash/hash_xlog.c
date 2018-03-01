@@ -4,7 +4,7 @@
  *	  WAL replay logic for hash index.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1263,7 +1263,7 @@ hash_mask(char *pagedata, BlockNumber blkno)
 	HashPageOpaque opaque;
 	int			pagetype;
 
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_page_hint_bits(page);
 	mask_unused_space(page);

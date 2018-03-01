@@ -4,7 +4,7 @@
  *	 Implementation of generic xlog records.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/generic_xlog.c
@@ -541,7 +541,7 @@ generic_redo(XLogReaderState *record)
 void
 generic_mask(char *page, BlockNumber blkno)
 {
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_unused_space(page);
 }

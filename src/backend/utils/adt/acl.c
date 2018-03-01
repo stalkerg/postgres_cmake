@@ -3,7 +3,7 @@
  * acl.c
  *	  Basic access control list data structures manipulation routines.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,6 +16,7 @@
 
 #include <ctype.h>
 
+#include "access/hash.h"
 #include "access/htup_details.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
@@ -717,18 +718,34 @@ hash_aclitem(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT32((uint32) (a->ai_privs + a->ai_grantee + a->ai_grantor));
 }
 
+/*
+ * 64-bit hash function for aclitem.
+ *
+ * Similar to hash_aclitem, but accepts a seed and returns a uint64 value.
+ */
+Datum
+hash_aclitem_extended(PG_FUNCTION_ARGS)
+{
+	AclItem    *a = PG_GETARG_ACLITEM_P(0);
+	uint64		seed = PG_GETARG_INT64(1);
+	uint32		sum = (uint32) (a->ai_privs + a->ai_grantee + a->ai_grantor);
+
+	return (seed == 0) ? UInt64GetDatum(sum) : hash_uint32_extended(sum, seed);
+}
 
 /*
  * acldefault()  --- create an ACL describing default access permissions
  *
  * Change this routine if you want to alter the default access policy for
- * newly-created objects (or any object with a NULL acl entry).
+ * newly-created objects (or any object with a NULL acl entry).  When
+ * you make a change here, don't forget to update the GRANT man page,
+ * which explains all the default permissions.
  *
  * Note that these are the hard-wired "defaults" that are used in the
  * absence of any pg_default_acl entry.
  */
 Acl *
-acldefault(GrantObjectType objtype, Oid ownerId)
+acldefault(ObjectType objtype, Oid ownerId)
 {
 	AclMode		world_default;
 	AclMode		owner_default;
@@ -738,56 +755,56 @@ acldefault(GrantObjectType objtype, Oid ownerId)
 
 	switch (objtype)
 	{
-		case ACL_OBJECT_COLUMN:
+		case OBJECT_COLUMN:
 			/* by default, columns have no extra privileges */
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_NO_RIGHTS;
 			break;
-		case ACL_OBJECT_RELATION:
+		case OBJECT_TABLE:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_RELATION;
 			break;
-		case ACL_OBJECT_SEQUENCE:
+		case OBJECT_SEQUENCE:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_SEQUENCE;
 			break;
-		case ACL_OBJECT_DATABASE:
+		case OBJECT_DATABASE:
 			/* for backwards compatibility, grant some rights by default */
 			world_default = ACL_CREATE_TEMP | ACL_CONNECT;
 			owner_default = ACL_ALL_RIGHTS_DATABASE;
 			break;
-		case ACL_OBJECT_FUNCTION:
+		case OBJECT_FUNCTION:
 			/* Grant EXECUTE by default, for now */
 			world_default = ACL_EXECUTE;
 			owner_default = ACL_ALL_RIGHTS_FUNCTION;
 			break;
-		case ACL_OBJECT_LANGUAGE:
+		case OBJECT_LANGUAGE:
 			/* Grant USAGE by default, for now */
 			world_default = ACL_USAGE;
 			owner_default = ACL_ALL_RIGHTS_LANGUAGE;
 			break;
-		case ACL_OBJECT_LARGEOBJECT:
+		case OBJECT_LARGEOBJECT:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_LARGEOBJECT;
 			break;
-		case ACL_OBJECT_NAMESPACE:
+		case OBJECT_SCHEMA:
 			world_default = ACL_NO_RIGHTS;
-			owner_default = ACL_ALL_RIGHTS_NAMESPACE;
+			owner_default = ACL_ALL_RIGHTS_SCHEMA;
 			break;
-		case ACL_OBJECT_TABLESPACE:
+		case OBJECT_TABLESPACE:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_TABLESPACE;
 			break;
-		case ACL_OBJECT_FDW:
+		case OBJECT_FDW:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_FDW;
 			break;
-		case ACL_OBJECT_FOREIGN_SERVER:
+		case OBJECT_FOREIGN_SERVER:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_FOREIGN_SERVER;
 			break;
-		case ACL_OBJECT_DOMAIN:
-		case ACL_OBJECT_TYPE:
+		case OBJECT_DOMAIN:
+		case OBJECT_TYPE:
 			world_default = ACL_USAGE;
 			owner_default = ACL_ALL_RIGHTS_TYPE;
 			break;
@@ -838,7 +855,7 @@ acldefault(GrantObjectType objtype, Oid ownerId)
 
 /*
  * SQL-accessible version of acldefault().  Hackish mapping from "char" type to
- * ACL_OBJECT_* values, but it's only used in the information schema, not
+ * OBJECT_* values, but it's only used in the information schema, not
  * documented for general use.
  */
 Datum
@@ -846,45 +863,45 @@ acldefault_sql(PG_FUNCTION_ARGS)
 {
 	char		objtypec = PG_GETARG_CHAR(0);
 	Oid			owner = PG_GETARG_OID(1);
-	GrantObjectType objtype = 0;
+	ObjectType	objtype = 0;
 
 	switch (objtypec)
 	{
 		case 'c':
-			objtype = ACL_OBJECT_COLUMN;
+			objtype = OBJECT_COLUMN;
 			break;
 		case 'r':
-			objtype = ACL_OBJECT_RELATION;
+			objtype = OBJECT_TABLE;
 			break;
 		case 's':
-			objtype = ACL_OBJECT_SEQUENCE;
+			objtype = OBJECT_SEQUENCE;
 			break;
 		case 'd':
-			objtype = ACL_OBJECT_DATABASE;
+			objtype = OBJECT_DATABASE;
 			break;
 		case 'f':
-			objtype = ACL_OBJECT_FUNCTION;
+			objtype = OBJECT_FUNCTION;
 			break;
 		case 'l':
-			objtype = ACL_OBJECT_LANGUAGE;
+			objtype = OBJECT_LANGUAGE;
 			break;
 		case 'L':
-			objtype = ACL_OBJECT_LARGEOBJECT;
+			objtype = OBJECT_LARGEOBJECT;
 			break;
 		case 'n':
-			objtype = ACL_OBJECT_NAMESPACE;
+			objtype = OBJECT_SCHEMA;
 			break;
 		case 't':
-			objtype = ACL_OBJECT_TABLESPACE;
+			objtype = OBJECT_TABLESPACE;
 			break;
 		case 'F':
-			objtype = ACL_OBJECT_FDW;
+			objtype = OBJECT_FDW;
 			break;
 		case 'S':
-			objtype = ACL_OBJECT_FOREIGN_SERVER;
+			objtype = OBJECT_FOREIGN_SERVER;
 			break;
 		case 'T':
-			objtype = ACL_OBJECT_TYPE;
+			objtype = OBJECT_TYPE;
 			break;
 		default:
 			elog(ERROR, "unrecognized objtype abbreviation: %c", objtypec);
@@ -2225,8 +2242,11 @@ convert_sequence_priv_string(text *priv_type_text)
 {
 	static const priv_map sequence_priv_map[] = {
 		{"USAGE", ACL_USAGE},
+		{"USAGE WITH GRANT OPTION", ACL_GRANT_OPTION_FOR(ACL_USAGE)},
 		{"SELECT", ACL_SELECT},
+		{"SELECT WITH GRANT OPTION", ACL_GRANT_OPTION_FOR(ACL_SELECT)},
 		{"UPDATE", ACL_UPDATE},
+		{"UPDATE WITH GRANT OPTION", ACL_GRANT_OPTION_FOR(ACL_UPDATE)},
 		{NULL, 0}
 	};
 

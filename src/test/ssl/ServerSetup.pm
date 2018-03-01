@@ -26,8 +26,37 @@ use Test::More;
 
 use Exporter 'import';
 our @EXPORT = qw(
-  configure_test_server_for_ssl switch_server_cert
+  configure_test_server_for_ssl
+  switch_server_cert
+  test_connect_fails
+  test_connect_ok
 );
+
+# Define a couple of helper functions to test connecting to the server.
+
+# The first argument is a base connection string to use for connection.
+# The second argument is a complementary connection string.
+sub test_connect_ok
+{
+	my ($common_connstr, $connstr, $test_name) = @_;
+
+	my $cmd = [
+		'psql', '-X', '-A', '-t', '-c', "SELECT \$\$connected with $connstr\$\$",
+		'-d', "$common_connstr $connstr" ];
+
+	command_ok($cmd, $test_name);
+}
+
+sub test_connect_fails
+{
+	my ($common_connstr, $connstr, $expected_stderr, $test_name) = @_;
+
+	my $cmd = [
+		'psql', '-X', '-A', '-t', '-c', "SELECT \$\$connected with $connstr\$\$",
+		'-d', "$common_connstr $connstr" ];
+
+	command_fails_like($cmd, $expected_stderr, $test_name);
+}
 
 # Copy a set of files, taking into account wildcards
 sub copy_files
@@ -46,8 +75,7 @@ sub copy_files
 
 sub configure_test_server_for_ssl
 {
-	my $node       = $_[0];
-	my $serverhost = $_[1];
+	my ($node, $serverhost, $authmethod, $password, $password_enc) = @_;
 
 	my $pgdata = $node->data_dir;
 
@@ -56,6 +84,15 @@ sub configure_test_server_for_ssl
 	$node->psql('postgres', "CREATE USER anotheruser");
 	$node->psql('postgres', "CREATE DATABASE trustdb");
 	$node->psql('postgres', "CREATE DATABASE certdb");
+
+	# Update password of each user as needed.
+	if (defined($password))
+	{
+		$node->psql('postgres',
+"SET password_encryption='$password_enc'; ALTER USER ssltestuser PASSWORD '$password';");
+		$node->psql('postgres',
+"SET password_encryption='$password_enc'; ALTER USER anotheruser PASSWORD '$password';");
+	}
 
 	# enable logging etc.
 	open my $conf, '>>', "$pgdata/postgresql.conf";
@@ -86,7 +123,7 @@ sub configure_test_server_for_ssl
 	$node->restart;
 
 	# Change pg_hba after restart because hostssl requires ssl=on
-	configure_hba_for_ssl($node, $serverhost);
+	configure_hba_for_ssl($node, $serverhost, $authmethod);
 }
 
 # Change the configuration to use given server cert file, and reload
@@ -97,9 +134,6 @@ sub switch_server_cert
 	my $certfile = $_[1];
 	my $cafile   = $_[2] || "root+client_ca";
 	my $pgdata   = $node->data_dir;
-
-	note
-	  "reloading server with certfile \"$certfile\" and cafile \"$cafile\"";
 
 	open my $sslconf, '>', "$pgdata/sslconfig.conf";
 	print $sslconf "ssl=on\n";
@@ -114,8 +148,7 @@ sub switch_server_cert
 
 sub configure_hba_for_ssl
 {
-	my $node       = $_[0];
-	my $serverhost = $_[1];
+	my ($node, $serverhost, $authmethod) = @_;
 	my $pgdata     = $node->data_dir;
 
   # Only accept SSL connections from localhost. Our tests don't depend on this
@@ -126,12 +159,12 @@ sub configure_hba_for_ssl
 	print $hba
 "# TYPE  DATABASE        USER            ADDRESS                 METHOD\n";
 	print $hba
-"hostssl trustdb         ssltestuser     $serverhost/32            trust\n";
+"hostssl trustdb         all             $serverhost/32            $authmethod\n";
 	print $hba
-"hostssl trustdb         ssltestuser     ::1/128                 trust\n";
+"hostssl trustdb         all             ::1/128                 $authmethod\n";
 	print $hba
-"hostssl certdb          ssltestuser     $serverhost/32            cert\n";
+"hostssl certdb          all             $serverhost/32            cert\n";
 	print $hba
-"hostssl certdb          ssltestuser     ::1/128                 cert\n";
+"hostssl certdb          all             ::1/128                 cert\n";
 	close $hba;
 }

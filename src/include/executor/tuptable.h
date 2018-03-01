@@ -4,7 +4,7 @@
  *	  tuple table support stuff
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/tuptable.h
@@ -68,7 +68,7 @@
  * A TupleTableSlot can also be "empty", holding no valid data.  This is
  * the only valid state for a freshly-created slot that has not yet had a
  * tuple descriptor assigned to it.  In this state, tts_isempty must be
- * TRUE, tts_shouldFree FALSE, tts_tuple NULL, tts_buffer InvalidBuffer,
+ * true, tts_shouldFree false, tts_tuple NULL, tts_buffer InvalidBuffer,
  * and tts_nvalid zero.
  *
  * The tupleDescriptor is simply referenced, not copied, by the TupleTableSlot
@@ -126,7 +126,8 @@ typedef struct TupleTableSlot
 	bool	   *tts_isnull;		/* current per-attribute isnull flags */
 	MinimalTuple tts_mintuple;	/* minimal tuple, or NULL if none */
 	HeapTupleData tts_minhdr;	/* workspace for minimal-tuple-only case */
-	long		tts_off;		/* saved state for slot_deform_tuple */
+	uint32		tts_off;		/* saved state for slot_deform_tuple */
+	bool		tts_fixedTupleDescriptor; /* descriptor can't be changed */
 } TupleTableSlot;
 
 #define TTS_HAS_PHYSICAL_TUPLE(slot)  \
@@ -139,8 +140,8 @@ typedef struct TupleTableSlot
 	((slot) == NULL || (slot)->tts_isempty)
 
 /* in executor/execTuples.c */
-extern TupleTableSlot *MakeTupleTableSlot(void);
-extern TupleTableSlot *ExecAllocTableSlot(List **tupleTable);
+extern TupleTableSlot *MakeTupleTableSlot(TupleDesc desc);
+extern TupleTableSlot *ExecAllocTableSlot(List **tupleTable, TupleDesc desc);
 extern void ExecResetTupleTable(List *tupleTable, bool shouldFree);
 extern TupleTableSlot *MakeSingleTupleTableSlot(TupleDesc tupdesc);
 extern void ExecDropSingleTupleTableSlot(TupleTableSlot *slot);

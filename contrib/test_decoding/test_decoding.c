@@ -3,7 +3,7 @@
  * test_decoding.c
  *		  example logical decoding output plugin
  *
- * Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/test_decoding/test_decoding.c
@@ -330,7 +330,7 @@ tuple_to_stringinfo(StringInfo s, TupleDesc tupdesc, HeapTuple tuple, bool skip_
 		Datum		origval;	/* possibly toasted Datum */
 		bool		isnull;		/* column is null? */
 
-		attr = tupdesc->attrs[natt];
+		attr = TupleDescAttr(tupdesc, natt);
 
 		/*
 		 * don't print dropped columns, we can't be sure everything is

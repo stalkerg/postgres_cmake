@@ -92,44 +92,32 @@ delete from pkeys where pkey1 = 40 and pkey2 = '4';
 update pkeys set pkey1 = 7, pkey2 = '70' where pkey1 = 50 and pkey2 = '5';
 update pkeys set pkey1 = 7, pkey2 = '70' where pkey1 = 10 and pkey2 = '1';
 
+SELECT trigger_name, event_manipulation, event_object_schema, event_object_table,
+       action_order, action_condition, action_orientation, action_timing,
+       action_reference_old_table, action_reference_new_table
+  FROM information_schema.triggers
+  WHERE event_object_table in ('pkeys', 'fkeys', 'fkeys2')
+  ORDER BY trigger_name COLLATE "C", 2;
+
 DROP TABLE pkeys;
 DROP TABLE fkeys;
 DROP TABLE fkeys2;
 
--- -- I've disabled the funny_dup17 test because the new semantics
--- -- of AFTER ROW triggers, which get now fired at the end of a
--- -- query always, cause funny_dup17 to enter an endless loop.
--- --
--- --      Jan
---
--- create table dup17 (x int4);
---
--- create trigger dup17_before
--- 	before insert on dup17
--- 	for each row
--- 	execute procedure
--- 	funny_dup17 ()
--- ;
---
--- insert into dup17 values (17);
--- select count(*) from dup17;
--- insert into dup17 values (17);
--- select count(*) from dup17;
---
--- drop trigger dup17_before on dup17;
---
--- create trigger dup17_after
--- 	after insert on dup17
--- 	for each row
--- 	execute procedure
--- 	funny_dup17 ()
--- ;
--- insert into dup17 values (13);
--- select count(*) from dup17 where x = 13;
--- insert into dup17 values (13);
--- select count(*) from dup17 where x = 13;
---
--- DROP TABLE dup17;
+-- Check behavior when trigger returns unmodified trigtuple
+create table trigtest (f1 int, f2 text);
+
+create trigger trigger_return_old
+	before insert or delete or update on trigtest
+	for each row execute procedure trigger_return_old();
+
+insert into trigtest values(1, 'foo');
+select * from trigtest;
+update trigtest set f2 = f2 || 'bar';
+select * from trigtest;
+delete from trigtest;
+select * from trigtest;
+
+drop table trigtest;
 
 create sequence ttdummy_seq increment 10 start 0 minvalue 0;
 
@@ -279,6 +267,12 @@ CREATE TRIGGER insert_when BEFORE INSERT ON main_table
 FOR EACH STATEMENT WHEN (true) EXECUTE PROCEDURE trigger_func('insert_when');
 CREATE TRIGGER delete_when AFTER DELETE ON main_table
 FOR EACH STATEMENT WHEN (true) EXECUTE PROCEDURE trigger_func('delete_when');
+SELECT trigger_name, event_manipulation, event_object_schema, event_object_table,
+       action_order, action_condition, action_orientation, action_timing,
+       action_reference_old_table, action_reference_new_table
+  FROM information_schema.triggers
+  WHERE event_object_table IN ('main_table')
+  ORDER BY trigger_name COLLATE "C", 2;
 INSERT INTO main_table (a) VALUES (123), (456);
 COPY main_table FROM stdin;
 123	999
@@ -401,6 +395,11 @@ alter table trigtest disable trigger user;
 insert into trigtest default values;
 alter table trigtest enable trigger trigtest_a_stmt_tg;
 insert into trigtest default values;
+set session_replication_role = replica;
+insert into trigtest default values;  -- does not trigger
+alter table trigtest enable always trigger trigtest_a_stmt_tg;
+insert into trigtest default values;  -- now it does
+reset session_replication_role;
 insert into trigtest2 values(1);
 insert into trigtest2 values(2);
 delete from trigtest where i=2;
@@ -1299,7 +1298,7 @@ create table parted2_stmt_trig2 partition of parted2_stmt_trig for values in (2)
 
 create or replace function trigger_notice() returns trigger as $$
   begin
-    raise notice 'trigger on % % % for %', TG_TABLE_NAME, TG_WHEN, TG_OP, TG_LEVEL;
+    raise notice 'trigger % on % % % for %', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, TG_LEVEL;
     if TG_LEVEL = 'ROW' then
        return NEW;
     end if;
@@ -1409,7 +1408,7 @@ $$;
 --
 -- Verify behavior of statement triggers on partition hierarchy with
 -- transition tables.  Tuples should appear to each trigger in the
--- format of the the relation the trigger is attached to.
+-- format of the relation the trigger is attached to.
 --
 
 -- set up a partition hierarchy with some different TupleDescriptors
@@ -1466,6 +1465,13 @@ create trigger child3_update_trig
 create trigger child3_delete_trig
   after delete on child3 referencing old table as old_table
   for each statement execute procedure dump_delete();
+
+SELECT trigger_name, event_manipulation, event_object_schema, event_object_table,
+       action_order, action_condition, action_orientation, action_timing,
+       action_reference_old_table, action_reference_new_table
+  FROM information_schema.triggers
+  WHERE event_object_table IN ('parent', 'child1', 'child2', 'child3')
+  ORDER BY trigger_name COLLATE "C", 2;
 
 -- insert directly into children sees respective child-format tuples
 insert into child1 values ('AAA', 42);
@@ -1729,6 +1735,12 @@ create trigger table2_trig
 with wcte as (insert into table1 values (42))
   insert into table2 values ('hello world');
 
+with wcte as (insert into table1 values (43))
+  insert into table1 values (44);
+
+select * from table1;
+select * from table2;
+
 drop table table1;
 drop table table2;
 
@@ -1769,7 +1781,90 @@ create trigger my_table_multievent_trig
   after insert or update on my_table referencing new table as new_table
   for each statement execute procedure dump_insert();
 
+--
+-- Verify that you can't create a trigger with transition tables with
+-- a column list.
+--
+
+create trigger my_table_col_update_trig
+  after update of b on my_table referencing new table as new_table
+  for each statement execute procedure dump_insert();
+
 drop table my_table;
+
+--
+-- Test firing of triggers with transition tables by foreign key cascades
+--
+
+create table refd_table (a int primary key, b text);
+create table trig_table (a int, b text,
+  foreign key (a) references refd_table on update cascade on delete cascade
+);
+
+create trigger trig_table_before_trig
+  before insert or update or delete on trig_table
+  for each statement execute procedure trigger_func('trig_table');
+create trigger trig_table_insert_trig
+  after insert on trig_table referencing new table as new_table
+  for each statement execute procedure dump_insert();
+create trigger trig_table_update_trig
+  after update on trig_table referencing old table as old_table new table as new_table
+  for each statement execute procedure dump_update();
+create trigger trig_table_delete_trig
+  after delete on trig_table referencing old table as old_table
+  for each statement execute procedure dump_delete();
+
+insert into refd_table values
+  (1, 'one'),
+  (2, 'two'),
+  (3, 'three');
+insert into trig_table values
+  (1, 'one a'),
+  (1, 'one b'),
+  (2, 'two a'),
+  (2, 'two b'),
+  (3, 'three a'),
+  (3, 'three b');
+
+update refd_table set a = 11 where b = 'one';
+
+select * from trig_table;
+
+delete from refd_table where length(b) = 3;
+
+select * from trig_table;
+
+drop table refd_table, trig_table;
+
+--
+-- self-referential FKs are even more fun
+--
+
+create table self_ref (a int primary key,
+                       b int references self_ref(a) on delete cascade);
+
+create trigger self_ref_before_trig
+  before delete on self_ref
+  for each statement execute procedure trigger_func('self_ref');
+create trigger self_ref_r_trig
+  after delete on self_ref referencing old table as old_table
+  for each row execute procedure dump_delete();
+create trigger self_ref_s_trig
+  after delete on self_ref referencing old table as old_table
+  for each statement execute procedure dump_delete();
+
+insert into self_ref values (1, null), (2, 1), (3, 2);
+
+delete from self_ref where a = 1;
+
+-- without AR trigger, cascaded deletes all end up in one transition table
+drop trigger self_ref_r_trig on self_ref;
+
+insert into self_ref values (1, null), (2, 1), (3, 2), (4, 3);
+
+delete from self_ref where a = 1;
+
+drop table self_ref;
 
 -- cleanup
 drop function dump_insert();

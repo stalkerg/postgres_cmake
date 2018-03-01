@@ -4,7 +4,7 @@
  *	  Two-phase-commit related declarations.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/twophase.h
@@ -25,7 +25,7 @@
 typedef struct GlobalTransactionData *GlobalTransaction;
 
 /* GUC variable */
-extern int	max_prepared_xacts;
+extern PGDLLIMPORT int max_prepared_xacts;
 
 extern Size TwoPhaseShmemSize(void);
 extern void TwoPhaseShmemInit(void);

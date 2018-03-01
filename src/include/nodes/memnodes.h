@@ -4,7 +4,7 @@
  *	  POSTGRES memory context node definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/memnodes.h
@@ -57,7 +57,6 @@ typedef struct MemoryContextMethods
 	/* call this free_p in case someone #define's free() */
 	void		(*free_p) (MemoryContext context, void *pointer);
 	void	   *(*realloc) (MemoryContext context, void *pointer, Size size);
-	void		(*init) (MemoryContext context);
 	void		(*reset) (MemoryContext context);
 	void		(*delete_context) (MemoryContext context);
 	Size		(*get_chunk_space) (MemoryContext context, void *pointer);
@@ -76,12 +75,12 @@ typedef struct MemoryContextData
 	/* these two fields are placed here to minimize alignment wastage: */
 	bool		isReset;		/* T = no space alloced since last reset */
 	bool		allowInCritSection; /* allow palloc in critical section */
-	MemoryContextMethods *methods;	/* virtual function table */
+	const MemoryContextMethods *methods;	/* virtual function table */
 	MemoryContext parent;		/* NULL if no parent (toplevel context) */
 	MemoryContext firstchild;	/* head of linked list of children */
 	MemoryContext prevchild;	/* previous child of same parent */
 	MemoryContext nextchild;	/* next child of same parent */
-	char	   *name;			/* context name (just for debugging) */
+	const char *name;			/* context name (just for debugging) */
 	MemoryContextCallback *reset_cbs;	/* list of reset/delete callbacks */
 } MemoryContextData;
 
@@ -96,6 +95,8 @@ typedef struct MemoryContextData
  */
 #define MemoryContextIsValid(context) \
 	((context) != NULL && \
-	 (IsA((context), AllocSetContext) || IsA((context), SlabContext)))
+	 (IsA((context), AllocSetContext) || \
+	  IsA((context), SlabContext) || \
+	  IsA((context), GenerationContext)))
 
 #endif							/* MEMNODES_H */

@@ -3,7 +3,7 @@
  * snapmgr.h
  *	  POSTGRES snapshot manager
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/snapmgr.h
@@ -56,10 +56,10 @@ extern TimestampTz GetOldSnapshotThresholdTimestamp(void);
 
 extern bool FirstSnapshotSet;
 
-extern TransactionId TransactionXmin;
-extern TransactionId RecentXmin;
+extern PGDLLIMPORT TransactionId TransactionXmin;
+extern PGDLLIMPORT TransactionId RecentXmin;
 extern PGDLLIMPORT TransactionId RecentGlobalXmin;
-extern TransactionId RecentGlobalDataXmin;
+extern PGDLLIMPORT TransactionId RecentGlobalDataXmin;
 
 extern Snapshot GetTransactionSnapshot(void);
 extern Snapshot GetLatestSnapshot(void);

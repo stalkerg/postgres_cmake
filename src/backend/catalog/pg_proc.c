@@ -3,7 +3,7 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -262,7 +262,7 @@ ProcedureCreate(const char *procedureName,
 	 */
 	if (parameterCount == 1 &&
 		OidIsValid(parameterTypes->values[0]) &&
-		(relid = typeidTypeRelid(parameterTypes->values[0])) != InvalidOid &&
+		(relid = typeOrDomainTypeRelid(parameterTypes->values[0])) != InvalidOid &&
 		get_attnum(relid, procedureName) != InvalidAttrNumber)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_COLUMN),
@@ -400,7 +400,7 @@ ProcedureCreate(const char *procedureName,
 					 errmsg("function \"%s\" already exists with same argument types",
 							procedureName)));
 		if (!pg_proc_ownercheck(HeapTupleGetOid(oldtup), proowner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 						   procedureName);
 
 		/*
@@ -582,7 +582,7 @@ ProcedureCreate(const char *procedureName,
 		/* Creating a new procedure */
 
 		/* First, get default permissions and set up proacl */
-		proacl = get_user_default_acl(ACL_OBJECT_FUNCTION, proowner,
+		proacl = get_user_default_acl(OBJECT_FUNCTION, proowner,
 									  procNamespace);
 		if (proacl != NULL)
 			values[Anum_pg_proc_proacl - 1] = PointerGetDatum(proacl);
@@ -857,7 +857,8 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 
 	/* Disallow pseudotype result */
 	/* except for RECORD, VOID, or polymorphic */
-	if (get_typtype(proc->prorettype) == TYPTYPE_PSEUDO &&
+	if (proc->prorettype &&
+		get_typtype(proc->prorettype) == TYPTYPE_PSEUDO &&
 		proc->prorettype != RECORDOID &&
 		proc->prorettype != VOIDOID &&
 		!IsPolymorphicType(proc->prorettype))

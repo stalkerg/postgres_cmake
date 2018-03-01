@@ -316,6 +316,9 @@
    */
 #cmakedefine HAVE_LL_CONSTANTS 1
 
+/* Define restrict */
+#cmakedefine HAVE_RESTRICT 1
+
 /* Define to 1 if the system has the type `locale_t'. */
 #cmakedefine HAVE_LOCALE_T
 

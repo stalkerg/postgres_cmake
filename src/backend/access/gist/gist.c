@@ -4,7 +4,7 @@
  *	  interface routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -640,7 +640,8 @@ gistdoinsert(Relation r, IndexTuple itup, Size freespace, GISTSTATE *giststate)
 		}
 
 		stack->page = (Page) BufferGetPage(stack->buffer);
-		stack->lsn = PageGetLSN(stack->page);
+		stack->lsn = xlocked ?
+			PageGetLSN(stack->page) : BufferGetLSNAtomic(stack->buffer);
 		Assert(!RelationNeedsWAL(state.r) || !XLogRecPtrIsInvalid(stack->lsn));
 
 		/*
@@ -890,7 +891,7 @@ gistFindPath(Relation r, BlockNumber child, OffsetNumber *downlinkoffnum)
 			break;
 		}
 
-		top->lsn = PageGetLSN(page);
+		top->lsn = BufferGetLSNAtomic(buffer);
 
 		/*
 		 * If F_FOLLOW_RIGHT is set, the page to the right doesn't have a
@@ -1364,8 +1365,8 @@ gistSplit(Relation r,
 						IndexTupleSize(itup[0]), GiSTPageSize,
 						RelationGetRelationName(r))));
 
-	memset(v.spl_lisnull, TRUE, sizeof(bool) * giststate->tupdesc->natts);
-	memset(v.spl_risnull, TRUE, sizeof(bool) * giststate->tupdesc->natts);
+	memset(v.spl_lisnull, true, sizeof(bool) * giststate->tupdesc->natts);
+	memset(v.spl_risnull, true, sizeof(bool) * giststate->tupdesc->natts);
 	gistSplitByKey(r, page, itup, len, giststate, &v, 0);
 
 	/* form left and right vector */
@@ -1453,12 +1454,23 @@ initGISTstate(Relation index)
 		fmgr_info_copy(&(giststate->unionFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_UNION_PROC),
 					   scanCxt);
-		fmgr_info_copy(&(giststate->compressFn[i]),
-					   index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
-					   scanCxt);
-		fmgr_info_copy(&(giststate->decompressFn[i]),
-					   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
-					   scanCxt);
+
+		/* opclasses are not required to provide a Compress method */
+		if (OidIsValid(index_getprocid(index, i + 1, GIST_COMPRESS_PROC)))
+			fmgr_info_copy(&(giststate->compressFn[i]),
+						   index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
+						   scanCxt);
+		else
+			giststate->compressFn[i].fn_oid = InvalidOid;
+
+		/* opclasses are not required to provide a Decompress method */
+		if (OidIsValid(index_getprocid(index, i + 1, GIST_DECOMPRESS_PROC)))
+			fmgr_info_copy(&(giststate->decompressFn[i]),
+						   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
+						   scanCxt);
+		else
+			giststate->decompressFn[i].fn_oid = InvalidOid;
+
 		fmgr_info_copy(&(giststate->penaltyFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_PENALTY_PROC),
 					   scanCxt);
@@ -1468,6 +1480,7 @@ initGISTstate(Relation index)
 		fmgr_info_copy(&(giststate->equalFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_EQUAL_PROC),
 					   scanCxt);
+
 		/* opclasses are not required to provide a Distance method */
 		if (OidIsValid(index_getprocid(index, i + 1, GIST_DISTANCE_PROC)))
 			fmgr_info_copy(&(giststate->distanceFn[i]),

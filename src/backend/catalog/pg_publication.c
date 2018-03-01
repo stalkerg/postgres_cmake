@@ -3,7 +3,7 @@
  * pg_publication.c
  *		publication C API manipulation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -103,6 +103,15 @@ is_publishable_class(Oid relid, Form_pg_class reltuple)
 		!IsCatalogClass(relid, reltuple) &&
 		reltuple->relpersistence == RELPERSISTENCE_PERMANENT &&
 		relid >= FirstNormalObjectId;
+}
+
+/*
+ * Another variant of this, taking a Relation.
+ */
+bool
+is_publishable_relation(Relation rel)
+{
+	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel);
 }
 
 

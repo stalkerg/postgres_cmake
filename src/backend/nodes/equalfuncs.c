@@ -18,7 +18,7 @@
  * "x" to be considered equal() to another reference to "x" in the query.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -513,11 +513,10 @@ static bool
 _equalArrayCoerceExpr(const ArrayCoerceExpr *a, const ArrayCoerceExpr *b)
 {
 	COMPARE_NODE_FIELD(arg);
-	COMPARE_SCALAR_FIELD(elemfuncid);
+	COMPARE_NODE_FIELD(elemexpr);
 	COMPARE_SCALAR_FIELD(resulttype);
 	COMPARE_SCALAR_FIELD(resulttypmod);
 	COMPARE_SCALAR_FIELD(resultcollid);
-	COMPARE_SCALAR_FIELD(isExplicit);
 	COMPARE_COERCIONFORM_FIELD(coerceformat);
 	COMPARE_LOCATION_FIELD(location);
 
@@ -909,6 +908,7 @@ _equalPartitionedChildRelInfo(const PartitionedChildRelInfo *a, const Partitione
 {
 	COMPARE_SCALAR_FIELD(parent_relid);
 	COMPARE_NODE_FIELD(child_rels);
+	COMPARE_SCALAR_FIELD(part_cols_updated);
 
 	return true;
 }
@@ -1098,6 +1098,7 @@ _equalAlterTableCmd(const AlterTableCmd *a, const AlterTableCmd *b)
 {
 	COMPARE_SCALAR_FIELD(subtype);
 	COMPARE_STRING_FIELD(name);
+	COMPARE_SCALAR_FIELD(num);
 	COMPARE_NODE_FIELD(newowner);
 	COMPARE_NODE_FIELD(def);
 	COMPARE_SCALAR_FIELD(behavior);
@@ -1197,6 +1198,15 @@ static bool
 _equalClosePortalStmt(const ClosePortalStmt *a, const ClosePortalStmt *b)
 {
 	COMPARE_STRING_FIELD(portalname);
+
+	return true;
+}
+
+static bool
+_equalCallStmt(const CallStmt *a, const CallStmt *b)
+{
+	COMPARE_NODE_FIELD(funccall);
+	COMPARE_NODE_FIELD(funcexpr);
 
 	return true;
 }
@@ -1324,6 +1334,7 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 {
 	COMPARE_STRING_FIELD(idxname);
 	COMPARE_NODE_FIELD(relation);
+	COMPARE_SCALAR_FIELD(relationId);
 	COMPARE_STRING_FIELD(accessMethod);
 	COMPARE_STRING_FIELD(tableSpace);
 	COMPARE_NODE_FIELD(indexParams);
@@ -1360,12 +1371,12 @@ _equalCreateStatsStmt(const CreateStatsStmt *a, const CreateStatsStmt *b)
 static bool
 _equalCreateFunctionStmt(const CreateFunctionStmt *a, const CreateFunctionStmt *b)
 {
+	COMPARE_SCALAR_FIELD(is_procedure);
 	COMPARE_SCALAR_FIELD(replace);
 	COMPARE_NODE_FIELD(funcname);
 	COMPARE_NODE_FIELD(parameters);
 	COMPARE_NODE_FIELD(returnType);
 	COMPARE_NODE_FIELD(options);
-	COMPARE_NODE_FIELD(withClause);
 
 	return true;
 }
@@ -1384,6 +1395,7 @@ _equalFunctionParameter(const FunctionParameter *a, const FunctionParameter *b)
 static bool
 _equalAlterFunctionStmt(const AlterFunctionStmt *a, const AlterFunctionStmt *b)
 {
+	COMPARE_SCALAR_FIELD(objtype);
 	COMPARE_NODE_FIELD(func);
 	COMPARE_NODE_FIELD(actions);
 
@@ -1663,7 +1675,16 @@ static bool
 _equalVacuumStmt(const VacuumStmt *a, const VacuumStmt *b)
 {
 	COMPARE_SCALAR_FIELD(options);
+	COMPARE_NODE_FIELD(rels);
+
+	return true;
+}
+
+static bool
+_equalVacuumRelation(const VacuumRelation *a, const VacuumRelation *b)
+{
 	COMPARE_NODE_FIELD(relation);
+	COMPARE_SCALAR_FIELD(oid);
 	COMPARE_NODE_FIELD(va_cols);
 
 	return true;
@@ -2544,6 +2565,7 @@ _equalColumnDef(const ColumnDef *a, const ColumnDef *b)
 	COMPARE_NODE_FIELD(raw_default);
 	COMPARE_NODE_FIELD(cooked_default);
 	COMPARE_SCALAR_FIELD(identity);
+	COMPARE_NODE_FIELD(identitySequence);
 	COMPARE_NODE_FIELD(collClause);
 	COMPARE_SCALAR_FIELD(collOid);
 	COMPARE_NODE_FIELD(constraints);
@@ -2714,6 +2736,11 @@ _equalWindowClause(const WindowClause *a, const WindowClause *b)
 	COMPARE_SCALAR_FIELD(frameOptions);
 	COMPARE_NODE_FIELD(startOffset);
 	COMPARE_NODE_FIELD(endOffset);
+	COMPARE_SCALAR_FIELD(startInRangeFunc);
+	COMPARE_SCALAR_FIELD(endInRangeFunc);
+	COMPARE_SCALAR_FIELD(inRangeColl);
+	COMPARE_SCALAR_FIELD(inRangeAsc);
+	COMPARE_SCALAR_FIELD(inRangeNullsFirst);
 	COMPARE_SCALAR_FIELD(winref);
 	COMPARE_SCALAR_FIELD(copiedOrder);
 
@@ -2838,6 +2865,9 @@ static bool
 _equalPartitionBoundSpec(const PartitionBoundSpec *a, const PartitionBoundSpec *b)
 {
 	COMPARE_SCALAR_FIELD(strategy);
+	COMPARE_SCALAR_FIELD(is_default);
+	COMPARE_SCALAR_FIELD(modulus);
+	COMPARE_SCALAR_FIELD(remainder);
 	COMPARE_NODE_FIELD(listdatums);
 	COMPARE_NODE_FIELD(lowerdatums);
 	COMPARE_NODE_FIELD(upperdatums);
@@ -3234,6 +3264,9 @@ equal(const void *a, const void *b)
 		case T_ClosePortalStmt:
 			retval = _equalClosePortalStmt(a, b);
 			break;
+		case T_CallStmt:
+			retval = _equalCallStmt(a, b);
+			break;
 		case T_ClusterStmt:
 			retval = _equalClusterStmt(a, b);
 			break;
@@ -3359,6 +3392,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_VacuumStmt:
 			retval = _equalVacuumStmt(a, b);
+			break;
+		case T_VacuumRelation:
+			retval = _equalVacuumRelation(a, b);
 			break;
 		case T_ExplainStmt:
 			retval = _equalExplainStmt(a, b);

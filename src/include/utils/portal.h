@@ -36,7 +36,7 @@
  * to look like NO SCROLL cursors.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/portal.h
@@ -116,7 +116,7 @@ typedef struct PortalData
 	/* Bookkeeping data */
 	const char *name;			/* portal's name */
 	const char *prepStmtName;	/* source prepared statement (NULL if none) */
-	MemoryContext heap;			/* subsidiary memory for portal */
+	MemoryContext portalContext;/* subsidiary memory for portal */
 	ResourceOwner resowner;		/* resources owned by portal */
 	void		(*cleanup) (Portal portal); /* cleanup hook */
 
@@ -198,12 +198,6 @@ typedef struct PortalData
  */
 #define PortalIsValid(p) PointerIsValid(p)
 
-/*
- * Access macros for Portal ... use these in preference to field access.
- */
-#define PortalGetQueryDesc(portal)	((portal)->queryDesc)
-#define PortalGetHeapMemory(portal) ((portal)->heap)
-
 
 /* Prototypes for functions in utils/mmgr/portalmem.c */
 extern void EnablePortalManager(void);
@@ -237,5 +231,6 @@ extern PlannedStmt *PortalGetPrimaryStmt(Portal portal);
 extern void PortalCreateHoldStore(Portal portal);
 extern void PortalHashTableDeleteAll(void);
 extern bool ThereAreNoReadyPortals(void);
+extern bool ThereArePinnedPortals(void);
 
 #endif							/* PORTAL_H */

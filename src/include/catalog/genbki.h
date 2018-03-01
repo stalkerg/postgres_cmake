@@ -9,7 +9,7 @@
  * bootstrap file from these header files.)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/genbki.h
@@ -30,6 +30,9 @@
 #define BKI_SCHEMA_MACRO
 #define BKI_FORCE_NULL
 #define BKI_FORCE_NOT_NULL
+
+/* Specifies a default value for a catalog field */
+#define BKI_DEFAULT(value)
 
 /*
  * This is never defined; it's here only for documentation.
