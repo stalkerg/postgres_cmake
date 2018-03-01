@@ -25,7 +25,7 @@ set(POSTGRES_VERSION
   ${POSTGRES_MAJOR_VERSION}.${POSTGRES_MINOR_VERSION}.${POSTGRES_PATCH_VERSION})
 
 set(PG_VERSION "11devel")
-set(PG_VERSION_NUM 100000)
+set(PG_VERSION_NUM 110000)
 set(PACKAGE_BUGREPORT "pgsql-bugs@postgresql.org")
 
  # Offer the user the choice of overriding the installation directories
