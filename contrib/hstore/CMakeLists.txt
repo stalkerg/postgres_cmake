@@ -31,6 +31,7 @@ install(FILES
 	${extension_name}--1.1--1.2.sql
 	${extension_name}--1.2--1.3.sql
 	${extension_name}--1.3--1.4.sql
+	${extension_name}--1.4--1.5.sql
 	${extension_name}--unpackaged--1.0.sql
 	DESTINATION ${PGSHAREDIR}/extension)
 
