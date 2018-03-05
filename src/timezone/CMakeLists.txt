@@ -53,6 +53,6 @@ else()
 	set(ZIC ${CMAKE_CURRENT_BINARY_DIR}/zic${CMAKE_EXECUTABLE_SUFFIX})
 	set(POSIXRULES "US/Eastern")
 
-	execute_process(COMMAND ${ZIC} -d ${CMAKE_CURRENT_BINARY_DIR}/timezone -p ${POSIXRULES} ${tzdata_files})
+	install(CODE "execute_process(COMMAND ${ZIC} -d ${CMAKE_CURRENT_BINARY_DIR}/timezone -p ${POSIXRULES} ${tzdata_files})")
 	install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/timezone DESTINATION ${PGSHAREDIR_ZIC})
 endif()
