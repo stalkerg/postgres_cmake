@@ -3,7 +3,7 @@
  * execReplication.c
  *	  miscellaneous executor routines for logical replication
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -247,7 +247,7 @@ tuple_equals_slot(TupleDesc desc, HeapTuple tup, TupleTableSlot *slot)
 		if (isnull[attrnum])
 			continue;
 
-		att = desc->attrs[attrnum];
+		att = TupleDescAttr(desc, attrnum);
 
 		typentry = lookup_type_cache(att->atttypid, TYPECACHE_EQ_OPR_FINFO);
 		if (!OidIsValid(typentry->eq_opr_finfo.fn_oid))
@@ -288,7 +288,7 @@ RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 
 	Assert(equalTupleDescs(desc, outslot->tts_tupleDescriptor));
 
-	/* Start an index scan. */
+	/* Start a heap scan. */
 	InitDirtySnapshot(snap);
 	scan = heap_beginscan(rel, &snap, 0, NULL);
 
@@ -401,7 +401,7 @@ ExecSimpleRelationInsert(EState *estate, TupleTableSlot *slot)
 
 		/* Check the constraints of the tuple */
 		if (rel->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, true);
 
 		/* Store the slot into tuple that we can inspect. */
 		tuple = ExecMaterializeSlot(slot);
@@ -448,7 +448,7 @@ ExecSimpleRelationUpdate(EState *estate, EPQState *epqstate,
 
 	CheckCmdReplicaIdentity(rel, CMD_UPDATE);
 
-	/* BEFORE ROW INSERT Triggers */
+	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
 	{
@@ -466,7 +466,7 @@ ExecSimpleRelationUpdate(EState *estate, EPQState *epqstate,
 
 		/* Check the constraints of the tuple */
 		if (rel->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, true);
 
 		/* Store the slot into tuple that we can write. */
 		tuple = ExecMaterializeSlot(slot);
@@ -509,9 +509,9 @@ ExecSimpleRelationDelete(EState *estate, EPQState *epqstate,
 
 	CheckCmdReplicaIdentity(rel, CMD_DELETE);
 
-	/* BEFORE ROW INSERT Triggers */
+	/* BEFORE ROW DELETE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
-		resultRelInfo->ri_TrigDesc->trig_update_before_row)
+		resultRelInfo->ri_TrigDesc->trig_delete_before_row)
 	{
 		skip_tuple = !ExecBRDeleteTriggers(estate, epqstate, resultRelInfo,
 										   &searchslot->tts_tuple->t_self,
@@ -559,13 +559,13 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	if (cmd == CMD_UPDATE && pubactions->pubupdate)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("cannot update table \"%s\" because it does not have replica identity and publishes updates",
+				 errmsg("cannot update table \"%s\" because it does not have a replica identity and publishes updates",
 						RelationGetRelationName(rel)),
 				 errhint("To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.")));
 	else if (cmd == CMD_DELETE && pubactions->pubdelete)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("cannot delete from table \"%s\" because it does not have replica identity and publishes deletes",
+				 errmsg("cannot delete from table \"%s\" because it does not have a replica identity and publishes deletes",
 						RelationGetRelationName(rel)),
 				 errhint("To enable deleting from the table, set REPLICA IDENTITY using ALTER TABLE.")));
 }

@@ -77,6 +77,10 @@ mlparted12|f
 mlparted2|f
 mlparted3|f
 mlparted4|f
+mlparted_def|f
+mlparted_def1|f
+mlparted_def2|f
+mlparted_defd|f
 money_data|f
 num_data|f
 num_exp_add|t
@@ -162,6 +166,9 @@ point_tbl|t
 polygon_tbl|t
 quad_box_tbl|t
 quad_point_tbl|t
+quad_poly_tbl|t
+quad_poly_tbl_ord_seq1|f
+quad_poly_tbl_ord_seq2|f
 radix_text_tbl|t
 ramp|f
 real_city|f

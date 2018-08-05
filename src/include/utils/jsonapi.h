@@ -3,7 +3,7 @@
  * jsonapi.h
  *	  Declarations for JSON API support.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/jsonapi.h
@@ -146,5 +146,7 @@ extern Jsonb *transform_jsonb_string_values(Jsonb *jsonb, void *action_state,
 							  JsonTransformStringValuesAction transform_action);
 extern text *transform_json_string_values(text *json, void *action_state,
 							 JsonTransformStringValuesAction transform_action);
+
+extern char *JsonEncodeDateTime(char *buf, Datum value, Oid typid);
 
 #endif							/* JSONAPI_H */

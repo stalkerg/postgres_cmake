@@ -82,10 +82,12 @@ package PostgresNode;
 use strict;
 use warnings;
 
+use Carp;
 use Config;
 use Cwd;
 use Exporter 'import';
 use File::Basename;
+use File::Path qw(rmtree);
 use File::Spec;
 use File::Temp ();
 use IPC::Run;
@@ -100,7 +102,7 @@ our @EXPORT = qw(
   get_new_node
 );
 
-our ($test_localhost, $test_pghost, $last_port_assigned, @all_nodes);
+our ($test_localhost, $test_pghost, $last_port_assigned, @all_nodes, $died);
 
 # Windows path to virtual file system root
 
@@ -149,11 +151,14 @@ sub new
 	my $self = {
 		_port    => $pgport,
 		_host    => $pghost,
-		_basedir => TestLib::tempdir("data_" . $name),
+		_basedir => "$TestLib::tmp_check/t_${testname}_${name}_data",
 		_name    => $name,
 		_logfile => "$TestLib::log_path/${testname}_${name}.log" };
 
 	bless $self, $class;
+	mkdir $self->{_basedir}
+	  or
+	  BAIL_OUT("could not create data directory \"$self->{_basedir}\": $!");
 	$self->dump_info;
 
 	return $self;
@@ -355,7 +360,7 @@ sub set_replication_conf
 	my $pgdata = $self->data_dir;
 
 	$self->host eq $test_pghost
-	  or die "set_replication_conf only works with the default host";
+	  or croak "set_replication_conf only works with the default host";
 
 	open my $hba, '>>', "$pgdata/pg_hba.conf";
 	print $hba "\n# Allow replication (set up by PostgresNode.pm)\n";
@@ -415,6 +420,8 @@ sub init
 	print $conf "restart_after_crash = off\n";
 	print $conf "log_line_prefix = '%m [%p] %q%a '\n";
 	print $conf "log_statement = all\n";
+	print $conf "log_min_messages = debug1\n";
+	print $conf "log_replication_commands = on\n";
 	print $conf "wal_retrieve_retry_interval = '500ms'\n";
 	print $conf "port = $port\n";
 
@@ -430,7 +437,6 @@ sub init
 		}
 		print $conf "max_wal_senders = 5\n";
 		print $conf "max_replication_slots = 5\n";
-		print $conf "wal_keep_segments = 20\n";
 		print $conf "max_wal_size = 128MB\n";
 		print $conf "shared_buffers = 1MB\n";
 		print $conf "wal_log_hints = on\n";
@@ -619,7 +625,7 @@ sub init_from_backup
 
 	print
 "# Initializing node \"$node_name\" from backup \"$backup_name\" of node \"$root_name\"\n";
-	die "Backup \"$backup_name\" does not exist at $backup_path"
+	croak "Backup \"$backup_name\" does not exist at $backup_path"
 	  unless -d $backup_path;
 
 	mkdir $self->backup_dir;
@@ -928,9 +934,23 @@ sub get_new_node
 	return $node;
 }
 
+# Retain the errno on die() if set, else assume a generic errno of 1.
+# This will instruct the END handler on how to handle artifacts left
+# behind from tests.
+$SIG{__DIE__} = sub {
+	if ($!)
+	{
+		$died = $!;
+	}
+	else
+	{
+		$died = 1;
+	}
+};
+
 # Automatically shut down any still-running nodes when the test script exits.
 # Note that this just stops the postmasters (in the same order the nodes were
-# created in).  Temporary PGDATA directories are deleted, in an unspecified
+# created in).  Any temporary directories are deleted, in an unspecified
 # order, later when the File::Temp objects are destroyed.
 END
 {
@@ -941,6 +961,13 @@ END
 	foreach my $node (@all_nodes)
 	{
 		$node->teardown_node;
+
+		# skip clean if we are requested to retain the basedir
+		next if defined $ENV{'PG_TEST_NOCLEAN'};
+
+		# clean basedir on clean test invocation
+		$node->clean_node
+		  if TestLib::all_tests_passing() && !defined $died && !$exit_code;
 	}
 
 	$? = $exit_code;
@@ -959,6 +986,22 @@ sub teardown_node
 	my $self = shift;
 
 	$self->stop('immediate');
+
+}
+
+=pod
+
+=item $node->clean_node()
+
+Remove the base directory of the node if the node has been stopped.
+
+=cut
+
+sub clean_node
+{
+	my $self = shift;
+
+	rmtree $self->{_basedir} unless defined $self->{_pid};
 }
 
 =pod
@@ -1284,9 +1327,9 @@ sub command_ok
 
 =pod
 
-=item $node->command_fails(...) - TestLib::command_fails with our PGPORT
+=item $node->command_fails(...)
 
-See command_ok(...)
+TestLib::command_fails with our PGPORT. See command_ok(...)
 
 =cut
 
@@ -1314,6 +1357,23 @@ sub command_like
 	local $ENV{PGPORT} = $self->port;
 
 	TestLib::command_like(@_);
+}
+
+=pod
+
+=item $node->command_checks_all(...)
+
+TestLib::command_checks_all with our PGPORT. See command_ok(...)
+
+=cut
+
+sub command_checks_all
+{
+	my $self = shift;
+
+	local $ENV{PGPORT} = $self->port;
+
+	TestLib::command_checks_all(@_);
 }
 
 =pod
@@ -1386,7 +1446,7 @@ sub lsn
 		'replay'  => 'pg_last_wal_replay_lsn()');
 
 	$mode = '<undef>' if !defined($mode);
-	die "unknown mode for 'lsn': '$mode', valid modes are "
+	croak "unknown mode for 'lsn': '$mode', valid modes are "
 	  . join(', ', keys %modes)
 	  if !defined($modes{$mode});
 
@@ -1406,7 +1466,8 @@ sub lsn
 
 =item $node->wait_for_catchup(standby_name, mode, target_lsn)
 
-Wait for the node with application_name standby_name (usually from node->name)
+Wait for the node with application_name standby_name (usually from node->name,
+also works for logical subscriptions)
 until its replication location in pg_stat_replication equals or passes the
 upstream's WAL insert point at the time this function is called. By default
 the replay_lsn is waited for, but 'mode' may be specified to wait for any of
@@ -1418,6 +1479,7 @@ poll_query_until timeout.
 Requires that the 'postgres' db exists and is accessible.
 
 target_lsn may be any arbitrary lsn, but is typically $master_node->lsn('insert').
+If omitted, pg_current_wal_lsn() is used.
 
 This is not a test. It die()s on failure.
 
@@ -1429,7 +1491,7 @@ sub wait_for_catchup
 	$mode = defined($mode) ? $mode : 'replay';
 	my %valid_modes =
 	  ('sent' => 1, 'write' => 1, 'flush' => 1, 'replay' => 1);
-	die "unknown mode $mode for 'wait_for_catchup', valid modes are "
+	croak "unknown mode $mode for 'wait_for_catchup', valid modes are "
 	  . join(', ', keys(%valid_modes))
 	  unless exists($valid_modes{$mode});
 
@@ -1438,7 +1500,15 @@ sub wait_for_catchup
 	{
 		$standby_name = $standby_name->name;
 	}
-	die 'target_lsn must be specified' unless defined($target_lsn);
+	my $lsn_expr;
+	if (defined($target_lsn))
+	{
+		$lsn_expr = "'$target_lsn'";
+	}
+	else
+	{
+		$lsn_expr = 'pg_current_wal_lsn()'
+	}
 	print "Waiting for replication conn "
 	  . $standby_name . "'s "
 	  . $mode
@@ -1446,10 +1516,9 @@ sub wait_for_catchup
 	  . $target_lsn . " on "
 	  . $self->name . "\n";
 	my $query =
-qq[SELECT '$target_lsn' <= ${mode}_lsn FROM pg_catalog.pg_stat_replication WHERE application_name = '$standby_name';];
+qq[SELECT $lsn_expr <= ${mode}_lsn FROM pg_catalog.pg_stat_replication WHERE application_name = '$standby_name';];
 	$self->poll_query_until('postgres', $query)
-	  or die "timed out waiting for catchup, current location is "
-	  . ($self->safe_psql('postgres', $query) || '(unknown)');
+	  or croak "timed out waiting for catchup";
 	print "done\n";
 }
 
@@ -1479,9 +1548,9 @@ sub wait_for_slot_catchup
 	$mode = defined($mode) ? $mode : 'restart';
 	if (!($mode eq 'restart' || $mode eq 'confirmed_flush'))
 	{
-		die "valid modes are restart, confirmed_flush";
+		croak "valid modes are restart, confirmed_flush";
 	}
-	die 'target lsn must be specified' unless defined($target_lsn);
+	croak 'target lsn must be specified' unless defined($target_lsn);
 	print "Waiting for replication slot "
 	  . $slot_name . "'s "
 	  . $mode
@@ -1491,8 +1560,7 @@ sub wait_for_slot_catchup
 	my $query =
 qq[SELECT '$target_lsn' <= ${mode}_lsn FROM pg_catalog.pg_replication_slots WHERE slot_name = '$slot_name';];
 	$self->poll_query_until('postgres', $query)
-	  or die "timed out waiting for catchup, current location is "
-	  . ($self->safe_psql('postgres', $query) || '(unknown)');
+	  or croak "timed out waiting for catchup";
 	print "done\n";
 }
 
@@ -1521,7 +1589,7 @@ null columns.
 sub query_hash
 {
 	my ($self, $dbname, $query, @columns) = @_;
-	die 'calls in array context for multi-row results not supported yet'
+	croak 'calls in array context for multi-row results not supported yet'
 	  if (wantarray);
 
 	# Replace __COLUMNS__ if found
@@ -1596,8 +1664,8 @@ sub pg_recvlogical_upto
 
 	my $timeout_exception = 'pg_recvlogical timed out';
 
-	die 'slot name must be specified' unless defined($slot_name);
-	die 'endpos must be specified'    unless defined($endpos);
+	croak 'slot name must be specified' unless defined($slot_name);
+	croak 'endpos must be specified'    unless defined($endpos);
 
 	my @cmd = (
 		'pg_recvlogical', '-S', $slot_name, '--dbname',
@@ -1607,7 +1675,7 @@ sub pg_recvlogical_upto
 
 	while (my ($k, $v) = each %plugin_options)
 	{
-		die "= is not permitted to appear in replication option name"
+		croak "= is not permitted to appear in replication option name"
 		  if ($k =~ qr/=/);
 		push @cmd, "-o", "$k=$v";
 	}

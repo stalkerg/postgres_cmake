@@ -3,7 +3,7 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -71,8 +71,8 @@ static void _SPI_cursor_operation(Portal portal,
 static SPIPlanPtr _SPI_make_plan_non_temp(SPIPlanPtr plan);
 static SPIPlanPtr _SPI_save_plan(SPIPlanPtr plan);
 
-static int	_SPI_begin_call(bool execmem);
-static int	_SPI_end_call(bool procmem);
+static int	_SPI_begin_call(bool use_exec);
+static int	_SPI_end_call(bool use_exec);
 static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
@@ -83,6 +83,12 @@ static bool _SPI_checktuples(void);
 int
 SPI_connect(void)
 {
+	return SPI_connect_ext(0);
+}
+
+int
+SPI_connect_ext(int options)
+{
 	int			newdepth;
 
 	/* Enlarge stack if necessary */
@@ -92,7 +98,7 @@ SPI_connect(void)
 			elog(ERROR, "SPI stack corrupted");
 		newdepth = 16;
 		_SPI_stack = (_SPI_connection *)
-			MemoryContextAlloc(TopTransactionContext,
+			MemoryContextAlloc(TopMemoryContext,
 							   newdepth * sizeof(_SPI_connection));
 		_SPI_stack_depth = newdepth;
 	}
@@ -118,24 +124,31 @@ SPI_connect(void)
 	_SPI_current->processed = 0;
 	_SPI_current->lastoid = InvalidOid;
 	_SPI_current->tuptable = NULL;
+	_SPI_current->execSubid = InvalidSubTransactionId;
 	slist_init(&_SPI_current->tuptables);
 	_SPI_current->procCxt = NULL;	/* in case we fail to create 'em */
 	_SPI_current->execCxt = NULL;
 	_SPI_current->connectSubid = GetCurrentSubTransactionId();
 	_SPI_current->queryEnv = NULL;
+	_SPI_current->atomic = (options & SPI_OPT_NONATOMIC ? false : true);
+	_SPI_current->internal_xact = false;
 
 	/*
 	 * Create memory contexts for this procedure
 	 *
-	 * XXX it would be better to use PortalContext as the parent context, but
-	 * we may not be inside a portal (consider deferred-trigger execution).
-	 * Perhaps CurTransactionContext would do?	For now it doesn't matter
-	 * because we clean up explicitly in AtEOSubXact_SPI().
+	 * In atomic contexts (the normal case), we use TopTransactionContext,
+	 * otherwise PortalContext, so that it lives across transaction
+	 * boundaries.
+	 *
+	 * XXX It could be better to use PortalContext as the parent context in
+	 * all cases, but we may not be inside a portal (consider deferred-trigger
+	 * execution).  Perhaps CurTransactionContext could be an option?  For now
+	 * it doesn't matter because we clean up explicitly in AtEOSubXact_SPI().
 	 */
-	_SPI_current->procCxt = AllocSetContextCreate(TopTransactionContext,
+	_SPI_current->procCxt = AllocSetContextCreate(_SPI_current->atomic ? TopTransactionContext : PortalContext,
 												  "SPI Proc",
 												  ALLOCSET_DEFAULT_SIZES);
-	_SPI_current->execCxt = AllocSetContextCreate(TopTransactionContext,
+	_SPI_current->execCxt = AllocSetContextCreate(_SPI_current->atomic ? TopTransactionContext : _SPI_current->procCxt,
 												  "SPI Exec",
 												  ALLOCSET_DEFAULT_SIZES);
 	/* ... and switch to procedure's context */
@@ -149,7 +162,7 @@ SPI_finish(void)
 {
 	int			res;
 
-	res = _SPI_begin_call(false);	/* live in procedure memory */
+	res = _SPI_begin_call(false);	/* just check we're connected */
 	if (res < 0)
 		return res;
 
@@ -180,12 +193,85 @@ SPI_finish(void)
 	return SPI_OK_FINISH;
 }
 
+void
+SPI_start_transaction(void)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	StartTransactionCommand();
+	MemoryContextSwitchTo(oldcontext);
+}
+
+void
+SPI_commit(void)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	if (_SPI_current->atomic)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
+				 errmsg("invalid transaction termination")));
+
+	/*
+	 * This restriction is required by PLs implemented on top of SPI.  They
+	 * use subtransactions to establish exception blocks that are supposed to
+	 * be rolled back together if there is an error.  Terminating the
+	 * top-level transaction in such a block violates that idea.  A future PL
+	 * implementation might have different ideas about this, in which case
+	 * this restriction would have to be refined or the check possibly be
+	 * moved out of SPI into the PLs.
+	 */
+	if (IsSubTransaction())
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
+				 errmsg("cannot commit while a subtransaction is active")));
+
+	_SPI_current->internal_xact = true;
+
+	if (ActiveSnapshotSet())
+		PopActiveSnapshot();
+	CommitTransactionCommand();
+	MemoryContextSwitchTo(oldcontext);
+
+	_SPI_current->internal_xact = false;
+}
+
+void
+SPI_rollback(void)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	if (_SPI_current->atomic)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
+				 errmsg("invalid transaction termination")));
+
+	/* see under SPI_commit() */
+	if (IsSubTransaction())
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
+				 errmsg("cannot roll back while a subtransaction is active")));
+
+	_SPI_current->internal_xact = true;
+
+	AbortCurrentTransaction();
+	MemoryContextSwitchTo(oldcontext);
+
+	_SPI_current->internal_xact = false;
+}
+
 /*
  * Clean up SPI state at transaction commit or abort.
  */
 void
 AtEOXact_SPI(bool isCommit)
 {
+	/*
+	 * Do nothing if the transaction end was initiated by SPI.
+	 */
+	if (_SPI_current && _SPI_current->internal_xact)
+		return;
+
 	/*
 	 * Note that memory contexts belonging to SPI stack entries will be freed
 	 * automatically, so we can ignore them here.  We just need to restore our
@@ -222,6 +308,9 @@ AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid)
 
 		if (connection->connectSubid != mySubid)
 			break;				/* couldn't be any underneath it either */
+
+		if (connection->internal_xact)
+			break;
 
 		found = true;
 
@@ -268,8 +357,15 @@ AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid)
 	{
 		slist_mutable_iter siter;
 
-		/* free Executor memory the same as _SPI_end_call would do */
-		MemoryContextResetAndDeleteChildren(_SPI_current->execCxt);
+		/*
+		 * Throw away executor state if current executor operation was started
+		 * within current subxact (essentially, force a _SPI_end_call(true)).
+		 */
+		if (_SPI_current->execSubid >= mySubid)
+		{
+			_SPI_current->execSubid = InvalidSubTransactionId;
+			MemoryContextResetAndDeleteChildren(_SPI_current->execCxt);
+		}
 
 		/* throw away any tuple tables created within current subxact */
 		slist_foreach_modify(siter, &_SPI_current->tuptables)
@@ -293,8 +389,6 @@ AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid)
 				MemoryContextDelete(tuptable->tuptabcxt);
 			}
 		}
-		/* in particular we should have gotten rid of any in-progress table */
-		Assert(_SPI_current->tuptable == NULL);
 	}
 }
 
@@ -765,8 +859,10 @@ SPI_fnumber(TupleDesc tupdesc, const char *fname)
 
 	for (res = 0; res < tupdesc->natts; res++)
 	{
-		if (namestrcmp(&tupdesc->attrs[res]->attname, fname) == 0 &&
-			!tupdesc->attrs[res]->attisdropped)
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, res);
+
+		if (namestrcmp(&attr->attname, fname) == 0 &&
+			!attr->attisdropped)
 			return res + 1;
 	}
 
@@ -793,7 +889,7 @@ SPI_fname(TupleDesc tupdesc, int fnumber)
 	}
 
 	if (fnumber > 0)
-		att = tupdesc->attrs[fnumber - 1];
+		att = TupleDescAttr(tupdesc, fnumber - 1);
 	else
 		att = SystemAttributeDefinition(fnumber, true);
 
@@ -823,7 +919,7 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 		return NULL;
 
 	if (fnumber > 0)
-		typoid = tupdesc->attrs[fnumber - 1]->atttypid;
+		typoid = TupleDescAttr(tupdesc, fnumber - 1)->atttypid;
 	else
 		typoid = (SystemAttributeDefinition(fnumber, true))->atttypid;
 
@@ -865,7 +961,7 @@ SPI_gettype(TupleDesc tupdesc, int fnumber)
 	}
 
 	if (fnumber > 0)
-		typoid = tupdesc->attrs[fnumber - 1]->atttypid;
+		typoid = TupleDescAttr(tupdesc, fnumber - 1)->atttypid;
 	else
 		typoid = (SystemAttributeDefinition(fnumber, true))->atttypid;
 
@@ -901,7 +997,7 @@ SPI_gettypeid(TupleDesc tupdesc, int fnumber)
 	}
 
 	if (fnumber > 0)
-		return tupdesc->attrs[fnumber - 1]->atttypid;
+		return TupleDescAttr(tupdesc, fnumber - 1)->atttypid;
 	else
 		return (SystemAttributeDefinition(fnumber, true))->atttypid;
 }
@@ -1175,7 +1271,7 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	}
 
 	/* Copy the plan's query string into the portal */
-	query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
+	query_string = MemoryContextStrdup(portal->portalContext,
 									   plansource->query_string);
 
 	/*
@@ -1205,7 +1301,7 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 		 * will result in leaking our refcount on the plan, but it doesn't
 		 * matter because the plan is unsaved and hence transient anyway.
 		 */
-		oldcontext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
+		oldcontext = MemoryContextSwitchTo(portal->portalContext);
 		stmt_list = copyObject(stmt_list);
 		MemoryContextSwitchTo(oldcontext);
 		ReleaseCachedPlan(cplan, false);
@@ -1303,7 +1399,7 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	 */
 	if (paramLI)
 	{
-		oldcontext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
+		oldcontext = MemoryContextSwitchTo(portal->portalContext);
 		paramLI = copyParamList(paramLI);
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -1899,9 +1995,9 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
  * snapshot: query snapshot to use, or InvalidSnapshot for the normal
  *		behavior of taking a new snapshot for each query.
  * crosscheck_snapshot: for RI use, all others pass InvalidSnapshot
- * read_only: TRUE for read-only execution (no CommandCounterIncrement)
- * fire_triggers: TRUE to fire AFTER triggers at end of query (normal case);
- *		FALSE means any AFTER triggers are postponed to end of outer query
+ * read_only: true for read-only execution (no CommandCounterIncrement)
+ * fire_triggers: true to fire AFTER triggers at end of query (normal case);
+ *		false means any AFTER triggers are postponed to end of outer query
  * tcount: execution tuple-count limit, or 0 for none
  */
 static int
@@ -2251,10 +2347,11 @@ _SPI_convert_params(int nargs, Oid *argtypes,
 		/* we have static list of params, so no hooks needed */
 		paramLI->paramFetch = NULL;
 		paramLI->paramFetchArg = NULL;
+		paramLI->paramCompile = NULL;
+		paramLI->paramCompileArg = NULL;
 		paramLI->parserSetup = NULL;
 		paramLI->parserSetupArg = NULL;
 		paramLI->numParams = nargs;
-		paramLI->paramMask = NULL;
 
 		for (i = 0; i < nargs; i++)
 		{
@@ -2359,6 +2456,9 @@ _SPI_error_callback(void *arg)
 	const char *query = (const char *) arg;
 	int			syntaxerrposition;
 
+	if (query == NULL)			/* in case arg wasn't set yet */
+		return;
+
 	/*
 	 * If there is a syntax error position, convert to internal syntax error;
 	 * otherwise treat the query as an item of context stack
@@ -2444,15 +2544,24 @@ _SPI_procmem(void)
 
 /*
  * _SPI_begin_call: begin a SPI operation within a connected procedure
+ *
+ * use_exec is true if we intend to make use of the procedure's execCxt
+ * during this SPI operation.  We'll switch into that context, and arrange
+ * for it to be cleaned up at _SPI_end_call or if an error occurs.
  */
 static int
-_SPI_begin_call(bool execmem)
+_SPI_begin_call(bool use_exec)
 {
 	if (_SPI_current == NULL)
 		return SPI_ERROR_UNCONNECTED;
 
-	if (execmem)				/* switch to the Executor memory context */
+	if (use_exec)
+	{
+		/* remember when the Executor operation started */
+		_SPI_current->execSubid = GetCurrentSubTransactionId();
+		/* switch to the Executor memory context */
 		_SPI_execmem();
+	}
 
 	return 0;
 }
@@ -2460,14 +2569,19 @@ _SPI_begin_call(bool execmem)
 /*
  * _SPI_end_call: end a SPI operation within a connected procedure
  *
+ * use_exec must be the same as in the previous _SPI_begin_call
+ *
  * Note: this currently has no failure return cases, so callers don't check
  */
 static int
-_SPI_end_call(bool procmem)
+_SPI_end_call(bool use_exec)
 {
-	if (procmem)				/* switch to the procedure memory context */
+	if (use_exec)
 	{
+		/* switch to the procedure memory context */
 		_SPI_procmem();
+		/* mark Executor context no longer in use */
+		_SPI_current->execSubid = InvalidSubTransactionId;
 		/* and free Executor memory */
 		MemoryContextResetAndDeleteChildren(_SPI_current->execCxt);
 	}

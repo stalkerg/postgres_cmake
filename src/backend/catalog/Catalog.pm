@@ -4,7 +4,7 @@
 #    Perl module that extracts info from catalog headers into Perl
 #    data structures
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/catalog/Catalog.pm
@@ -15,11 +15,6 @@ package Catalog;
 
 use strict;
 use warnings;
-
-require Exporter;
-our @ISA       = qw(Exporter);
-our @EXPORT    = ();
-our @EXPORT_OK = qw(Catalogs SplitDataLine RenameTempFile);
 
 # Call this function with an array of names of header files to parse.
 # Returns a nested data structure describing the data in the headers.
@@ -36,11 +31,14 @@ sub Catalogs
 		'int64'         => 'int8',
 		'Oid'           => 'oid',
 		'NameData'      => 'name',
-		'TransactionId' => 'xid');
+		'TransactionId' => 'xid',
+		'XLogRecPtr'    => 'pg_lsn');
 
 	foreach my $input_file (@_)
 	{
 		my %catalog;
+		my $is_varlen     = 0;
+
 		$catalog{columns} = [];
 		$catalog{data}    = [];
 
@@ -162,22 +160,30 @@ sub Catalogs
 				  /BKI_WITHOUT_OIDS/ ? ' without_oids' : '';
 				$catalog{rowtype_oid} =
 				  /BKI_ROWTYPE_OID\((\d+)\)/ ? " rowtype_oid $1" : '';
-				$catalog{schema_macro} = /BKI_SCHEMA_MACRO/ ? 'True' : '';
+				$catalog{schema_macro} = /BKI_SCHEMA_MACRO/ ? 1 : 0;
 				$declaring_attributes = 1;
 			}
 			elsif ($declaring_attributes)
 			{
 				next if (/^{|^$/);
-				next if (/^#/);
+				if (/^#/)
+				{
+					$is_varlen = 1 if /^#ifdef\s+CATALOG_VARLEN/;
+					next;
+				}
 				if (/^}/)
 				{
 					undef $declaring_attributes;
 				}
 				else
 				{
-					my %row;
-					my ($atttype, $attname, $attopt) = split /\s+/, $_;
-					die "parse error ($input_file)" unless $attname;
+					my %column;
+					my @attopts = split /\s+/, $_;
+					my $atttype = shift @attopts;
+					my $attname = shift @attopts;
+					die "parse error ($input_file)"
+					  unless ($attname and $atttype);
+
 					if (exists $RENAME_ATTTYPE{$atttype})
 					{
 						$atttype = $RENAME_ATTTYPE{$atttype};
@@ -185,29 +191,39 @@ sub Catalogs
 					if ($attname =~ /(.*)\[.*\]/)    # array attribute
 					{
 						$attname = $1;
-						$atttype .= '[]';            # variable-length only
+						$atttype .= '[]';
 					}
 
-					$row{'type'} = $atttype;
-					$row{'name'} = $attname;
+					$column{type} = $atttype;
+					$column{name} = $attname;
+					$column{is_varlen} = 1 if $is_varlen;
 
-					if (defined $attopt)
+					foreach my $attopt (@attopts)
 					{
 						if ($attopt eq 'BKI_FORCE_NULL')
 						{
-							$row{'forcenull'} = 1;
+							$column{forcenull} = 1;
 						}
 						elsif ($attopt eq 'BKI_FORCE_NOT_NULL')
 						{
-							$row{'forcenotnull'} = 1;
+							$column{forcenotnull} = 1;
+						}
+						elsif ($attopt =~ /BKI_DEFAULT\((\S+)\)/)
+						{
+							$column{default} = $1;
 						}
 						else
 						{
 							die
 "unknown column option $attopt on column $attname";
 						}
+
+						if ($column{forcenull} and $column{forcenotnull})
+						{
+							die "$attname is forced both null and not null";
+						}
 					}
-					push @{ $catalog{columns} }, \%row;
+					push @{ $catalog{columns} }, \%column;
 				}
 			}
 		}
@@ -239,6 +255,46 @@ sub SplitDataLine
 	return @result;
 }
 
+# Fill in default values of a record using the given schema. It's the
+# caller's responsibility to specify other values beforehand.
+sub AddDefaultValues
+{
+	my ($row, $schema) = @_;
+	my @missing_fields;
+	my $msg;
+
+	foreach my $column (@$schema)
+	{
+		my $attname = $column->{name};
+		my $atttype = $column->{type};
+
+		if (defined $row->{$attname})
+		{
+			;
+		}
+		elsif (defined $column->{default})
+		{
+			$row->{$attname} = $column->{default};
+		}
+		else
+		{
+			# Failed to find a value.
+			push @missing_fields, $attname;
+		}
+	}
+
+	if (@missing_fields)
+	{
+		$msg = "Missing values for: " . join(', ', @missing_fields);
+		$msg .= "\nShowing other values for context:\n";
+		while (my($key, $value) = each %$row)
+		{
+			$msg .= "$key => $value, ";
+		}
+	}
+	return $msg;
+}
+
 # Rename temporary files to final names.
 # Call this function with the final file name and the .tmp extension
 # Note: recommended extension is ".tmp$$", so that parallel make steps
@@ -251,6 +307,39 @@ sub RenameTempFile
 	print "Writing $final_name\n";
 	rename($temp_name, $final_name) || die "rename: $temp_name: $!";
 }
+
+
+# Find a symbol defined in a particular header file and extract the value.
+#
+# The include path has to be passed as a reference to an array.
+sub FindDefinedSymbol
+{
+	my ($catalog_header, $include_path, $symbol) = @_;
+
+	for my $path (@$include_path)
+	{
+
+		# Make sure include path ends in a slash.
+		if (substr($path, -1) ne '/')
+		{
+			$path .= '/';
+		}
+		my $file = $path . $catalog_header;
+		next if !-f $file;
+		open(my $find_defined_symbol, '<', $file) || die "$file: $!";
+		while (<$find_defined_symbol>)
+		{
+			if (/^#define\s+\Q$symbol\E\s+(\S+)/)
+			{
+				return $1;
+			}
+		}
+		close $find_defined_symbol;
+		die "$file: no definition found for $symbol\n";
+	}
+	die "$catalog_header: not found in any include directory\n";
+}
+
 
 # verify the number of fields in the passed-in DATA line
 sub check_natts

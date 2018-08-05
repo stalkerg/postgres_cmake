@@ -3,7 +3,7 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1273,11 +1273,11 @@ AddToDataDirLockFile(int target_line, const char *str)
 
 /*
  * Recheck that the data directory lock file still exists with expected
- * content.  Return TRUE if the lock file appears OK, FALSE if it isn't.
+ * content.  Return true if the lock file appears OK, false if it isn't.
  *
  * We call this periodically in the postmaster.  The idea is that if the
  * lock file has been removed or replaced by another postmaster, we should
- * do a panic database shutdown.  Therefore, we should return TRUE if there
+ * do a panic database shutdown.  Therefore, we should return true if there
  * is any doubt: we do not want to cause a panic shutdown unnecessarily.
  * Transient failures like EINTR or ENFILE should not cause us to fail.
  * (If there really is something wrong, we'll detect it on a future recheck.)

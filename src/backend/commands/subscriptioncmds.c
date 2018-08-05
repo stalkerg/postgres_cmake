@@ -3,7 +3,7 @@
  * subscriptioncmds.c
  *		subscription catalog manipulation functions
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -244,7 +244,7 @@ parse_subscription_options(List *options, bool *connect, bool *enabled_given,
 }
 
 /*
- * Auxiliary function to return a text array out of a list of String nodes.
+ * Auxiliary function to build a text array out of a list of String nodes.
  */
 static Datum
 publicationListToArray(List *publist)
@@ -259,12 +259,11 @@ publicationListToArray(List *publist)
 	/* Create memory context for temporary allocations. */
 	memcxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "publicationListToArray to array",
-								   ALLOCSET_DEFAULT_MINSIZE,
-								   ALLOCSET_DEFAULT_INITSIZE,
-								   ALLOCSET_DEFAULT_MAXSIZE);
+								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(memcxt);
 
-	datums = palloc(sizeof(text *) * list_length(publist));
+	datums = (Datum *) palloc(sizeof(Datum) * list_length(publist));
+
 	foreach(cell, publist)
 	{
 		char	   *name = strVal(lfirst(cell));
@@ -275,7 +274,7 @@ publicationListToArray(List *publist)
 		{
 			char	   *pname = strVal(lfirst(pcell));
 
-			if (name == pname)
+			if (pcell == cell)
 				break;
 
 			if (strcmp(name, pname) == 0)
@@ -292,6 +291,7 @@ publicationListToArray(List *publist)
 
 	arr = construct_array(datums, list_length(publist),
 						  TEXTOID, -1, false, 'i');
+
 	MemoryContextDelete(memcxt);
 
 	return PointerGetDatum(arr);
@@ -635,7 +635,7 @@ AlterSubscription(AlterSubscriptionStmt *stmt)
 
 	/* must be owner */
 	if (!pg_subscription_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   stmt->subname);
 
 	subid = HeapTupleGetOid(tup);
@@ -854,7 +854,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 
 	/* must be owner */
 	if (!pg_subscription_ownercheck(subid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   stmt->subname);
 
 	/* DROP hook for the subscription being removed */
@@ -909,9 +909,17 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	ReleaseSysCache(tup);
 
 	/*
-	 * If we are dropping the replication slot, stop all the subscription
-	 * workers immediately, so that the slot becomes accessible.  Otherwise
-	 * just schedule the stopping for the end of the transaction.
+	 * Stop all the subscription workers immediately.
+	 *
+	 * This is necessary if we are dropping the replication slot, so that the
+	 * slot becomes accessible.
+	 *
+	 * It is also necessary if the subscription is disabled and was disabled
+	 * in the same transaction.  Then the workers haven't seen the disabling
+	 * yet and will still be running, leading to hangs later when we want to
+	 * drop the replication origin.  If the subscription was disabled before
+	 * this transaction, then there shouldn't be any workers left, so this
+	 * won't make a difference.
 	 *
 	 * New workers won't be started because we hold an exclusive lock on the
 	 * subscription till the end of the transaction.
@@ -923,10 +931,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	{
 		LogicalRepWorker *w = (LogicalRepWorker *) lfirst(lc);
 
-		if (slotname)
-			logicalrep_worker_stop(w->subid, w->relid);
-		else
-			logicalrep_worker_stop_at_commit(w->subid, w->relid);
+		logicalrep_worker_stop(w->subid, w->relid);
 	}
 	list_free(subworkers);
 
@@ -959,7 +964,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	load_file("libpqwalreceiver", false);
 
 	initStringInfo(&cmd);
-	appendStringInfo(&cmd, "DROP_REPLICATION_SLOT %s", quote_identifier(slotname));
+	appendStringInfo(&cmd, "DROP_REPLICATION_SLOT %s WAIT", quote_identifier(slotname));
 
 	wrconn = walrcv_connect(conninfo, true, subname, &err);
 	if (wrconn == NULL)
@@ -1017,7 +1022,7 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		return;
 
 	if (!pg_subscription_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   NameStr(form->subname));
 
 	/* New owner must be a superuser */

@@ -2,7 +2,7 @@
  * launcher.c
  *	   PostgreSQL logical replication worker launcher process
  *
- * Copyright (c) 2016-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/launcher.c
@@ -168,14 +168,11 @@ get_subscription_list(void)
  */
 static void
 WaitForReplicationWorkerAttach(LogicalRepWorker *worker,
+							   uint16 generation,
 							   BackgroundWorkerHandle *handle)
 {
 	BgwHandleStatus status;
 	int			rc;
-	uint16		generation;
-
-	/* Remember generation for future identification. */
-	generation = worker->generation;
 
 	for (;;)
 	{
@@ -282,7 +279,7 @@ logicalrep_workers_find(Oid subid, bool only_running)
 }
 
 /*
- * Start new apply background worker.
+ * Start new apply background worker, if possible.
  */
 void
 logicalrep_worker_launch(Oid dbid, Oid subid, const char *subname, Oid userid,
@@ -290,6 +287,7 @@ logicalrep_worker_launch(Oid dbid, Oid subid, const char *subname, Oid userid,
 {
 	BackgroundWorker bgw;
 	BackgroundWorkerHandle *bgw_handle;
+	uint16		generation;
 	int			i;
 	int			slot = 0;
 	LogicalRepWorker *worker = NULL;
@@ -406,6 +404,9 @@ retry:
 	worker->reply_lsn = InvalidXLogRecPtr;
 	TIMESTAMP_NOBEGIN(worker->reply_time);
 
+	/* Before releasing lock, remember generation for future identification. */
+	generation = worker->generation;
+
 	LWLockRelease(LogicalRepWorkerLock);
 
 	/* Register the new dynamic worker. */
@@ -421,6 +422,7 @@ retry:
 	else
 		snprintf(bgw.bgw_name, BGW_MAXLEN,
 				 "logical replication worker for subscription %u", subid);
+	snprintf(bgw.bgw_type, BGW_MAXLEN, "logical replication worker");
 
 	bgw.bgw_restart_time = BGW_NEVER_RESTART;
 	bgw.bgw_notify_pid = MyProcPid;
@@ -428,6 +430,12 @@ retry:
 
 	if (!RegisterDynamicBackgroundWorker(&bgw, &bgw_handle))
 	{
+		/* Failed to start worker, so clean up the worker slot. */
+		LWLockAcquire(LogicalRepWorkerLock, LW_EXCLUSIVE);
+		Assert(generation == worker->generation);
+		logicalrep_worker_cleanup(worker);
+		LWLockRelease(LogicalRepWorkerLock);
+
 		ereport(WARNING,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 				 errmsg("out of background worker slots"),
@@ -436,7 +444,7 @@ retry:
 	}
 
 	/* Now wait until it attaches. */
-	WaitForReplicationWorkerAttach(worker, bgw_handle);
+	WaitForReplicationWorkerAttach(worker, generation, bgw_handle);
 }
 
 /*
@@ -768,6 +776,8 @@ ApplyLauncherRegister(void)
 	snprintf(bgw.bgw_function_name, BGW_MAXLEN, "ApplyLauncherMain");
 	snprintf(bgw.bgw_name, BGW_MAXLEN,
 			 "logical replication launcher");
+	snprintf(bgw.bgw_type, BGW_MAXLEN,
+			 "logical replication launcher");
 	bgw.bgw_restart_time = 5;
 	bgw.bgw_notify_pid = 0;
 	bgw.bgw_main_arg = (Datum) 0;
@@ -915,9 +925,7 @@ ApplyLauncherMain(Datum main_arg)
 			/* Use temporary context for the database list and worker info. */
 			subctx = AllocSetContextCreate(TopMemoryContext,
 										   "Logical Replication Launcher sublist",
-										   ALLOCSET_DEFAULT_MINSIZE,
-										   ALLOCSET_DEFAULT_INITSIZE,
-										   ALLOCSET_DEFAULT_MAXSIZE);
+										   ALLOCSET_DEFAULT_SIZES);
 			oldctx = MemoryContextSwitchTo(subctx);
 
 			/* search for subscriptions to start or stop. */

@@ -7,7 +7,7 @@
  *	  of the API of the memory management subsystem.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memutils.h
@@ -41,7 +41,7 @@
 
 #define AllocSizeIsValid(size)	((Size) (size) <= MaxAllocSize)
 
-#define MaxAllocHugeSize	((Size) -1 >> 1)	/* SIZE_MAX / 2 */
+#define MaxAllocHugeSize	(SIZE_MAX / 2)
 
 #define AllocHugeSizeIsValid(size)	((Size) (size) <= MaxAllocHugeSize)
 
@@ -132,10 +132,12 @@ GetMemoryChunkContext(void *pointer)
  * context creation.  It's intended to be called from context-type-
  * specific creation routines, and noplace else.
  */
-extern MemoryContext MemoryContextCreate(NodeTag tag, Size size,
-					MemoryContextMethods *methods,
+extern void MemoryContextCreate(MemoryContext node,
+					NodeTag tag, Size size, Size nameoffset,
+					const MemoryContextMethods *methods,
 					MemoryContext parent,
-					const char *name);
+					const char *name,
+					int flags);
 
 
 /*
@@ -143,17 +145,47 @@ extern MemoryContext MemoryContextCreate(NodeTag tag, Size size,
  */
 
 /* aset.c */
-extern MemoryContext AllocSetContextCreate(MemoryContext parent,
-					  const char *name,
-					  Size minContextSize,
-					  Size initBlockSize,
-					  Size maxBlockSize);
+extern MemoryContext AllocSetContextCreateExtended(MemoryContext parent,
+							  const char *name,
+							  int flags,
+							  Size minContextSize,
+							  Size initBlockSize,
+							  Size maxBlockSize);
+
+/*
+ * This backwards compatibility macro only works for constant context names,
+ * and you must specify block sizes with one of the abstraction macros below.
+ */
+#ifdef HAVE__BUILTIN_CONSTANT_P
+#define AllocSetContextCreate(parent, name, allocparams) \
+	(StaticAssertExpr(__builtin_constant_p(name), \
+					  "Use AllocSetContextCreateExtended with MEMCONTEXT_COPY_NAME for non-constant context names"), \
+	 AllocSetContextCreateExtended(parent, name, 0, allocparams))
+#else
+#define AllocSetContextCreate(parent, name, allocparams) \
+	AllocSetContextCreateExtended(parent, name, 0, allocparams)
+#endif
 
 /* slab.c */
 extern MemoryContext SlabContextCreate(MemoryContext parent,
 				  const char *name,
+				  int flags,
 				  Size blockSize,
 				  Size chunkSize);
+
+/* generation.c */
+extern MemoryContext GenerationContextCreate(MemoryContext parent,
+						const char *name,
+						int flags,
+						Size blockSize);
+
+/*
+ * Flag option bits for FooContextCreate functions.
+ * In future, some of these might be relevant to only some context types.
+ *
+ * COPY_NAME: FooContextCreate's name argument is not a constant string
+ */
+#define MEMCONTEXT_COPY_NAME		0x0001	/* is passed name transient? */
 
 /*
  * Recommended default alloc parameters, suitable for "ordinary" contexts

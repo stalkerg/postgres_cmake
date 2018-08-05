@@ -3,7 +3,7 @@
  * auto_explain.c
  *
  *
- * Copyright (c) 2008-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/auto_explain/auto_explain.c
@@ -78,7 +78,7 @@ _PG_init(void)
 							"Zero prints all plans. -1 turns this feature off.",
 							&auto_explain_log_min_duration,
 							-1,
-							-1, INT_MAX / 1000,
+							-1, INT_MAX,
 							PGC_SUSET,
 							GUC_UNIT_MS,
 							NULL,

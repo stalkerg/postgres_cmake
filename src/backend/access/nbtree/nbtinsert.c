@@ -3,7 +3,7 @@
  * nbtinsert.c
  *	  Item insertion in Lehman and Yao btrees for Postgres.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -99,8 +99,8 @@ static void _bt_vacuum_one_page(Relation rel, Buffer buffer, Relation heapRel);
  *		don't actually insert.
  *
  *		The result value is only significant for UNIQUE_CHECK_PARTIAL:
- *		it must be TRUE if the entry is known unique, else FALSE.
- *		(In the current implementation we'll also return TRUE after a
+ *		it must be true if the entry is known unique, else false.
+ *		(In the current implementation we'll also return true after a
  *		successful UNIQUE_CHECK_YES or UNIQUE_CHECK_EXISTING call, but
  *		that's just a coding artifact.)
  */
@@ -898,7 +898,7 @@ _bt_insertonpg(Relation rel,
 				xlmeta.fastroot = metad->btm_fastroot;
 				xlmeta.fastlevel = metad->btm_fastlevel;
 
-				XLogRegisterBuffer(2, metabuf, REGBUF_WILL_INIT);
+				XLogRegisterBuffer(2, metabuf, REGBUF_WILL_INIT | REGBUF_STANDARD);
 				XLogRegisterBufData(2, (char *) &xlmeta, sizeof(xl_btree_metadata));
 
 				xlinfo = XLOG_BTREE_INSERT_META;
@@ -2032,7 +2032,7 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 
 		XLogRegisterBuffer(0, rootbuf, REGBUF_WILL_INIT);
 		XLogRegisterBuffer(1, lbuf, REGBUF_STANDARD);
-		XLogRegisterBuffer(2, metabuf, REGBUF_WILL_INIT);
+		XLogRegisterBuffer(2, metabuf, REGBUF_WILL_INIT | REGBUF_STANDARD);
 
 		md.root = rootblknum;
 		md.level = metad->btm_level;

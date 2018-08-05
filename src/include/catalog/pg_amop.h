@@ -30,7 +30,7 @@
  * intentional denormalization of the catalogs to buy lookup speed.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amop.h
@@ -856,6 +856,22 @@ DATA(insert (	5000	603  603  9 s	2571	4000 0 ));
 DATA(insert (	5000	603  603 10 s	2570	4000 0 ));
 DATA(insert (	5000	603  603 11 s	2573	4000 0 ));
 DATA(insert (	5000	603  603 12 s	2572	4000 0 ));
+
+/*
+ * SP-GiST poly_ops (supports polygons)
+ */
+DATA(insert (	5008   604	604  1 s	 485	4000 0 ));
+DATA(insert (	5008   604	604  2 s	 486	4000 0 ));
+DATA(insert (	5008   604	604  3 s	 492	4000 0 ));
+DATA(insert (	5008   604	604  4 s	 487	4000 0 ));
+DATA(insert (	5008   604	604  5 s	 488	4000 0 ));
+DATA(insert (	5008   604	604  6 s	 491	4000 0 ));
+DATA(insert (	5008   604	604  7 s	 490	4000 0 ));
+DATA(insert (	5008   604	604  8 s	 489	4000 0 ));
+DATA(insert (	5008   604	604  9 s	2575	4000 0 ));
+DATA(insert (	5008   604	604 10 s	2574	4000 0 ));
+DATA(insert (	5008   604	604 11 s	2577	4000 0 ));
+DATA(insert (	5008   604	604 12 s	2576	4000 0 ));
 
 /*
  * GiST inet_ops

@@ -3,7 +3,7 @@
  * ts_utils.h
  *	  helper utilities for tsearch
  *
- * Copyright (c) 1998-2017, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2018, PostgreSQL Global Development Group
  *
  * src/include/tsearch/ts_utils.h
  *
@@ -146,7 +146,7 @@ typedef struct ExecPhraseData
  * val: lexeme to test for presence of
  * data: to be filled with lexeme positions; NULL if position data not needed
  *
- * Return TRUE if lexeme is present in data, else FALSE.  If data is not
+ * Return true if lexeme is present in data, else false.  If data is not
  * NULL, it should be filled with lexeme positions, but function can leave
  * it as zeroes if position data is not available.
  */
@@ -167,7 +167,7 @@ typedef bool (*TSExecuteCallback) (void *arg, QueryOperand *val,
 #define TS_EXEC_CALC_NOT		(0x01)
 /*
  * If TS_EXEC_PHRASE_NO_POS is set, allow OP_PHRASE to be executed lossily
- * in the absence of position information: a TRUE result indicates that the
+ * in the absence of position information: a true result indicates that the
  * phrase might be present.  Without this flag, OP_PHRASE always returns
  * false if lexeme position information is not available.
  */

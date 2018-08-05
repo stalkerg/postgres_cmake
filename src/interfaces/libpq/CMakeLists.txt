@@ -25,6 +25,7 @@ set(pq_SRCS
 	fe-auth-scram.c
 	pqexpbuffer.c
 	fe-secure.c
+	fe-secure-common.c
 	libpq-events.c
 
 	${PORT_DIR}/chklocale.c

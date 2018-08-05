@@ -4,7 +4,7 @@
  *	  header file for postgres btree access method implementation.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtree.h
@@ -21,6 +21,7 @@
 #include "catalog/pg_index.h"
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
+#include "storage/shm_toc.h"
 
 /* There's room for a 16-bit vacuum cycle ID in BTPageOpaqueData */
 typedef uint16 BTCycleId;
@@ -173,14 +174,14 @@ typedef struct BTMetaPageData
  */
 #define P_LEFTMOST(opaque)		((opaque)->btpo_prev == P_NONE)
 #define P_RIGHTMOST(opaque)		((opaque)->btpo_next == P_NONE)
-#define P_ISLEAF(opaque)		((opaque)->btpo_flags & BTP_LEAF)
-#define P_ISROOT(opaque)		((opaque)->btpo_flags & BTP_ROOT)
-#define P_ISDELETED(opaque)		((opaque)->btpo_flags & BTP_DELETED)
-#define P_ISMETA(opaque)		((opaque)->btpo_flags & BTP_META)
-#define P_ISHALFDEAD(opaque)	((opaque)->btpo_flags & BTP_HALF_DEAD)
-#define P_IGNORE(opaque)		((opaque)->btpo_flags & (BTP_DELETED|BTP_HALF_DEAD))
-#define P_HAS_GARBAGE(opaque)	((opaque)->btpo_flags & BTP_HAS_GARBAGE)
-#define P_INCOMPLETE_SPLIT(opaque)	((opaque)->btpo_flags & BTP_INCOMPLETE_SPLIT)
+#define P_ISLEAF(opaque)		(((opaque)->btpo_flags & BTP_LEAF) != 0)
+#define P_ISROOT(opaque)		(((opaque)->btpo_flags & BTP_ROOT) != 0)
+#define P_ISDELETED(opaque)		(((opaque)->btpo_flags & BTP_DELETED) != 0)
+#define P_ISMETA(opaque)		(((opaque)->btpo_flags & BTP_META) != 0)
+#define P_ISHALFDEAD(opaque)	(((opaque)->btpo_flags & BTP_HALF_DEAD) != 0)
+#define P_IGNORE(opaque)		(((opaque)->btpo_flags & (BTP_DELETED|BTP_HALF_DEAD)) != 0)
+#define P_HAS_GARBAGE(opaque)	(((opaque)->btpo_flags & BTP_HAS_GARBAGE) != 0)
+#define P_INCOMPLETE_SPLIT(opaque)	(((opaque)->btpo_flags & BTP_INCOMPLETE_SPLIT) != 0)
 
 /*
  *	Lehman and Yao's algorithm requires a ``high key'' on every non-rightmost
@@ -224,11 +225,17 @@ typedef struct BTMetaPageData
  *	To facilitate accelerated sorting, an operator class may choose to
  *	offer a second procedure (BTSORTSUPPORT_PROC).  For full details, see
  *	src/include/utils/sortsupport.h.
+ *
+ *	To support window frames defined by "RANGE offset PRECEDING/FOLLOWING",
+ *	an operator class may choose to offer a third amproc procedure
+ *	(BTINRANGE_PROC), independently of whether it offers sortsupport.
+ *	For full details, see doc/src/sgml/btree.sgml.
  */
 
 #define BTORDER_PROC		1
 #define BTSORTSUPPORT_PROC	2
-#define BTNProcs			2
+#define BTINRANGE_PROC		3
+#define BTNProcs			3
 
 /*
  *	We need to be able to tell the difference between read and write
@@ -430,8 +437,6 @@ typedef BTScanOpaqueData *BTScanOpaque;
 /*
  * external entry points for btree, in nbtree.c
  */
-extern IndexBuildResult *btbuild(Relation heap, Relation index,
-		struct IndexInfo *indexInfo);
 extern void btbuildempty(Relation index);
 extern bool btinsert(Relation rel, Datum *values, bool *isnull,
 		 ItemPointer ht_ctid, Relation heapRel,
@@ -547,13 +552,8 @@ extern bool btvalidate(Oid opclassoid);
 /*
  * prototypes for functions in nbtsort.c
  */
-typedef struct BTSpool BTSpool; /* opaque type known only within nbtsort.c */
-
-extern BTSpool *_bt_spoolinit(Relation heap, Relation index,
-			  bool isunique, bool isdead);
-extern void _bt_spooldestroy(BTSpool *btspool);
-extern void _bt_spool(BTSpool *btspool, ItemPointer self,
-		  Datum *values, bool *isnull);
-extern void _bt_leafbuild(BTSpool *btspool, BTSpool *spool2);
+extern IndexBuildResult *btbuild(Relation heap, Relation index,
+		struct IndexInfo *indexInfo);
+extern void _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 
 #endif							/* NBTREE_H */

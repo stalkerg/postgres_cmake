@@ -4,7 +4,7 @@
  *
  *	  Routines for operator manipulation commands
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -95,7 +95,7 @@ DefineOperator(List *names, List *parameters)
 	/* Check we have creation rights in target namespace */
 	aclresult = pg_namespace_aclcheck(oprNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(oprNamespace));
 
 	/*
@@ -105,7 +105,7 @@ DefineOperator(List *names, List *parameters)
 	{
 		DefElem    *defel = (DefElem *) lfirst(pl);
 
-		if (pg_strcasecmp(defel->defname, "leftarg") == 0)
+		if (strcmp(defel->defname, "leftarg") == 0)
 		{
 			typeName1 = defGetTypeName(defel);
 			if (typeName1->setof)
@@ -113,7 +113,7 @@ DefineOperator(List *names, List *parameters)
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("SETOF type not allowed for operator argument")));
 		}
-		else if (pg_strcasecmp(defel->defname, "rightarg") == 0)
+		else if (strcmp(defel->defname, "rightarg") == 0)
 		{
 			typeName2 = defGetTypeName(defel);
 			if (typeName2->setof)
@@ -121,28 +121,28 @@ DefineOperator(List *names, List *parameters)
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("SETOF type not allowed for operator argument")));
 		}
-		else if (pg_strcasecmp(defel->defname, "procedure") == 0)
+		else if (strcmp(defel->defname, "procedure") == 0)
 			functionName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "commutator") == 0)
+		else if (strcmp(defel->defname, "commutator") == 0)
 			commutatorName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "negator") == 0)
+		else if (strcmp(defel->defname, "negator") == 0)
 			negatorName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "restrict") == 0)
+		else if (strcmp(defel->defname, "restrict") == 0)
 			restrictionName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "join") == 0)
+		else if (strcmp(defel->defname, "join") == 0)
 			joinName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "hashes") == 0)
+		else if (strcmp(defel->defname, "hashes") == 0)
 			canHash = defGetBoolean(defel);
-		else if (pg_strcasecmp(defel->defname, "merges") == 0)
+		else if (strcmp(defel->defname, "merges") == 0)
 			canMerge = defGetBoolean(defel);
 		/* These obsolete options are taken as meaning canMerge */
-		else if (pg_strcasecmp(defel->defname, "sort1") == 0)
+		else if (strcmp(defel->defname, "sort1") == 0)
 			canMerge = true;
-		else if (pg_strcasecmp(defel->defname, "sort2") == 0)
+		else if (strcmp(defel->defname, "sort2") == 0)
 			canMerge = true;
-		else if (pg_strcasecmp(defel->defname, "ltcmp") == 0)
+		else if (strcmp(defel->defname, "ltcmp") == 0)
 			canMerge = true;
-		else if (pg_strcasecmp(defel->defname, "gtcmp") == 0)
+		else if (strcmp(defel->defname, "gtcmp") == 0)
 			canMerge = true;
 		else
 		{
@@ -215,7 +215,7 @@ DefineOperator(List *names, List *parameters)
 	 */
 	aclresult = pg_proc_aclcheck(functionOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_PROC,
+		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(functionName));
 
 	rettype = get_func_rettype(functionOid);
@@ -281,7 +281,7 @@ ValidateRestrictionEstimator(List *restrictionName)
 	/* Require EXECUTE rights for the estimator */
 	aclresult = pg_proc_aclcheck(restrictionOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_PROC,
+		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(restrictionName));
 
 	return restrictionOid;
@@ -327,7 +327,7 @@ ValidateJoinEstimator(List *joinName)
 	/* Require EXECUTE rights for the estimator */
 	aclresult = pg_proc_aclcheck(joinOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_PROC,
+		aclcheck_error(aclresult, OBJECT_FUNCTION,
 					   NameListToString(joinName));
 
 	return joinOid;
@@ -420,12 +420,12 @@ AlterOperator(AlterOperatorStmt *stmt)
 		else
 			param = defGetQualifiedName(defel);
 
-		if (pg_strcasecmp(defel->defname, "restrict") == 0)
+		if (strcmp(defel->defname, "restrict") == 0)
 		{
 			restrictionName = param;
 			updateRestriction = true;
 		}
-		else if (pg_strcasecmp(defel->defname, "join") == 0)
+		else if (strcmp(defel->defname, "join") == 0)
 		{
 			joinName = param;
 			updateJoin = true;
@@ -435,13 +435,13 @@ AlterOperator(AlterOperatorStmt *stmt)
 		 * The rest of the options that CREATE accepts cannot be changed.
 		 * Check for them so that we can give a meaningful error message.
 		 */
-		else if (pg_strcasecmp(defel->defname, "leftarg") == 0 ||
-				 pg_strcasecmp(defel->defname, "rightarg") == 0 ||
-				 pg_strcasecmp(defel->defname, "procedure") == 0 ||
-				 pg_strcasecmp(defel->defname, "commutator") == 0 ||
-				 pg_strcasecmp(defel->defname, "negator") == 0 ||
-				 pg_strcasecmp(defel->defname, "hashes") == 0 ||
-				 pg_strcasecmp(defel->defname, "merges") == 0)
+		else if (strcmp(defel->defname, "leftarg") == 0 ||
+				 strcmp(defel->defname, "rightarg") == 0 ||
+				 strcmp(defel->defname, "procedure") == 0 ||
+				 strcmp(defel->defname, "commutator") == 0 ||
+				 strcmp(defel->defname, "negator") == 0 ||
+				 strcmp(defel->defname, "hashes") == 0 ||
+				 strcmp(defel->defname, "merges") == 0)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -457,7 +457,7 @@ AlterOperator(AlterOperatorStmt *stmt)
 
 	/* Check permissions. Must be owner. */
 	if (!pg_oper_ownercheck(oprId, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPER,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_OPERATOR,
 					   NameStr(oprForm->oprname));
 
 	/*

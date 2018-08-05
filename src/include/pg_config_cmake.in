@@ -84,6 +84,12 @@
 /* Define to 1 if you have the <atomic.h> header file. */
 #cmakedefine HAVE_ATOMIC_H 1
 
+/* Define to 1 if you have the `BIO_get_data' function. */
+#cmakedefine HAVE_BIO_GET_DATA
+
+/* Define to 1 if you have the `BIO_meth_new' function. */
+#cmakedefine HAVE_BIO_METH_NEW
+#
 /* Define if you have the `cbrt' function. */
 #cmakedefine HAVE_CBRT 1
 
@@ -315,6 +321,9 @@
 /* Define to 1 if constants of type 'long long int' should have the suffix LL.
    */
 #cmakedefine HAVE_LL_CONSTANTS 1
+
+/* Define restrict */
+#cmakedefine HAVE_RESTRICT 1
 
 /* Define to 1 if the system has the type `locale_t'. */
 #cmakedefine HAVE_LOCALE_T

@@ -42,7 +42,7 @@
  * function for such cases, but probably not any other acceleration method.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/sortsupport.h
@@ -222,7 +222,7 @@ ApplySortComparator(Datum datum1, bool isNull1,
 	}
 	else
 	{
-		compare = (*ssup->comparator) (datum1, datum2, ssup);
+		compare = ssup->comparator(datum1, datum2, ssup);
 		if (ssup->ssup_reverse)
 			compare = -compare;
 	}
@@ -260,7 +260,7 @@ ApplySortAbbrevFullComparator(Datum datum1, bool isNull1,
 	}
 	else
 	{
-		compare = (*ssup->abbrev_full_comparator) (datum1, datum2, ssup);
+		compare = ssup->abbrev_full_comparator(datum1, datum2, ssup);
 		if (ssup->ssup_reverse)
 			compare = -compare;
 	}

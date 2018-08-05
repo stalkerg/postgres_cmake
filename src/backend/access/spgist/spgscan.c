@@ -4,7 +4,7 @@
  *	  routines for scanning SP-GiST indexes
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -40,7 +40,7 @@ typedef struct ScanStackEntry
 static void
 freeScanStackEntry(SpGistScanOpaque so, ScanStackEntry *stackEntry)
 {
-	if (!so->state.attType.attbyval &&
+	if (!so->state.attLeafType.attbyval &&
 		DatumGetPointer(stackEntry->reconstructedValue) != NULL)
 		pfree(DatumGetPointer(stackEntry->reconstructedValue));
 	if (stackEntry->traversalValue)
@@ -527,8 +527,8 @@ redirect:
 					if (out.reconstructedValues)
 						newEntry->reconstructedValue =
 							datumCopy(out.reconstructedValues[i],
-									  so->state.attType.attbyval,
-									  so->state.attType.attlen);
+									  so->state.attLeafType.attbyval,
+									  so->state.attLeafType.attlen);
 					else
 						newEntry->reconstructedValue = (Datum) 0;
 

@@ -103,6 +103,8 @@ CMake build options
 
 **-DSTRONG_RANDOM_SOURCE** default OFF (autodetect), which random number source to use - openssl, win32, dev
 
+**-DWITH_SYSTEM_TZDATA=<dir>** default OFF, custom tzdata directory
+
 Only **MSVC** options:
 
 **-DUSE_FP_STRICT** default ON, if we use /fp:stirct compiler option we much closer to C99 standart in float part

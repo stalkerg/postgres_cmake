@@ -4,7 +4,7 @@
  *	  definitions for run-time statistics collection
  *
  *
- * Copyright (c) 2001-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2018, PostgreSQL Global Development Group
  *
  * src/include/executor/instrument.h
  *
@@ -44,10 +44,10 @@ typedef enum InstrumentOption
 typedef struct Instrumentation
 {
 	/* Parameters set at node creation: */
-	bool		need_timer;		/* TRUE if we need timer data */
-	bool		need_bufusage;	/* TRUE if we need buffer usage data */
+	bool		need_timer;		/* true if we need timer data */
+	bool		need_bufusage;	/* true if we need buffer usage data */
 	/* Info about current plan cycle: */
-	bool		running;		/* TRUE if we've completed first tuple */
+	bool		running;		/* true if we've completed first tuple */
 	instr_time	starttime;		/* Start time of current iteration of node */
 	instr_time	counter;		/* Accumulated runtime for this node */
 	double		firsttuple;		/* Time for first tuple of this cycle */

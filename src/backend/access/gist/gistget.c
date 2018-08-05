@@ -4,7 +4,7 @@
  *	  fetch tuples from a GiST scan.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -61,7 +61,7 @@ gistkillitems(IndexScanDesc scan)
 	 * read. killedItems could be not valid so LP_DEAD hints applying is not
 	 * safe.
 	 */
-	if (PageGetLSN(page) != so->curPageLSN)
+	if (BufferGetLSNAtomic(buffer) != so->curPageLSN)
 	{
 		UnlockReleaseBuffer(buffer);
 		so->numKilled = 0;		/* reset counter */
@@ -197,7 +197,7 @@ gistindex_keytest(IndexScanDesc scan,
 
 			gistdentryinit(giststate, key->sk_attno - 1, &de,
 						   datum, r, page, offset,
-						   FALSE, isNull);
+						   false, isNull);
 
 			/*
 			 * Call the Consistent function to evaluate the test.  The
@@ -258,7 +258,7 @@ gistindex_keytest(IndexScanDesc scan,
 
 			gistdentryinit(giststate, key->sk_attno - 1, &de,
 						   datum, r, page, offset,
-						   FALSE, isNull);
+						   false, isNull);
 
 			/*
 			 * Call the Distance function to evaluate the distance.  The
@@ -384,7 +384,7 @@ gistScanPage(IndexScanDesc scan, GISTSearchItem *pageItem, double *myDistances,
 	 * safe to apply LP_DEAD hints to the page later. This allows us to drop
 	 * the pin for MVCC scans, which allows vacuum to avoid blocking.
 	 */
-	so->curPageLSN = PageGetLSN(page);
+	so->curPageLSN = BufferGetLSNAtomic(buffer);
 
 	/*
 	 * check all tuples on page
@@ -801,11 +801,13 @@ gistgetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
  * Can we do index-only scans on the given index column?
  *
  * Opclasses that implement a fetch function support index-only scans.
+ * Opclasses without compression functions also support index-only scans.
  */
 bool
 gistcanreturn(Relation index, int attno)
 {
-	if (OidIsValid(index_getprocid(index, attno, GIST_FETCH_PROC)))
+	if (OidIsValid(index_getprocid(index, attno, GIST_FETCH_PROC)) ||
+		!OidIsValid(index_getprocid(index, attno, GIST_COMPRESS_PROC)))
 		return true;
 	else
 		return false;

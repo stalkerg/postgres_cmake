@@ -3,7 +3,7 @@
  * nodeLockRows.c
  *	  Routines to handle FOR UPDATE/FOR SHARE row locking
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -370,13 +370,15 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	/*
 	 * Miscellaneous initialization
 	 *
-	 * LockRows nodes never call ExecQual or ExecProject.
+	 * LockRows nodes never call ExecQual or ExecProject, therefore no
+	 * ExprContext is needed.
 	 */
 
 	/*
-	 * Tuple table initialization (XXX not actually used...)
+	 * Tuple table initialization (XXX not actually used, but upper nodes
+	 * access it to get this node's result tupledesc...)
 	 */
-	ExecInitResultTupleSlot(estate, &lrstate->ps);
+	ExecInitResultTupleSlotTL(estate, &lrstate->ps);
 
 	/*
 	 * then initialize outer plan
@@ -387,7 +389,6 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	 * LockRows nodes do no projections, so initialize projection info for
 	 * this node appropriately
 	 */
-	ExecAssignResultTypeFromTL(&lrstate->ps);
 	lrstate->ps.ps_ProjInfo = NULL;
 
 	/*
