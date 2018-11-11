@@ -3,7 +3,7 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,7 +27,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_inherits_fn.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_statistic_ext.h"
 #include "commands/dbcommands.h"
@@ -106,6 +106,10 @@ static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 
 /*
  *	analyze_rel() -- analyze one relation
+ *
+ * relid identifies the relation to analyze.  If relation is supplied, use
+ * the name therein for reporting any failure to open/lock the rel; do not
+ * use it once we've successfully opened the rel, since it might be stale.
  */
 void
 analyze_rel(Oid relid, RangeVar *relation, int options,
@@ -137,45 +141,29 @@ analyze_rel(Oid relid, RangeVar *relation, int options,
 	 * concurrent VACUUM, which doesn't matter much at the moment but might
 	 * matter if we ever try to accumulate stats on dead tuples.) If the rel
 	 * has been dropped since we last saw it, we don't need to process it.
+	 *
+	 * Make sure to generate only logs for ANALYZE in this case.
 	 */
-	if (!(options & VACOPT_NOWAIT))
-		onerel = try_relation_open(relid, ShareUpdateExclusiveLock);
-	else if (ConditionalLockRelationOid(relid, ShareUpdateExclusiveLock))
-		onerel = try_relation_open(relid, NoLock);
-	else
-	{
-		onerel = NULL;
-		if (IsAutoVacuumWorkerProcess() && params->log_min_duration >= 0)
-			ereport(LOG,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("skipping analyze of \"%s\" --- lock not available",
-							relation->relname)));
-	}
+	onerel = vacuum_open_relation(relid, relation, params,
+								  options & ~(VACOPT_VACUUM),
+								  ShareUpdateExclusiveLock);
+
+	/* leave if relation could not be opened or locked */
 	if (!onerel)
 		return;
 
 	/*
-	 * Check permissions --- this should match vacuum's check!
+	 * Check if relation needs to be skipped based on ownership.  This check
+	 * happens also when building the relation list to analyze for a manual
+	 * operation, and needs to be done additionally here as ANALYZE could
+	 * happen across multiple transactions where relation ownership could have
+	 * changed in-between.  Make sure to generate only logs for ANALYZE in
+	 * this case.
 	 */
-	if (!(pg_class_ownercheck(RelationGetRelid(onerel), GetUserId()) ||
-		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !onerel->rd_rel->relisshared)))
+	if (!vacuum_is_relation_owner(RelationGetRelid(onerel),
+								  onerel->rd_rel,
+								  options & VACOPT_ANALYZE))
 	{
-		/* No need for a WARNING if we already complained during VACUUM */
-		if (!(options & VACOPT_VACUUM))
-		{
-			if (onerel->rd_rel->relisshared)
-				ereport(WARNING,
-						(errmsg("skipping \"%s\" --- only superuser can analyze it",
-								RelationGetRelationName(onerel))));
-			else if (onerel->rd_rel->relnamespace == PG_CATALOG_NAMESPACE)
-				ereport(WARNING,
-						(errmsg("skipping \"%s\" --- only superuser or database owner can analyze it",
-								RelationGetRelationName(onerel))));
-			else
-				ereport(WARNING,
-						(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
-								RelationGetRelationName(onerel))));
-		}
 		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
@@ -202,9 +190,7 @@ analyze_rel(Oid relid, RangeVar *relation, int options,
 	}
 
 	/*
-	 * Check that it's a plain table, materialized view, or foreign table; we
-	 * used to do this in get_rel_oids() but seems safer to check after we've
-	 * locked the relation.
+	 * Check that it's of an analyzable relkind, and set up appropriately.
 	 */
 	if (onerel->rd_rel->relkind == RELKIND_RELATION ||
 		onerel->rd_rel->relkind == RELKIND_MATVIEW)
@@ -370,10 +356,14 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 	/*
 	 * Determine which columns to analyze
 	 *
-	 * Note that system attributes are never analyzed.
+	 * Note that system attributes are never analyzed, so we just reject them
+	 * at the lookup stage.  We also reject duplicate column mentions.  (We
+	 * could alternatively ignore duplicates, but analyzing a column twice
+	 * won't work; we'd end up making a conflicting update in pg_statistic.)
 	 */
 	if (va_cols != NIL)
 	{
+		Bitmapset  *unique_cols = NULL;
 		ListCell   *le;
 
 		vacattrstats = (VacAttrStats **) palloc(list_length(va_cols) *
@@ -389,6 +379,13 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("column \"%s\" of relation \"%s\" does not exist",
 								col, RelationGetRelationName(onerel))));
+			if (bms_is_member(i, unique_cols))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" appears more than once",
+								col, RelationGetRelationName(onerel))));
+			unique_cols = bms_add_member(unique_cols, i);
+
 			vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
 			if (vacattrstats[tcnt] != NULL)
 				tcnt++;
@@ -445,7 +442,7 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 				tcnt = 0;
 				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 				{
-					int			keycol = indexInfo->ii_KeyAttrNumbers[i];
+					int			keycol = indexInfo->ii_IndexAttrNumbers[i];
 
 					if (keycol == 0)
 					{
@@ -526,10 +523,10 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 
 			stats->rows = rows;
 			stats->tupDesc = onerel->rd_att;
-			(*stats->compute_stats) (stats,
-									 std_fetch_func,
-									 numrows,
-									 totalrows);
+			stats->compute_stats(stats,
+								 std_fetch_func,
+								 numrows,
+								 totalrows);
 
 			/*
 			 * If the appropriate flavor of the n_distinct option is
@@ -759,7 +756,7 @@ compute_index_stats(Relation onerel, double totalrows,
 			ResetExprContext(econtext);
 
 			/* Set up for predicate or expression evaluation */
-			ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
+			ExecStoreHeapTuple(heapTuple, slot, false);
 
 			/* If index is partial, check predicate */
 			if (predicate != NULL)
@@ -830,10 +827,10 @@ compute_index_stats(Relation onerel, double totalrows,
 				stats->exprvals = exprvals + i;
 				stats->exprnulls = exprnulls + i;
 				stats->rowstride = attr_cnt;
-				(*stats->compute_stats) (stats,
-										 ind_fetch_func,
-										 numindexrows,
-										 totalindexrows);
+				stats->compute_stats(stats,
+									 ind_fetch_func,
+									 numindexrows,
+									 totalindexrows);
 
 				/*
 				 * If the n_distinct option is specified, it overrides the
@@ -871,7 +868,7 @@ compute_index_stats(Relation onerel, double totalrows,
 static VacAttrStats *
 examine_attribute(Relation onerel, int attnum, Node *index_expr)
 {
-	Form_pg_attribute attr = onerel->rd_att->attrs[attnum - 1];
+	Form_pg_attribute attr = TupleDescAttr(onerel->rd_att, attnum - 1);
 	HeapTuple	typtuple;
 	VacAttrStats *stats;
 	int			i;
@@ -1199,19 +1196,22 @@ acquire_sample_rows(Relation onerel, int elevel,
 		qsort((void *) rows, numrows, sizeof(HeapTuple), compare_rows);
 
 	/*
-	 * Estimate total numbers of rows in relation.  For live rows, use
-	 * vac_estimate_reltuples; for dead rows, we have no source of old
-	 * information, so we have to assume the density is the same in unseen
-	 * pages as in the pages we scanned.
+	 * Estimate total numbers of live and dead rows in relation, extrapolating
+	 * on the assumption that the average tuple density in pages we didn't
+	 * scan is the same as in the pages we did scan.  Since what we scanned is
+	 * a random sample of the pages in the relation, this should be a good
+	 * assumption.
 	 */
-	*totalrows = vac_estimate_reltuples(onerel, true,
-										totalblocks,
-										bs.m,
-										liverows);
 	if (bs.m > 0)
+	{
+		*totalrows = floor((liverows / bs.m) * totalblocks + 0.5);
 		*totaldeadrows = floor((deadrows / bs.m) * totalblocks + 0.5);
+	}
 	else
+	{
+		*totalrows = 0.0;
 		*totaldeadrows = 0.0;
+	}
 
 	/*
 	 * Emit some interesting relation info
@@ -1452,7 +1452,7 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 						{
 							HeapTuple	newtup;
 
-							newtup = do_convert_tuple(rows[numrows + j], map);
+							newtup = execute_attr_map_tuple(rows[numrows + j], map);
 							heap_freetuple(rows[numrows + j]);
 							rows[numrows + j] = newtup;
 						}
@@ -1716,6 +1716,12 @@ static void compute_scalar_stats(VacAttrStatsP stats,
 					 double totalrows);
 static int	compare_scalars(const void *a, const void *b, void *arg);
 static int	compare_mcvs(const void *a, const void *b);
+static int analyze_mcv_list(int *mcv_counts,
+				 int num_mcv,
+				 double stadistinct,
+				 double stanullfrac,
+				 int samplerows,
+				 double totalrows);
 
 
 /*
@@ -2134,9 +2140,7 @@ compute_distinct_stats(VacAttrStatsP stats,
 		 * we are able to generate a complete MCV list (all the values in the
 		 * sample will fit, and we think these are all the ones in the table),
 		 * then do so.  Otherwise, store only those values that are
-		 * significantly more common than the (estimated) average. We set the
-		 * threshold rather arbitrarily at 25% more than average, with at
-		 * least 2 instances in the sample.
+		 * significantly more common than the values not in the list.
 		 *
 		 * Note: the first of these cases is meant to address columns with
 		 * small, fixed sets of possible values, such as boolean or enum
@@ -2145,8 +2149,7 @@ compute_distinct_stats(VacAttrStatsP stats,
 		 * so and thus provide the planner with complete information.  But if
 		 * the MCV list is not complete, it's generally worth being more
 		 * selective, and not just filling it all the way up to the stats
-		 * target.  So for an incomplete list, we try to take only MCVs that
-		 * are significantly more common than average.
+		 * target.
 		 */
 		if (track_cnt < track_max && toowide_cnt == 0 &&
 			stats->stadistinct > 0 &&
@@ -2157,28 +2160,22 @@ compute_distinct_stats(VacAttrStatsP stats,
 		}
 		else
 		{
-			double		ndistinct_table = stats->stadistinct;
-			double		avgcount,
-						mincount;
+			int		   *mcv_counts;
 
-			/* Re-extract estimate of # distinct nonnull values in table */
-			if (ndistinct_table < 0)
-				ndistinct_table = -ndistinct_table * totalrows;
-			/* estimate # occurrences in sample of a typical nonnull value */
-			avgcount = (double) nonnull_cnt / ndistinct_table;
-			/* set minimum threshold count to store a value */
-			mincount = avgcount * 1.25;
-			if (mincount < 2)
-				mincount = 2;
+			/* Incomplete list; decide how many values are worth keeping */
 			if (num_mcv > track_cnt)
 				num_mcv = track_cnt;
-			for (i = 0; i < num_mcv; i++)
+
+			if (num_mcv > 0)
 			{
-				if (track[i].count < mincount)
-				{
-					num_mcv = i;
-					break;
-				}
+				mcv_counts = (int *) palloc(num_mcv * sizeof(int));
+				for (i = 0; i < num_mcv; i++)
+					mcv_counts[i] = track[i].count;
+
+				num_mcv = analyze_mcv_list(mcv_counts, num_mcv,
+										   stats->stadistinct,
+										   stats->stanullfrac,
+										   samplerows, totalrows);
 			}
 		}
 
@@ -2508,14 +2505,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		 * we are able to generate a complete MCV list (all the values in the
 		 * sample will fit, and we think these are all the ones in the table),
 		 * then do so.  Otherwise, store only those values that are
-		 * significantly more common than the (estimated) average. We set the
-		 * threshold rather arbitrarily at 25% more than average, with at
-		 * least 2 instances in the sample.  Also, we won't suppress values
-		 * that have a frequency of at least 1/K where K is the intended
-		 * number of histogram bins; such values might otherwise cause us to
-		 * emit duplicate histogram bin boundaries.  (We might end up with
-		 * duplicate histogram entries anyway, if the distribution is skewed;
-		 * but we prefer to treat such values as MCVs if at all possible.)
+		 * significantly more common than the values not in the list.
 		 *
 		 * Note: the first of these cases is meant to address columns with
 		 * small, fixed sets of possible values, such as boolean or enum
@@ -2524,8 +2514,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		 * so and thus provide the planner with complete information.  But if
 		 * the MCV list is not complete, it's generally worth being more
 		 * selective, and not just filling it all the way up to the stats
-		 * target.  So for an incomplete list, we try to take only MCVs that
-		 * are significantly more common than average.
+		 * target.
 		 */
 		if (track_cnt == ndistinct && toowide_cnt == 0 &&
 			stats->stadistinct > 0 &&
@@ -2536,33 +2525,22 @@ compute_scalar_stats(VacAttrStatsP stats,
 		}
 		else
 		{
-			double		ndistinct_table = stats->stadistinct;
-			double		avgcount,
-						mincount,
-						maxmincount;
+			int		   *mcv_counts;
 
-			/* Re-extract estimate of # distinct nonnull values in table */
-			if (ndistinct_table < 0)
-				ndistinct_table = -ndistinct_table * totalrows;
-			/* estimate # occurrences in sample of a typical nonnull value */
-			avgcount = (double) nonnull_cnt / ndistinct_table;
-			/* set minimum threshold count to store a value */
-			mincount = avgcount * 1.25;
-			if (mincount < 2)
-				mincount = 2;
-			/* don't let threshold exceed 1/K, however */
-			maxmincount = (double) values_cnt / (double) num_bins;
-			if (mincount > maxmincount)
-				mincount = maxmincount;
+			/* Incomplete list; decide how many values are worth keeping */
 			if (num_mcv > track_cnt)
 				num_mcv = track_cnt;
-			for (i = 0; i < num_mcv; i++)
+
+			if (num_mcv > 0)
 			{
-				if (track[i].count < mincount)
-				{
-					num_mcv = i;
-					break;
-				}
+				mcv_counts = (int *) palloc(num_mcv * sizeof(int));
+				for (i = 0; i < num_mcv; i++)
+					mcv_counts[i] = track[i].count;
+
+				num_mcv = analyze_mcv_list(mcv_counts, num_mcv,
+										   stats->stadistinct,
+										   stats->stanullfrac,
+										   samplerows, totalrows);
 			}
 		}
 
@@ -2827,4 +2805,126 @@ compare_mcvs(const void *a, const void *b)
 	int			db = ((const ScalarMCVItem *) b)->first;
 
 	return da - db;
+}
+
+/*
+ * Analyze the list of common values in the sample and decide how many are
+ * worth storing in the table's MCV list.
+ *
+ * mcv_counts is assumed to be a list of the counts of the most common values
+ * seen in the sample, starting with the most common.  The return value is the
+ * number that are significantly more common than the values not in the list,
+ * and which are therefore deemed worth storing in the table's MCV list.
+ */
+static int
+analyze_mcv_list(int *mcv_counts,
+				 int num_mcv,
+				 double stadistinct,
+				 double stanullfrac,
+				 int samplerows,
+				 double totalrows)
+{
+	double		ndistinct_table;
+	double		sumcount;
+	int			i;
+
+	/*
+	 * If the entire table was sampled, keep the whole list.  This also
+	 * protects us against division by zero in the code below.
+	 */
+	if (samplerows == totalrows || totalrows <= 1.0)
+		return num_mcv;
+
+	/* Re-extract the estimated number of distinct nonnull values in table */
+	ndistinct_table = stadistinct;
+	if (ndistinct_table < 0)
+		ndistinct_table = -ndistinct_table * totalrows;
+
+	/*
+	 * Exclude the least common values from the MCV list, if they are not
+	 * significantly more common than the estimated selectivity they would
+	 * have if they weren't in the list.  All non-MCV values are assumed to be
+	 * equally common, after taking into account the frequencies of all the
+	 * values in the MCV list and the number of nulls (c.f. eqsel()).
+	 *
+	 * Here sumcount tracks the total count of all but the last (least common)
+	 * value in the MCV list, allowing us to determine the effect of excluding
+	 * that value from the list.
+	 *
+	 * Note that we deliberately do this by removing values from the full
+	 * list, rather than starting with an empty list and adding values,
+	 * because the latter approach can fail to add any values if all the most
+	 * common values have around the same frequency and make up the majority
+	 * of the table, so that the overall average frequency of all values is
+	 * roughly the same as that of the common values.  This would lead to any
+	 * uncommon values being significantly overestimated.
+	 */
+	sumcount = 0.0;
+	for (i = 0; i < num_mcv - 1; i++)
+		sumcount += mcv_counts[i];
+
+	while (num_mcv > 0)
+	{
+		double		selec,
+					otherdistinct,
+					N,
+					n,
+					K,
+					variance,
+					stddev;
+
+		/*
+		 * Estimated selectivity the least common value would have if it
+		 * wasn't in the MCV list (c.f. eqsel()).
+		 */
+		selec = 1.0 - sumcount / samplerows - stanullfrac;
+		if (selec < 0.0)
+			selec = 0.0;
+		if (selec > 1.0)
+			selec = 1.0;
+		otherdistinct = ndistinct_table - (num_mcv - 1);
+		if (otherdistinct > 1)
+			selec /= otherdistinct;
+
+		/*
+		 * If the value is kept in the MCV list, its population frequency is
+		 * assumed to equal its sample frequency.  We use the lower end of a
+		 * textbook continuity-corrected Wald-type confidence interval to
+		 * determine if that is significantly more common than the non-MCV
+		 * frequency --- specifically we assume the population frequency is
+		 * highly likely to be within around 2 standard errors of the sample
+		 * frequency, which equates to an interval of 2 standard deviations
+		 * either side of the sample count, plus an additional 0.5 for the
+		 * continuity correction.  Since we are sampling without replacement,
+		 * this is a hypergeometric distribution.
+		 *
+		 * XXX: Empirically, this approach seems to work quite well, but it
+		 * may be worth considering more advanced techniques for estimating
+		 * the confidence interval of the hypergeometric distribution.
+		 */
+		N = totalrows;
+		n = samplerows;
+		K = N * mcv_counts[num_mcv - 1] / n;
+		variance = n * K * (N - K) * (N - n) / (N * N * (N - 1));
+		stddev = sqrt(variance);
+
+		if (mcv_counts[num_mcv - 1] > selec * samplerows + 2 * stddev + 0.5)
+		{
+			/*
+			 * The value is significantly more common than the non-MCV
+			 * selectivity would suggest.  Keep it, and all the other more
+			 * common values in the list.
+			 */
+			break;
+		}
+		else
+		{
+			/* Discard this value and consider the next least common value */
+			num_mcv--;
+			if (num_mcv == 0)
+				break;
+			sumcount -= mcv_counts[num_mcv - 1];
+		}
+	}
+	return num_mcv;
 }

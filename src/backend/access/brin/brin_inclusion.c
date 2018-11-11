@@ -16,7 +16,7 @@
  * writing is the INET type, where IPv6 values cannot be merged with IPv4
  * values.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -59,10 +59,14 @@
 /*-
  * The values stored in the bv_values arrays correspond to:
  *
- * 0 - the union of the values in the block range
- * 1 - whether an empty value is present in any tuple in the block range
- * 2 - whether the values in the block range cannot be merged (e.g. an IPv6
- *	   address amidst IPv4 addresses).
+ * INCLUSION_UNION
+ *		the union of the values in the block range
+ * INCLUSION_UNMERGEABLE
+ *		whether the values in the block range cannot be merged
+ *		(e.g. an IPv6 address amidst IPv4 addresses)
+ * INCLUSION_CONTAINS_EMPTY
+ *		whether an empty value is present in any tuple
+ *		in the block range
  */
 #define INCLUSION_UNION				0
 #define INCLUSION_UNMERGEABLE		1
@@ -157,7 +161,7 @@ brin_inclusion_add_value(PG_FUNCTION_ARGS)
 	}
 
 	attno = column->bv_attno;
-	attr = bdesc->bd_tupdesc->attrs[attno - 1];
+	attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
 
 	/*
 	 * If the recorded value is null, copy the new value (which we know to be
@@ -516,7 +520,7 @@ brin_inclusion_union(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 
 	attno = col_a->bv_attno;
-	attr = bdesc->bd_tupdesc->attrs[attno - 1];
+	attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
 
 	/*
 	 * Adjust "allnulls".  If A doesn't have values, just copy the values from
@@ -675,7 +679,7 @@ inclusion_get_strategy_procinfo(BrinDesc *bdesc, uint16 attno, Oid subtype,
 		bool		isNull;
 
 		opfamily = bdesc->bd_index->rd_opfamily[attno - 1];
-		attr = bdesc->bd_tupdesc->attrs[attno - 1];
+		attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
 		tuple = SearchSysCache4(AMOPSTRATEGY, ObjectIdGetDatum(opfamily),
 								ObjectIdGetDatum(attr->atttypid),
 								ObjectIdGetDatum(subtype),

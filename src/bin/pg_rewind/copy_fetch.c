@@ -3,7 +3,7 @@
  * copy_fetch.c
  *	  Functions for using a data directory as the source.
  *
- * Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2018, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -20,8 +20,6 @@
 #include "filemap.h"
 #include "logging.h"
 #include "pg_rewind.h"
-
-#include "catalog/catalog.h"
 
 static void recurse_dir(const char *datadir, const char *path,
 			process_file_callback_t callback);
@@ -156,9 +154,9 @@ recurse_dir(const char *datadir, const char *parentpath,
  * If 'trunc' is true, any existing file with the same name is truncated.
  */
 static void
-copy_file_range(const char *path, off_t begin, off_t end, bool trunc)
+rewind_copy_file_range(const char *path, off_t begin, off_t end, bool trunc)
 {
-	char		buf[BLCKSZ];
+	PGAlignedBlock buf;
 	char		srcpath[MAXPGPATH];
 	int			srcfd;
 
@@ -184,7 +182,7 @@ copy_file_range(const char *path, off_t begin, off_t end, bool trunc)
 		else
 			len = end - begin;
 
-		readlen = read(srcfd, buf, len);
+		readlen = read(srcfd, buf.data, len);
 
 		if (readlen < 0)
 			pg_fatal("could not read file \"%s\": %s\n",
@@ -192,7 +190,7 @@ copy_file_range(const char *path, off_t begin, off_t end, bool trunc)
 		else if (readlen == 0)
 			pg_fatal("unexpected EOF while reading file \"%s\"\n", srcpath);
 
-		write_target_range(buf, begin, readlen);
+		write_target_range(buf.data, begin, readlen);
 		begin += readlen;
 	}
 
@@ -222,7 +220,7 @@ copy_executeFileMap(filemap_t *map)
 				break;
 
 			case FILE_ACTION_COPY:
-				copy_file_range(entry->path, 0, entry->newsize, true);
+				rewind_copy_file_range(entry->path, 0, entry->newsize, true);
 				break;
 
 			case FILE_ACTION_TRUNCATE:
@@ -230,7 +228,8 @@ copy_executeFileMap(filemap_t *map)
 				break;
 
 			case FILE_ACTION_COPY_TAIL:
-				copy_file_range(entry->path, entry->oldsize, entry->newsize, false);
+				rewind_copy_file_range(entry->path, entry->oldsize,
+									   entry->newsize, false);
 				break;
 
 			case FILE_ACTION_CREATE:
@@ -257,7 +256,7 @@ execute_pagemap(datapagemap_t *pagemap, const char *path)
 	while (datapagemap_next(iter, &blkno))
 	{
 		offset = blkno * BLCKSZ;
-		copy_file_range(path, offset, offset + BLCKSZ, false);
+		rewind_copy_file_range(path, offset, offset + BLCKSZ, false);
 		/* Ok, this block has now been copied from new data dir to old */
 	}
 	pg_free(iter);

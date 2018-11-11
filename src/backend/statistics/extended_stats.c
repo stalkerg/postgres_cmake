@@ -6,7 +6,7 @@
  * Generic code supporting statistics objects created via CREATE STATISTICS.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -74,7 +74,8 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(CurrentMemoryContext, "stats ext",
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
+								"BuildRelationExtStatistics",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
 
@@ -95,15 +96,16 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 		 */
 		stats = lookup_var_attr_stats(onerel, stat->columns,
 									  natts, vacattrstats);
-		if (!stats && !IsAutoVacuumWorkerProcess())
+		if (!stats)
 		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("statistics object \"%s.%s\" could not be computed for relation \"%s.%s\"",
-							stat->schema, stat->name,
-							get_namespace_name(onerel->rd_rel->relnamespace),
-							RelationGetRelationName(onerel)),
-					 errtable(onerel)));
+			if (!IsAutoVacuumWorkerProcess())
+				ereport(WARNING,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("statistics object \"%s.%s\" could not be computed for relation \"%s.%s\"",
+								stat->schema, stat->name,
+								get_namespace_name(onerel->rd_rel->relnamespace),
+								RelationGetRelationName(onerel)),
+						 errtable(onerel)));
 			continue;
 		}
 
@@ -157,7 +159,7 @@ statext_is_kind_built(HeapTuple htup, char type)
 			elog(ERROR, "unexpected statistics type requested: %d", type);
 	}
 
-	return !heap_attisnull(htup, attnum);
+	return !heap_attisnull(htup, attnum, NULL);
 }
 
 /*
@@ -300,9 +302,9 @@ statext_store(Relation pg_stext, Oid statOid,
 	bool		nulls[Natts_pg_statistic_ext];
 	bool		replaces[Natts_pg_statistic_ext];
 
-	memset(nulls, 1, Natts_pg_statistic_ext * sizeof(bool));
-	memset(replaces, 0, Natts_pg_statistic_ext * sizeof(bool));
-	memset(values, 0, Natts_pg_statistic_ext * sizeof(Datum));
+	memset(nulls, true, sizeof(nulls));
+	memset(replaces, false, sizeof(replaces));
+	memset(values, 0, sizeof(values));
 
 	/*
 	 * Construct a new pg_statistic_ext tuple, replacing the calculated stats.

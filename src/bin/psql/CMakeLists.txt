@@ -17,25 +17,21 @@ flex_target(SCANSLASH_SCAN
 )
 
 set(psql_SRCS
-	command.c
 	common.c
-	conditional.c
-	help.c
-	help.h
-	input.c
-	stringutils.c
-	mainloop.c
-	copy.c
-	copy.h
-	startup.c
-	prompt.c
 	variables.c
-	large_obj.c
-	describe.c
-	tab-complete.c
-	../pg_dump/dumputils.c
-	sql_help.c
+	command.c
+	copy.c
+	prompt.c
+	mainloop.c
 	crosstabview.c
+	input.c
+	help.c
+	large_obj.c
+	tab-complete.c
+	stringutils.c
+	describe.c
+	startup.c
+	../pg_dump/dumputils.c
 	${FLEX_SCANSLASH_SCAN_OUTPUTS}
 )
 

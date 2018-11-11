@@ -4,7 +4,7 @@
  *	  prototypes for files in optimizer/prep/
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/prep.h
@@ -33,15 +33,12 @@ extern Relids get_relids_for_join(PlannerInfo *root, int joinrelid);
  * prototypes for prepqual.c
  */
 extern Node *negate_clause(Node *node);
-extern Expr *canonicalize_qual(Expr *qual);
+extern Expr *canonicalize_qual(Expr *qual, bool is_check);
 
 /*
  * prototypes for preptlist.c
  */
-extern List *preprocess_targetlist(PlannerInfo *root, List *tlist);
-
-extern List *preprocess_onconflict_targetlist(List *tlist,
-								 int result_relation, List *range_table);
+extern List *preprocess_targetlist(PlannerInfo *root);
 
 extern PlanRowMark *get_plan_rowmark(List *rowmarks, Index rtindex);
 
@@ -61,5 +58,11 @@ extern Node *adjust_appendrel_attrs_multilevel(PlannerInfo *root, Node *node,
 
 extern AppendRelInfo **find_appinfos_by_relids(PlannerInfo *root,
 						Relids relids, int *nappinfos);
+
+extern SpecialJoinInfo *build_child_join_sjinfo(PlannerInfo *root,
+						SpecialJoinInfo *parent_sjinfo,
+						Relids left_relids, Relids right_relids);
+extern Relids adjust_child_relids_multilevel(PlannerInfo *root, Relids relids,
+							   Relids child_relids, Relids top_parent_relids);
 
 #endif							/* PREP_H */

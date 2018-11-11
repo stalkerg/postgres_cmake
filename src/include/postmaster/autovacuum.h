@@ -4,7 +4,7 @@
  *	  header file for integrated autovacuum daemon
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/postmaster/autovacuum.h
@@ -71,7 +71,7 @@ extern void AutovacuumWorkerIAm(void);
 extern void AutovacuumLauncherIAm(void);
 #endif
 
-extern void AutoVacuumRequestWork(AutoVacuumWorkItemType type,
+extern bool AutoVacuumRequestWork(AutoVacuumWorkItemType type,
 					  Oid relationId, BlockNumber blkno);
 
 /* shared memory stuff */

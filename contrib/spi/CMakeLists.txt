@@ -6,7 +6,6 @@ set(modules_list
 	insert_username
 	moddatetime
 	refint
-	timetravel
 )
 
 foreach(loop_var IN ITEMS ${modules_list})

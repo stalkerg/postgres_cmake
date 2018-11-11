@@ -12,7 +12,7 @@
  * postgresql.conf and recovery.conf.  An extension also has an installation
  * script file, containing SQL commands to create the extension's objects.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -683,8 +683,6 @@ read_extension_script_file(const ExtensionControlFile *control,
 /*
  * Execute given SQL string.
  *
- * filename is used only to report errors.
- *
  * Note: it's tempting to just use SPI to execute the string, but that does
  * not work very well.  The really serious problem is that SPI will parse,
  * analyze, and plan the whole string before executing any of it; of course
@@ -694,7 +692,7 @@ read_extension_script_file(const ExtensionControlFile *control,
  * could be very long.
  */
 static void
-execute_sql_string(const char *sql, const char *filename)
+execute_sql_string(const char *sql)
 {
 	List	   *raw_parsetree_list;
 	DestReceiver *dest;
@@ -921,7 +919,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 		/* And now back to C string */
 		c_sql = text_to_cstring(DatumGetTextPP(t_sql));
 
-		execute_sql_string(c_sql, filename);
+		execute_sql_string(c_sql);
 	}
 	PG_CATCH();
 	{
@@ -1266,8 +1264,8 @@ find_install_path(List *evi_list, ExtensionVersionInfo *evi_target,
 static ObjectAddress
 CreateExtensionInternal(char *extensionName,
 						char *schemaName,
-						char *versionName,
-						char *oldVersionName,
+						const char *versionName,
+						const char *oldVersionName,
 						bool cascade,
 						List *parents,
 						bool is_create)
@@ -2704,13 +2702,13 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 	 * check ownership of the individual member objects ...
 	 */
 	if (!pg_extension_ownercheck(extensionOid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_EXTENSION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   extensionName);
 
 	/* Permission check: must have creation rights in target namespace */
 	aclresult = pg_namespace_aclcheck(nspOid, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_NAMESPACE, newschema);
+		aclcheck_error(aclresult, OBJECT_SCHEMA, newschema);
 
 	/*
 	 * If the schema is currently a member of the extension, disallow moving
@@ -2924,7 +2922,7 @@ ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 
 	/* Permission check: must own extension */
 	if (!pg_extension_ownercheck(extensionOid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_EXTENSION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   stmt->extname);
 
 	/*
@@ -3182,7 +3180,7 @@ ExecAlterExtensionContentsStmt(AlterExtensionContentsStmt *stmt,
 
 	/* Permission check: must own extension */
 	if (!pg_extension_ownercheck(extension.objectId, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_EXTENSION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   stmt->extname);
 
 	/*

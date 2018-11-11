@@ -3,10 +3,10 @@
  * datetime.h
  *	  Definitions for date/time support code.
  *	  The support code is shared with other date data types,
- *	   including abstime, reltime, date, and time.
+ *	   including date, and time.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/datetime.h

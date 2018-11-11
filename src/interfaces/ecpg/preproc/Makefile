@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/ecpg/preproc
 #
-# Copyright (c) 1998-2017, PostgreSQL Global Development Group
+# Copyright (c) 1998-2018, PostgreSQL Global Development Group
 #
 # src/interfaces/ecpg/preproc/Makefile
 #
@@ -39,7 +39,10 @@ ecpg: $(OBJS) | submake-libpgport
 ../ecpglib/typename.o: ../ecpglib/typename.c
 	$(MAKE) -C $(dir $@) $(notdir $@)
 
-preproc.h: preproc.c ;
+# See notes in src/backend/parser/Makefile about the following two rules
+preproc.h: preproc.c
+	touch $@
+
 preproc.c: BISONFLAGS += -d
 
 preproc.y: ../../../backend/parser/gram.y parse.pl ecpg.addons ecpg.header ecpg.tokens ecpg.trailer ecpg.type
@@ -61,8 +64,6 @@ uninstall:
 
 clean distclean:
 	rm -f *.o ecpg$(X)
-# garbage from development
-	@rm -f core a.out
 
 # `make distclean' must not remove preproc.y, preproc.c, preproc.h, or pgc.c
 # since we want to ship those files in the distribution for people with

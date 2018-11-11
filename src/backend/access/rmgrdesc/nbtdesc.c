@@ -3,7 +3,7 @@
  * nbtdesc.c
  *	  rmgr descriptor routines for access/nbtree/nbtxlog.c
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,6 +35,8 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 			}
 		case XLOG_BTREE_SPLIT_L:
 		case XLOG_BTREE_SPLIT_R:
+		case XLOG_BTREE_SPLIT_L_HIGHKEY:
+		case XLOG_BTREE_SPLIT_R_HIGHKEY:
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
@@ -94,6 +96,15 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 								 xlrec->node.relNode, xlrec->latestRemovedXid);
 				break;
 			}
+		case XLOG_BTREE_META_CLEANUP:
+			{
+				xl_btree_metadata *xlrec = (xl_btree_metadata *) rec;
+
+				appendStringInfo(buf, "oldest_btpo_xact %u; last_cleanup_num_heap_tuples: %f",
+								 xlrec->oldest_btpo_xact,
+								 xlrec->last_cleanup_num_heap_tuples);
+				break;
+			}
 	}
 }
 
@@ -119,6 +130,12 @@ btree_identify(uint8 info)
 		case XLOG_BTREE_SPLIT_R:
 			id = "SPLIT_R";
 			break;
+		case XLOG_BTREE_SPLIT_L_HIGHKEY:
+			id = "SPLIT_L_HIGHKEY";
+			break;
+		case XLOG_BTREE_SPLIT_R_HIGHKEY:
+			id = "SPLIT_R_HIGHKEY";
+			break;
 		case XLOG_BTREE_VACUUM:
 			id = "VACUUM";
 			break;
@@ -139,6 +156,9 @@ btree_identify(uint8 info)
 			break;
 		case XLOG_BTREE_REUSE_PAGE:
 			id = "REUSE_PAGE";
+			break;
+		case XLOG_BTREE_META_CLEANUP:
+			id = "META_CLEANUP";
 			break;
 	}
 

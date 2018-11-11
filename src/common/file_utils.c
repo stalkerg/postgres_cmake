@@ -5,7 +5,7 @@
  * Assorted utility functions to work on files.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/common/file_utils.c
@@ -222,7 +222,7 @@ pre_sync_fname(const char *fname, bool isdir, const char *progname)
 {
 	int			fd;
 
-	fd = open(fname, O_RDONLY | PG_BINARY);
+	fd = open(fname, O_RDONLY | PG_BINARY, 0);
 
 	if (fd < 0)
 	{
@@ -283,7 +283,7 @@ fsync_fname(const char *fname, bool isdir, const char *progname)
 	 * unsupported operations, e.g. opening a directory under Windows), and
 	 * logging others.
 	 */
-	fd = open(fname, flags);
+	fd = open(fname, flags, 0);
 	if (fd < 0)
 	{
 		if (errno == EACCES || (isdir && errno == EISDIR))

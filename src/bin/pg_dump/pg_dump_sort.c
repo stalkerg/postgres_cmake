@@ -4,7 +4,7 @@
  *	  Sort the items of a dump into a safe order for dumping
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,7 +19,7 @@
 #include "pg_backup_utils.h"
 #include "pg_dump.h"
 
-#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
 
 /* translator: this is a module name */
 static const char *modulename = gettext_noop("sorter");
@@ -53,11 +53,12 @@ static const int dbObjectTypePriority[] =
 	18,							/* DO_TABLE */
 	20,							/* DO_ATTRDEF */
 	28,							/* DO_INDEX */
-	29,							/* DO_STATSEXT */
-	30,							/* DO_RULE */
-	31,							/* DO_TRIGGER */
+	29,							/* DO_INDEX_ATTACH */
+	30,							/* DO_STATSEXT */
+	31,							/* DO_RULE */
+	32,							/* DO_TRIGGER */
 	27,							/* DO_CONSTRAINT */
-	32,							/* DO_FK_CONSTRAINT */
+	33,							/* DO_FK_CONSTRAINT */
 	2,							/* DO_PROCLANG */
 	10,							/* DO_CAST */
 	23,							/* DO_TABLE_DATA */
@@ -69,18 +70,18 @@ static const int dbObjectTypePriority[] =
 	15,							/* DO_TSCONFIG */
 	16,							/* DO_FDW */
 	17,							/* DO_FOREIGN_SERVER */
-	32,							/* DO_DEFAULT_ACL */
+	33,							/* DO_DEFAULT_ACL */
 	3,							/* DO_TRANSFORM */
 	21,							/* DO_BLOB */
 	25,							/* DO_BLOB_DATA */
 	22,							/* DO_PRE_DATA_BOUNDARY */
 	26,							/* DO_POST_DATA_BOUNDARY */
-	33,							/* DO_EVENT_TRIGGER */
-	38,							/* DO_REFRESH_MATVIEW */
-	34,							/* DO_POLICY */
-	35,							/* DO_PUBLICATION */
-	36,							/* DO_PUBLICATION_REL */
-	37							/* DO_SUBSCRIPTION */
+	34,							/* DO_EVENT_TRIGGER */
+	39,							/* DO_REFRESH_MATVIEW */
+	35,							/* DO_POLICY */
+	36,							/* DO_PUBLICATION */
+	37,							/* DO_PUBLICATION_REL */
+	38							/* DO_SUBSCRIPTION */
 };
 
 static DumpId preDataBoundId;
@@ -106,96 +107,6 @@ static void repairDependencyLoop(DumpableObject **loop,
 static void describeDumpableObject(DumpableObject *obj,
 					   char *buf, int bufsize);
 
-static int	DOSizeCompare(const void *p1, const void *p2);
-
-static int
-findFirstEqualType(DumpableObjectType type, DumpableObject **objs, int numObjs)
-{
-	int			i;
-
-	for (i = 0; i < numObjs; i++)
-		if (objs[i]->objType == type)
-			return i;
-	return -1;
-}
-
-static int
-findFirstDifferentType(DumpableObjectType type, DumpableObject **objs, int numObjs, int start)
-{
-	int			i;
-
-	for (i = start; i < numObjs; i++)
-		if (objs[i]->objType != type)
-			return i;
-	return numObjs - 1;
-}
-
-/*
- * When we do a parallel dump, we want to start with the largest items first.
- *
- * Say we have the objects in this order:
- * ....DDDDD....III....
- *
- * with D = Table data, I = Index, . = other object
- *
- * This sorting function now takes each of the D or I blocks and sorts them
- * according to their size.
- */
-void
-sortDataAndIndexObjectsBySize(DumpableObject **objs, int numObjs)
-{
-	int			startIdx,
-				endIdx;
-	void	   *startPtr;
-
-	if (numObjs <= 1)
-		return;
-
-	startIdx = findFirstEqualType(DO_TABLE_DATA, objs, numObjs);
-	if (startIdx >= 0)
-	{
-		endIdx = findFirstDifferentType(DO_TABLE_DATA, objs, numObjs, startIdx);
-		startPtr = objs + startIdx;
-		qsort(startPtr, endIdx - startIdx, sizeof(DumpableObject *),
-			  DOSizeCompare);
-	}
-
-	startIdx = findFirstEqualType(DO_INDEX, objs, numObjs);
-	if (startIdx >= 0)
-	{
-		endIdx = findFirstDifferentType(DO_INDEX, objs, numObjs, startIdx);
-		startPtr = objs + startIdx;
-		qsort(startPtr, endIdx - startIdx, sizeof(DumpableObject *),
-			  DOSizeCompare);
-	}
-}
-
-static int
-DOSizeCompare(const void *p1, const void *p2)
-{
-	DumpableObject *obj1 = *(DumpableObject **) p1;
-	DumpableObject *obj2 = *(DumpableObject **) p2;
-	int			obj1_size = 0;
-	int			obj2_size = 0;
-
-	if (obj1->objType == DO_TABLE_DATA)
-		obj1_size = ((TableDataInfo *) obj1)->tdtable->relpages;
-	if (obj1->objType == DO_INDEX)
-		obj1_size = ((IndxInfo *) obj1)->relpages;
-
-	if (obj2->objType == DO_TABLE_DATA)
-		obj2_size = ((TableDataInfo *) obj2)->tdtable->relpages;
-	if (obj2->objType == DO_INDEX)
-		obj2_size = ((IndxInfo *) obj2)->relpages;
-
-	/* we want to see the biggest item go first */
-	if (obj1_size > obj2_size)
-		return -1;
-	if (obj2_size > obj1_size)
-		return 1;
-
-	return 0;
-}
 
 /*
  * Sort the given objects into a type/name-based ordering
@@ -218,7 +129,7 @@ DOTypeNameCompare(const void *p1, const void *p2)
 	DumpableObject *obj2 = *(DumpableObject *const *) p2;
 	int			cmpval;
 
-	/* Sort by type */
+	/* Sort by type's priority */
 	cmpval = dbObjectTypePriority[obj1->objType] -
 		dbObjectTypePriority[obj2->objType];
 
@@ -226,17 +137,24 @@ DOTypeNameCompare(const void *p1, const void *p2)
 		return cmpval;
 
 	/*
-	 * Sort by namespace.  Note that all objects of the same type should
-	 * either have or not have a namespace link, so we needn't be fancy about
-	 * cases where one link is null and the other not.
+	 * Sort by namespace.  Typically, all objects of the same priority would
+	 * either have or not have a namespace link, but there are exceptions.
+	 * Sort NULL namespace after non-NULL in such cases.
 	 */
-	if (obj1->namespace && obj2->namespace)
+	if (obj1->namespace)
 	{
-		cmpval = strcmp(obj1->namespace->dobj.name,
-						obj2->namespace->dobj.name);
-		if (cmpval != 0)
-			return cmpval;
+		if (obj2->namespace)
+		{
+			cmpval = strcmp(obj1->namespace->dobj.name,
+							obj2->namespace->dobj.name);
+			if (cmpval != 0)
+				return cmpval;
+		}
+		else
+			return -1;
 	}
+	else if (obj2->namespace)
+		return 1;
 
 	/* Sort by name */
 	cmpval = strcmp(obj1->name, obj2->name);
@@ -342,13 +260,13 @@ sortDumpableObjects(DumpableObject **objs, int numObjs,
  * The input is the list of numObjs objects in objs[].  This list is not
  * modified.
  *
- * Returns TRUE if able to build an ordering that satisfies all the
- * constraints, FALSE if not (there are contradictory constraints).
+ * Returns true if able to build an ordering that satisfies all the
+ * constraints, false if not (there are contradictory constraints).
  *
- * On success (TRUE result), ordering[] is filled with a sorted array of
+ * On success (true result), ordering[] is filled with a sorted array of
  * DumpableObject pointers, of length equal to the input list length.
  *
- * On failure (FALSE result), ordering[] is filled with an unsorted array of
+ * On failure (false result), ordering[] is filled with an unsorted array of
  * DumpableObject pointers of length *nOrdering, listing the objects that
  * prevented the sort from being completed.  In general, these objects either
  * participate directly in a dependency cycle, or are depended on by objects
@@ -937,6 +855,13 @@ repairDomainConstraintMultiLoop(DumpableObject *domainobj,
 	addObjectDependency(constraintobj, postDataBoundId);
 }
 
+static void
+repairIndexLoop(DumpableObject *partedindex,
+				DumpableObject *partindex)
+{
+	removeObjectDependency(partedindex, partindex->dumpId);
+}
+
 /*
  * Fix a dependency loop, or die trying ...
  *
@@ -1097,6 +1022,23 @@ repairDependencyLoop(DumpableObject **loop,
 	{
 		repairTableAttrDefLoop(loop[1], loop[0]);
 		return;
+	}
+
+	/* index on partitioned table and corresponding index on partition */
+	if (nLoop == 2 &&
+		loop[0]->objType == DO_INDEX &&
+		loop[1]->objType == DO_INDEX)
+	{
+		if (((IndxInfo *) loop[0])->parentidx == loop[1]->catId.oid)
+		{
+			repairIndexLoop(loop[0], loop[1]);
+			return;
+		}
+		else if (((IndxInfo *) loop[1])->parentidx == loop[0]->catId.oid)
+		{
+			repairIndexLoop(loop[1], loop[0]);
+			return;
+		}
 	}
 
 	/* Indirect loop involving table and attribute default */
@@ -1291,6 +1233,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			snprintf(buf, bufsize,
 					 "INDEX %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_INDEX_ATTACH:
+			snprintf(buf, bufsize,
+					 "INDEX ATTACH %s  (ID %d)",
+					 obj->name, obj->dumpId);
 			return;
 		case DO_STATSEXT:
 			snprintf(buf, bufsize,

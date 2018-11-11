@@ -781,7 +781,7 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 INSERT INTO document VALUES (79, (SELECT cid from category WHERE cname = 'technology'), 1, 'regress_rls_bob', 'technology book, can only insert')
     ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle RETURNING *;
 
--- UPDATE path is taken here.  Existing tuple passes, since it's cid
+-- UPDATE path is taken here.  Existing tuple passes, since its cid
 -- corresponds to "novel", but default USING qual is enforced against
 -- post-UPDATE tuple too (as always when updating with a policy that lacks an
 -- explicit WCO), and so this fails:
@@ -1674,10 +1674,11 @@ DROP TABLE r1;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security = on;
-CREATE TABLE r1 (a int);
+CREATE TABLE r1 (a int PRIMARY KEY);
 
 CREATE POLICY p1 ON r1 FOR SELECT USING (a < 20);
 CREATE POLICY p2 ON r1 FOR UPDATE USING (a < 20) WITH CHECK (true);
+CREATE POLICY p3 ON r1 FOR INSERT WITH CHECK (true);
 INSERT INTO r1 VALUES (10);
 ALTER TABLE r1 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE r1 FORCE ROW LEVEL SECURITY;
@@ -1698,6 +1699,17 @@ ALTER TABLE r1 FORCE ROW LEVEL SECURITY;
 
 -- Error
 UPDATE r1 SET a = 30 RETURNING *;
+
+-- UPDATE path of INSERT ... ON CONFLICT DO UPDATE should also error out
+INSERT INTO r1 VALUES (10)
+    ON CONFLICT (a) DO UPDATE SET a = 30 RETURNING *;
+
+-- Should still error out without RETURNING (use of arbiter always requires
+-- SELECT permissions)
+INSERT INTO r1 VALUES (10)
+    ON CONFLICT (a) DO UPDATE SET a = 30;
+INSERT INTO r1 VALUES (10)
+    ON CONFLICT ON CONSTRAINT r1_pkey DO UPDATE SET a = 30;
 
 DROP TABLE r1;
 

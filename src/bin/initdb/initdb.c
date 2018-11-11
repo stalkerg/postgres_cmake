@@ -38,7 +38,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/initdb/initdb.c
@@ -59,10 +59,11 @@
 #include "sys/mman.h"
 #endif
 
-#include "catalog/catalog.h"
-#include "catalog/pg_authid.h"
-#include "catalog/pg_class.h"
-#include "catalog/pg_collation.h"
+#include "access/xlog_internal.h"
+#include "catalog/pg_authid_d.h"
+#include "catalog/pg_class_d.h" /* pgrminclude ignore */
+#include "catalog/pg_collation_d.h"
+#include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/restricted_token.h"
 #include "common/username.h"
@@ -118,34 +119,36 @@ static const char *const auth_methods_local[] = {
 static char *share_path = NULL;
 
 /* values to be obtained from arguments */
-static char *pg_data = "";
-static char *encoding = "";
-static char *locale = "";
-static char *lc_collate = "";
-static char *lc_ctype = "";
-static char *lc_monetary = "";
-static char *lc_numeric = "";
-static char *lc_time = "";
-static char *lc_messages = "";
-static const char *default_text_search_config = "";
-static char *username = "";
+static char *pg_data = NULL;
+static char *encoding = NULL;
+static char *locale = NULL;
+static char *lc_collate = NULL;
+static char *lc_ctype = NULL;
+static char *lc_monetary = NULL;
+static char *lc_numeric = NULL;
+static char *lc_time = NULL;
+static char *lc_messages = NULL;
+static const char *default_text_search_config = NULL;
+static char *username = NULL;
 static bool pwprompt = false;
 static char *pwfilename = NULL;
 static char *superuser_password = NULL;
-static const char *authmethodhost = "";
-static const char *authmethodlocal = "";
+static const char *authmethodhost = NULL;
+static const char *authmethodlocal = NULL;
 static bool debug = false;
 static bool noclean = false;
 static bool do_sync = true;
 static bool sync_only = false;
 static bool show_setting = false;
 static bool data_checksums = false;
-static char *xlog_dir = "";
+static char *xlog_dir = NULL;
+static char *str_wal_segment_size_mb = NULL;
+static int	wal_segment_size_mb;
 
 
 /* internal vars */
 static const char *progname;
-static char *encodingid = "0";
+static int	encodingid;
 static char *bki_file;
 static char *desc_file;
 static char *shdesc_file;
@@ -170,7 +173,8 @@ static char *pgdata_native;
 /* defaults */
 static int	n_connections = 10;
 static int	n_buffers = 50;
-static char *dynamic_shared_memory_type = NULL;
+static const char *dynamic_shared_memory_type = NULL;
+static const char *default_timezone = NULL;
 
 /*
  * Warning messages for authentication methods
@@ -234,12 +238,12 @@ static char **filter_lines_with_token(char **lines, const char *token);
 static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
-static void exit_nicely(void);
+static void exit_nicely(void) pg_attribute_noreturn();
 static char *get_id(void);
-static char *get_encoding_id(char *encoding_name);
-static void set_input(char **dest, char *filename);
+static int	get_encoding_id(const char *encoding_name);
+static void set_input(char **dest, const char *filename);
 static void check_input(char *path);
-static void write_version_file(char *extrapath);
+static void write_version_file(const char *extrapath);
 static void set_null_conf(void);
 static void test_config_settings(void);
 static void setup_config(void);
@@ -262,6 +266,7 @@ static void make_postgres(FILE *cmdfd);
 static void trapsig(int signum);
 static void check_ok(void);
 static char *escape_quotes(const char *src);
+static char *escape_quotes_bki(const char *src);
 static int	locale_date_order(const char *locale);
 static void check_locale_name(int category, const char *locale,
 				  char **canonname);
@@ -321,6 +326,10 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
+/*
+ * Escape single quotes and backslashes, suitably for insertions into
+ * configuration files or SQL E'' strings.
+ */
 static char *
 escape_quotes(const char *src)
 {
@@ -331,6 +340,52 @@ escape_quotes(const char *src)
 		fprintf(stderr, _("%s: out of memory\n"), progname);
 		exit(1);
 	}
+	return result;
+}
+
+/*
+ * Escape a field value to be inserted into the BKI data.
+ * Here, we first run the value through escape_quotes (which
+ * will be inverted by the backend's scanstr() function) and
+ * then overlay special processing of double quotes, which
+ * bootscanner.l will only accept as data if converted to octal
+ * representation ("\042").  We always wrap the value in double
+ * quotes, even if that isn't strictly necessary.
+ */
+static char *
+escape_quotes_bki(const char *src)
+{
+	char	   *result;
+	char	   *data = escape_quotes(src);
+	char	   *resultp;
+	char	   *datap;
+	int			nquotes = 0;
+
+	/* count double quotes in data */
+	datap = data;
+	while ((datap = strchr(datap, '"')) != NULL)
+	{
+		nquotes++;
+		datap++;
+	}
+
+	result = (char *) pg_malloc(strlen(data) + 3 + nquotes * 3);
+	resultp = result;
+	*resultp++ = '"';
+	for (datap = data; *datap; datap++)
+	{
+		if (*datap == '"')
+		{
+			strcpy(resultp, "\\042");
+			resultp += 4;
+		}
+		else
+			*resultp++ = *datap;
+	}
+	*resultp++ = '"';
+	*resultp = '\0';
+
+	free(data);
 	return result;
 }
 
@@ -636,15 +691,15 @@ encodingid_to_string(int enc)
 /*
  * get the encoding id for a given encoding name
  */
-static char *
-get_encoding_id(char *encoding_name)
+static int
+get_encoding_id(const char *encoding_name)
 {
 	int			enc;
 
 	if (encoding_name && *encoding_name)
 	{
 		if ((enc = pg_valid_server_encoding(encoding_name)) >= 0)
-			return encodingid_to_string(enc);
+			return enc;
 	}
 	fprintf(stderr, _("%s: \"%s\" is not a valid server encoding name\n"),
 			progname, encoding_name ? encoding_name : "(null)");
@@ -663,6 +718,8 @@ struct tsearch_config_match
 
 static const struct tsearch_config_match tsearch_config_languages[] =
 {
+	{"arabic", "ar"},
+	{"arabic", "Arabic"},
 	{"danish", "da"},
 	{"danish", "Danish"},
 	{"dutch", "nl"},
@@ -679,8 +736,16 @@ static const struct tsearch_config_match tsearch_config_languages[] =
 	{"german", "German"},
 	{"hungarian", "hu"},
 	{"hungarian", "Hungarian"},
+	{"indonesian", "id"},
+	{"indonesian", "Indonesian"},
+	{"irish", "ga"},
+	{"irish", "Irish"},
 	{"italian", "it"},
 	{"italian", "Italian"},
+	{"lithuanian", "lt"},
+	{"lithuanian", "Lithuanian"},
+	{"nepali", "ne"},
+	{"nepali", "Nepali"},
 	{"norwegian", "no"},
 	{"norwegian", "Norwegian"},
 	{"portuguese", "pt"},
@@ -692,6 +757,8 @@ static const struct tsearch_config_match tsearch_config_languages[] =
 	{"spanish", "Spanish"},
 	{"swedish", "sv"},
 	{"swedish", "Swedish"},
+	{"tamil", "ta"},
+	{"tamil", "Tamil"},
 	{"turkish", "tr"},
 	{"turkish", "Turkish"},
 	{NULL, NULL}				/* end marker */
@@ -748,7 +815,7 @@ find_matching_ts_config(const char *lc_type)
  * set name of given input file variable under data directory
  */
 static void
-set_input(char **dest, char *filename)
+set_input(char **dest, const char *filename)
 {
 	*dest = psprintf("%s/%s", share_path, filename);
 }
@@ -798,7 +865,7 @@ check_input(char *path)
  * if extrapath is not NULL
  */
 static void
-write_version_file(char *extrapath)
+write_version_file(const char *extrapath)
 {
 	FILE	   *version_file;
 	char	   *path;
@@ -862,11 +929,14 @@ set_null_conf(void)
  * the postmaster either, and configure the cluster for System V shared
  * memory instead.
  */
-static char *
+static const char *
 choose_dsm_implementation(void)
 {
 #ifdef HAVE_SHM_OPEN
 	int			ntries = 10;
+
+	/* Initialize random(); this function is its only user in this program. */
+	srandom((unsigned int) (getpid() ^ time(NULL)));
 
 	while (ntries > 0)
 	{
@@ -898,9 +968,7 @@ choose_dsm_implementation(void)
 /*
  * Determine platform-specific config settings
  *
- * Use reasonable values if kernel will let us, else scale back.  Probe
- * for max_connections first since it is subject to more constraints than
- * shared_buffers.
+ * Use reasonable values if kernel will let us, else scale back.
  */
 static void
 test_config_settings(void)
@@ -912,7 +980,7 @@ test_config_settings(void)
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 20, 10
+		100, 50, 40, 30, 20
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -929,7 +997,19 @@ test_config_settings(void)
 				test_buffs,
 				ok_buffers = 0;
 
+	/*
+	 * Need to determine working DSM implementation first so that subsequent
+	 * tests don't fail because DSM setting doesn't work.
+	 */
+	printf(_("selecting dynamic shared memory implementation ... "));
+	fflush(stdout);
+	dynamic_shared_memory_type = choose_dsm_implementation();
+	printf("%s\n", dynamic_shared_memory_type);
 
+	/*
+	 * Probe for max_connections before shared_buffers, since it is subject to
+	 * more constraints than shared_buffers.
+	 */
 	printf(_("selecting default max_connections ... "));
 	fflush(stdout);
 
@@ -942,10 +1022,11 @@ test_config_settings(void)
 				 "\"%s\" --boot -x0 %s "
 				 "-c max_connections=%d "
 				 "-c shared_buffers=%d "
-				 "-c dynamic_shared_memory_type=none "
+				 "-c dynamic_shared_memory_type=%s "
 				 "< \"%s\" > \"%s\" 2>&1",
 				 backend_exec, boot_options,
 				 test_conns, test_buffs,
+				 dynamic_shared_memory_type,
 				 DEVNULL, DEVNULL);
 		status = system(cmd);
 		if (status == 0)
@@ -977,10 +1058,11 @@ test_config_settings(void)
 				 "\"%s\" --boot -x0 %s "
 				 "-c max_connections=%d "
 				 "-c shared_buffers=%d "
-				 "-c dynamic_shared_memory_type=none "
+				 "-c dynamic_shared_memory_type=%s "
 				 "< \"%s\" > \"%s\" 2>&1",
 				 backend_exec, boot_options,
 				 n_connections, test_buffs,
+				 dynamic_shared_memory_type,
 				 DEVNULL, DEVNULL);
 		status = system(cmd);
 		if (status == 0)
@@ -993,10 +1075,27 @@ test_config_settings(void)
 	else
 		printf("%dkB\n", n_buffers * (BLCKSZ / 1024));
 
-	printf(_("selecting dynamic shared memory implementation ... "));
+	printf(_("selecting default timezone ... "));
 	fflush(stdout);
-	dynamic_shared_memory_type = choose_dsm_implementation();
-	printf("%s\n", dynamic_shared_memory_type);
+	default_timezone = select_default_timezone(share_path);
+	printf("%s\n", default_timezone ? default_timezone : "GMT");
+}
+
+/*
+ * Calculate the default wal_size with a "pretty" unit.
+ */
+static char *
+pretty_wal_size(int segment_count)
+{
+	int			sz = wal_segment_size_mb * segment_count;
+	char	   *result = pg_malloc(14);
+
+	if ((sz % 1024) == 0)
+		snprintf(result, 14, "%dGB", sz / 1024);
+	else
+		snprintf(result, 14, "%dMB", sz);
+
+	return result;
 }
 
 /*
@@ -1008,7 +1107,6 @@ setup_config(void)
 	char	  **conflines;
 	char		repltok[MAXPGPATH];
 	char		path[MAXPGPATH];
-	const char *default_timezone;
 	char	   *autoconflines[3];
 
 	fputs(_("creating configuration files ... "), stdout);
@@ -1042,6 +1140,15 @@ setup_config(void)
 	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
 	conflines = replace_token(conflines, "#port = 5432", repltok);
 #endif
+
+	/* set default max_wal_size and min_wal_size */
+	snprintf(repltok, sizeof(repltok), "min_wal_size = %s",
+			 pretty_wal_size(DEFAULT_MIN_WAL_SEGS));
+	conflines = replace_token(conflines, "#min_wal_size = 80MB", repltok);
+
+	snprintf(repltok, sizeof(repltok), "max_wal_size = %s",
+			 pretty_wal_size(DEFAULT_MAX_WAL_SEGS));
+	conflines = replace_token(conflines, "#max_wal_size = 1GB", repltok);
 
 	snprintf(repltok, sizeof(repltok), "lc_messages = '%s'",
 			 escape_quotes(lc_messages));
@@ -1081,7 +1188,6 @@ setup_config(void)
 							  "#default_text_search_config = 'pg_catalog.simple'",
 							  repltok);
 
-	default_timezone = select_default_timezone(share_path);
 	if (default_timezone)
 	{
 		snprintf(repltok, sizeof(repltok), "timezone = '%s'",
@@ -1138,10 +1244,23 @@ setup_config(void)
 								  "password_encryption = scram-sha-256");
 	}
 
+	/*
+	 * If group access has been enabled for the cluster then it makes sense to
+	 * ensure that the log files also allow group access.  Otherwise a backup
+	 * from a user in the group would fail if the log files were not
+	 * relocated.
+	 */
+	if (pg_dir_create_mode == PG_DIR_MODE_GROUP)
+	{
+		conflines = replace_token(conflines,
+								  "#log_file_mode = 0600",
+								  "log_file_mode = 0640");
+	}
+
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
 	writefile(path, conflines);
-	if (chmod(path, S_IRUSR | S_IWUSR) != 0)
+	if (chmod(path, pg_file_create_mode) != 0)
 	{
 		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
 				progname, path, strerror(errno));
@@ -1161,7 +1280,7 @@ setup_config(void)
 	sprintf(path, "%s/postgresql.auto.conf", pg_data);
 
 	writefile(path, autoconflines);
-	if (chmod(path, S_IRUSR | S_IWUSR) != 0)
+	if (chmod(path, pg_file_create_mode) != 0)
 	{
 		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
 				progname, path, strerror(errno));
@@ -1248,7 +1367,7 @@ setup_config(void)
 	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
 	writefile(path, conflines);
-	if (chmod(path, S_IRUSR | S_IWUSR) != 0)
+	if (chmod(path, pg_file_create_mode) != 0)
 	{
 		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
 				progname, path, strerror(errno));
@@ -1264,7 +1383,7 @@ setup_config(void)
 	snprintf(path, sizeof(path), "%s/pg_ident.conf", pg_data);
 
 	writefile(path, conflines);
-	if (chmod(path, S_IRUSR | S_IWUSR) != 0)
+	if (chmod(path, pg_file_create_mode) != 0)
 	{
 		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
 				progname, path, strerror(errno));
@@ -1285,16 +1404,12 @@ bootstrap_template1(void)
 {
 	PG_CMD_DECL;
 	char	  **line;
-	char	   *talkargs = "";
 	char	  **bki_lines;
 	char		headerline[MAXPGPATH];
 	char		buf[64];
 
 	printf(_("running bootstrap script ... "));
 	fflush(stdout);
-
-	if (debug)
-		talkargs = "-d 5";
 
 	bki_lines = readfile(bki_file);
 
@@ -1330,13 +1445,17 @@ bootstrap_template1(void)
 	bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
 							  FLOAT8PASSBYVAL ? "true" : "false");
 
-	bki_lines = replace_token(bki_lines, "POSTGRES", escape_quotes(username));
+	bki_lines = replace_token(bki_lines, "POSTGRES",
+							  escape_quotes_bki(username));
 
-	bki_lines = replace_token(bki_lines, "ENCODING", encodingid);
+	bki_lines = replace_token(bki_lines, "ENCODING",
+							  encodingid_to_string(encodingid));
 
-	bki_lines = replace_token(bki_lines, "LC_COLLATE", escape_quotes(lc_collate));
+	bki_lines = replace_token(bki_lines, "LC_COLLATE",
+							  escape_quotes_bki(lc_collate));
 
-	bki_lines = replace_token(bki_lines, "LC_CTYPE", escape_quotes(lc_ctype));
+	bki_lines = replace_token(bki_lines, "LC_CTYPE",
+							  escape_quotes_bki(lc_ctype));
 
 	/*
 	 * Pass correct LC_xxx environment to bootstrap.
@@ -1356,10 +1475,13 @@ bootstrap_template1(void)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -x1 %s %s %s",
+			 "\"%s\" --boot -x1 -X %u %s %s %s",
 			 backend_exec,
+			 wal_segment_size_mb * (1024 * 1024),
 			 data_checksums ? "-k" : "",
-			 boot_options, talkargs);
+			 boot_options,
+			 debug ? "-d 5" : "");
+
 
 	PG_CMD_OPEN;
 
@@ -1573,6 +1695,8 @@ setup_sysviews(FILE *cmdfd)
 		free(*line);
 	}
 
+	PG_CMD_PUTS("\n\n");
+
 	free(sysviews_setup);
 }
 
@@ -1611,16 +1735,17 @@ setup_description(FILE *cmdfd)
 
 	/* Create default descriptions for operator implementation functions */
 	PG_CMD_PUTS("WITH funcdescs AS ( "
-				"SELECT p.oid as p_oid, oprname, "
-				"coalesce(obj_description(o.oid, 'pg_operator'),'') as opdesc "
+				"SELECT p.oid as p_oid, o.oid as o_oid, oprname "
 				"FROM pg_proc p JOIN pg_operator o ON oprcode = p.oid ) "
 				"INSERT INTO pg_description "
 				"  SELECT p_oid, 'pg_proc'::regclass, 0, "
 				"    'implementation of ' || oprname || ' operator' "
 				"  FROM funcdescs "
-				"  WHERE opdesc NOT LIKE 'deprecated%' AND "
-				"  NOT EXISTS (SELECT 1 FROM pg_description "
-				"    WHERE objoid = p_oid AND classoid = 'pg_proc'::regclass);\n\n");
+				"  WHERE NOT EXISTS (SELECT 1 FROM pg_description "
+				"   WHERE objoid = p_oid AND classoid = 'pg_proc'::regclass) "
+				"  AND NOT EXISTS (SELECT 1 FROM pg_description "
+				"   WHERE objoid = o_oid AND classoid = 'pg_operator'::regclass"
+				"         AND description LIKE 'deprecated%');\n\n");
 
 	/*
 	 * Even though the tables are temp, drop them explicitly so they don't get
@@ -1684,6 +1809,8 @@ setup_dictionary(FILE *cmdfd)
 		free(*line);
 	}
 
+	PG_CMD_PUTS("\n\n");
+
 	free(conv_lines);
 }
 
@@ -1740,7 +1867,7 @@ setup_privileges(FILE *cmdfd)
 		"        relacl IS NOT NULL"
 		"        AND relkind IN (" CppAsString2(RELKIND_RELATION) ", "
 		CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
-		CppAsString2(RELKIND_SEQUENCE) ");",
+		CppAsString2(RELKIND_SEQUENCE) ");\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1756,7 +1883,7 @@ setup_privileges(FILE *cmdfd)
 		"        pg_attribute.attacl IS NOT NULL"
 		"        AND pg_class.relkind IN (" CppAsString2(RELKIND_RELATION) ", "
 		CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
-		CppAsString2(RELKIND_SEQUENCE) ");",
+		CppAsString2(RELKIND_SEQUENCE) ");\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1768,7 +1895,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_proc"
 		"    WHERE"
-		"        proacl IS NOT NULL;",
+		"        proacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1780,7 +1907,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_type"
 		"    WHERE"
-		"        typacl IS NOT NULL;",
+		"        typacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1792,7 +1919,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_language"
 		"    WHERE"
-		"        lanacl IS NOT NULL;",
+		"        lanacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1805,7 +1932,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_largeobject_metadata"
 		"    WHERE"
-		"        lomacl IS NOT NULL;",
+		"        lomacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1817,7 +1944,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_namespace"
 		"    WHERE"
-		"        nspacl IS NOT NULL;",
+		"        nspacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1830,7 +1957,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_foreign_data_wrapper"
 		"    WHERE"
-		"        fdwacl IS NOT NULL;",
+		"        fdwacl IS NOT NULL;\n\n",
 		"INSERT INTO pg_init_privs "
 		"  (objoid, classoid, objsubid, initprivs, privtype)"
 		"    SELECT"
@@ -1843,7 +1970,7 @@ setup_privileges(FILE *cmdfd)
 		"    FROM"
 		"        pg_foreign_server"
 		"    WHERE"
-		"        srvacl IS NOT NULL;",
+		"        srvacl IS NOT NULL;\n\n",
 		NULL
 	};
 
@@ -1897,6 +2024,8 @@ setup_schema(FILE *cmdfd)
 		PG_CMD_PUTS(*line);
 		free(*line);
 	}
+
+	PG_CMD_PUTS("\n\n");
 
 	free(lines);
 
@@ -2136,6 +2265,10 @@ check_locale_name(int category, const char *locale, char **canonname)
 	/* save may be pointing at a modifiable scratch variable, so copy it. */
 	save = pg_strdup(save);
 
+	/* for setlocale() call */
+	if (!locale)
+		locale = "";
+
 	/* set the locale with setlocale, to see if it accepts it. */
 	res = setlocale(category, locale);
 
@@ -2223,19 +2356,19 @@ setlocales(void)
 
 	/* set empty lc_* values to locale config if set */
 
-	if (strlen(locale) > 0)
+	if (locale)
 	{
-		if (strlen(lc_ctype) == 0)
+		if (!lc_ctype)
 			lc_ctype = locale;
-		if (strlen(lc_collate) == 0)
+		if (!lc_collate)
 			lc_collate = locale;
-		if (strlen(lc_numeric) == 0)
+		if (!lc_numeric)
 			lc_numeric = locale;
-		if (strlen(lc_time) == 0)
+		if (!lc_time)
 			lc_time = locale;
-		if (strlen(lc_monetary) == 0)
+		if (!lc_monetary)
 			lc_monetary = locale;
-		if (strlen(lc_messages) == 0)
+		if (!lc_messages)
 			lc_messages = locale;
 	}
 
@@ -2279,6 +2412,7 @@ usage(const char *progname)
 	printf(_("      --auth-local=METHOD   default authentication method for local-socket connections\n"));
 	printf(_(" [-D, --pgdata=]DATADIR     location for this database cluster\n"));
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
+	printf(_("  -g, --allow-group-access  allow group read/execute on data directory\n"));
 	printf(_("      --locale=LOCALE       set default locale for new databases\n"));
 	printf(_("      --lc-collate=, --lc-ctype=, --lc-messages=LOCALE\n"
 			 "      --lc-monetary=, --lc-numeric=, --lc-time=LOCALE\n"
@@ -2291,6 +2425,7 @@ usage(const char *progname)
 	printf(_("  -U, --username=NAME       database superuser name\n"));
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
+	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("  -k, --data-checksums      use data page checksums\n"));
@@ -2310,7 +2445,7 @@ usage(const char *progname)
 static void
 check_authmethod_unspecified(const char **authmethod)
 {
-	if (*authmethod == NULL || strlen(*authmethod) == 0)
+	if (*authmethod == NULL)
 	{
 		authwarning = _("\nWARNING: enabling \"trust\" authentication for local connections\n"
 						"You can change this by editing pg_hba.conf or using the option -A, or\n"
@@ -2367,7 +2502,7 @@ setup_pgdata(void)
 	char	   *pgdata_get_env,
 			   *pgdata_set_env;
 
-	if (strlen(pg_data) == 0)
+	if (!pg_data)
 	{
 		pgdata_get_env = getenv("PGDATA");
 		if (pgdata_get_env && strlen(pgdata_get_env))
@@ -2452,8 +2587,6 @@ setup_bin_paths(const char *argv0)
 void
 setup_locale_encoding(void)
 {
-	int			user_enc;
-
 	setlocales();
 
 	if (strcmp(lc_ctype, lc_collate) == 0 &&
@@ -2479,7 +2612,7 @@ setup_locale_encoding(void)
 			   lc_time);
 	}
 
-	if (strlen(encoding) == 0)
+	if (!encoding)
 	{
 		int			ctype_enc;
 
@@ -2503,12 +2636,11 @@ setup_locale_encoding(void)
 			 * UTF-8.
 			 */
 #ifdef WIN32
+			encodingid = PG_UTF8;
 			printf(_("Encoding \"%s\" implied by locale is not allowed as a server-side encoding.\n"
 					 "The default database encoding will be set to \"%s\" instead.\n"),
 				   pg_encoding_to_char(ctype_enc),
-				   pg_encoding_to_char(PG_UTF8));
-			ctype_enc = PG_UTF8;
-			encodingid = encodingid_to_string(ctype_enc);
+				   pg_encoding_to_char(encodingid));
 #else
 			fprintf(stderr,
 					_("%s: locale \"%s\" requires unsupported encoding \"%s\"\n"),
@@ -2522,17 +2654,16 @@ setup_locale_encoding(void)
 		}
 		else
 		{
-			encodingid = encodingid_to_string(ctype_enc);
+			encodingid = ctype_enc;
 			printf(_("The default database encoding has accordingly been set to \"%s\".\n"),
-				   pg_encoding_to_char(ctype_enc));
+				   pg_encoding_to_char(encodingid));
 		}
 	}
 	else
 		encodingid = get_encoding_id(encoding);
 
-	user_enc = atoi(encodingid);
-	if (!check_locale_encoding(lc_ctype, user_enc) ||
-		!check_locale_encoding(lc_collate, user_enc))
+	if (!check_locale_encoding(lc_ctype, encodingid) ||
+		!check_locale_encoding(lc_collate, encodingid))
 		exit(1);				/* check_locale_encoding printed the error */
 
 }
@@ -2589,10 +2720,10 @@ setup_data_file_paths(void)
 void
 setup_text_search(void)
 {
-	if (strlen(default_text_search_config) == 0)
+	if (!default_text_search_config)
 	{
 		default_text_search_config = find_matching_ts_config(lc_ctype);
-		if (default_text_search_config == NULL)
+		if (!default_text_search_config)
 		{
 			printf(_("%s: could not find suitable text search configuration for locale \"%s\"\n"),
 				   progname, lc_ctype);
@@ -2663,7 +2794,7 @@ create_data_directory(void)
 				   pg_data);
 			fflush(stdout);
 
-			if (pg_mkdir_p(pg_data, S_IRWXU) != 0)
+			if (pg_mkdir_p(pg_data, pg_dir_create_mode) != 0)
 			{
 				fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
 						progname, pg_data, strerror(errno));
@@ -2681,7 +2812,7 @@ create_data_directory(void)
 				   pg_data);
 			fflush(stdout);
 
-			if (chmod(pg_data, S_IRWXU) != 0)
+			if (chmod(pg_data, pg_dir_create_mode) != 0)
 			{
 				fprintf(stderr, _("%s: could not change permissions of directory \"%s\": %s\n"),
 						progname, pg_data, strerror(errno));
@@ -2728,7 +2859,7 @@ create_xlog_or_symlink(void)
 	/* form name of the place for the subdirectory or symlink */
 	subdirloc = psprintf("%s/pg_wal", pg_data);
 
-	if (strcmp(xlog_dir, "") != 0)
+	if (xlog_dir)
 	{
 		int			ret;
 
@@ -2749,7 +2880,7 @@ create_xlog_or_symlink(void)
 					   xlog_dir);
 				fflush(stdout);
 
-				if (pg_mkdir_p(xlog_dir, S_IRWXU) != 0)
+				if (pg_mkdir_p(xlog_dir, pg_dir_create_mode) != 0)
 				{
 					fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
 							progname, xlog_dir, strerror(errno));
@@ -2767,7 +2898,7 @@ create_xlog_or_symlink(void)
 					   xlog_dir);
 				fflush(stdout);
 
-				if (chmod(xlog_dir, S_IRWXU) != 0)
+				if (chmod(xlog_dir, pg_dir_create_mode) != 0)
 				{
 					fprintf(stderr, _("%s: could not change permissions of directory \"%s\": %s\n"),
 							progname, xlog_dir, strerror(errno));
@@ -2817,7 +2948,7 @@ create_xlog_or_symlink(void)
 	else
 	{
 		/* Without -X option, just make the subdirectory normally */
-		if (mkdir(subdirloc, S_IRWXU) < 0)
+		if (mkdir(subdirloc, pg_dir_create_mode) < 0)
 		{
 			fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
 					progname, subdirloc, strerror(errno));
@@ -2853,7 +2984,13 @@ initialize_data_directory(void)
 
 	setup_signals();
 
-	umask(S_IRWXG | S_IRWXO);
+	/*
+	 * Set mask based on requested PGDATA permissions.  pg_mode_mask, and
+	 * friends like pg_dir_create_mode, are set to owner-only by default and
+	 * then updated if -g is passed in by calling SetDataDirectoryCreatePerm()
+	 * when parsing our options (see above).
+	 */
+	umask(pg_mode_mask);
 
 	create_data_directory();
 
@@ -2873,7 +3010,7 @@ initialize_data_directory(void)
 		 * The parent directory already exists, so we only need mkdir() not
 		 * pg_mkdir_p() here, which avoids some failure modes; cf bug #13853.
 		 */
-		if (mkdir(path, S_IRWXU) < 0)
+		if (mkdir(path, pg_dir_create_mode) < 0)
 		{
 			fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
 					progname, path, strerror(errno));
@@ -2985,7 +3122,9 @@ main(int argc, char *argv[])
 		{"no-sync", no_argument, NULL, 'N'},
 		{"sync-only", no_argument, NULL, 'S'},
 		{"waldir", required_argument, NULL, 'X'},
+		{"wal-segsize", required_argument, NULL, 12},
 		{"data-checksums", no_argument, NULL, 'k'},
+		{"allow-group-access", no_argument, NULL, 'g'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -3027,7 +3166,7 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "dD:E:kL:nNU:WA:sST:X:", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "dD:E:kL:nNU:WA:sST:X:g", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -3118,6 +3257,12 @@ main(int argc, char *argv[])
 			case 'X':
 				xlog_dir = pg_strdup(optarg);
 				break;
+			case 12:
+				str_wal_segment_size_mb = pg_strdup(optarg);
+				break;
+			case 'g':
+				SetDataDirectoryCreatePerm(PG_DIR_MODE_GROUP);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
@@ -3131,7 +3276,7 @@ main(int argc, char *argv[])
 	 * Non-option argument specifies data directory as long as it wasn't
 	 * already specified with -D / --pgdata
 	 */
-	if (optind < argc && strlen(pg_data) == 0)
+	if (optind < argc && !pg_data)
 	{
 		pg_data = pg_strdup(argv[optind]);
 		optind++;
@@ -3180,6 +3325,33 @@ main(int argc, char *argv[])
 
 	check_need_password(authmethodlocal, authmethodhost);
 
+	/* set wal segment size */
+	if (str_wal_segment_size_mb == NULL)
+		wal_segment_size_mb = (DEFAULT_XLOG_SEG_SIZE) / (1024 * 1024);
+	else
+	{
+		char	   *endptr;
+
+		/* check that the argument is a number */
+		wal_segment_size_mb = strtol(str_wal_segment_size_mb, &endptr, 10);
+
+		/* verify that wal segment size is valid */
+		if (endptr == str_wal_segment_size_mb || *endptr != '\0')
+		{
+			fprintf(stderr,
+					_("%s: argument of --wal-segsize must be a number\n"),
+					progname);
+			exit(1);
+		}
+		if (!IsValidWalSegSize(wal_segment_size_mb * 1024 * 1024))
+		{
+			fprintf(stderr,
+					_("%s: argument of --wal-segsize must be a power of 2 between 1 and 1024\n"),
+					progname);
+			exit(1);
+		}
+	}
+
 	get_restricted_token(progname);
 
 	setup_pgdata();
@@ -3187,7 +3359,7 @@ main(int argc, char *argv[])
 	setup_bin_paths(argv[0]);
 
 	effective_user = get_id();
-	if (strlen(username) == 0)
+	if (!username)
 		username = effective_user;
 
 	if (strncmp(username, "pg_", 3) == 0)

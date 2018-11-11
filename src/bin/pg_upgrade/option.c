@@ -3,7 +3,7 @@
  *
  *	options functions
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/option.c
  */
 
@@ -22,7 +22,7 @@
 
 static void usage(void);
 static void check_required_directory(char **dirpath, char **configpath,
-						 char *envVarName, char *cmdLineOption, char *description);
+						 const char *envVarName, const char *cmdLineOption, const char *description);
 #define FIX_DEFAULT_READ_ONLY "-c default_transaction_read_only=false"
 
 
@@ -53,6 +53,8 @@ parseCommandLine(int argc, char *argv[])
 		{"retain", no_argument, NULL, 'r'},
 		{"jobs", required_argument, NULL, 'j'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"clone", no_argument, NULL, 1},
+
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -98,7 +100,7 @@ parseCommandLine(int argc, char *argv[])
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
 	if ((log_opts.internal = fopen_priv(INTERNAL_LOG_FILE, "a")) == NULL)
-		pg_fatal("cannot write to log file %s\n", INTERNAL_LOG_FILE);
+		pg_fatal("could not write to log file \"%s\"\n", INTERNAL_LOG_FILE);
 
 	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:ko:O:p:P:rU:v",
 								 long_options, &optindex)) != -1)
@@ -203,6 +205,10 @@ parseCommandLine(int argc, char *argv[])
 				log_opts.verbose = true;
 				break;
 
+			case 1:
+				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
+				break;
+
 			default:
 				pg_fatal("Try \"%s --help\" for more information.\n",
 						 os_info.progname);
@@ -214,7 +220,7 @@ parseCommandLine(int argc, char *argv[])
 	for (filename = output_files; *filename != NULL; filename++)
 	{
 		if ((fp = fopen_priv(*filename, "a")) == NULL)
-			pg_fatal("cannot write to log file %s\n", *filename);
+			pg_fatal("could not write to log file \"%s\"\n", *filename);
 
 		/* Start with newline because we might be appending to a file. */
 		fprintf(fp, "\n"
@@ -262,7 +268,7 @@ parseCommandLine(int argc, char *argv[])
 		canonicalize_path(new_cluster_pgdata);
 
 		if (!getcwd(cwd, MAXPGPATH))
-			pg_fatal("cannot find current directory\n");
+			pg_fatal("could not determine current directory\n");
 		canonicalize_path(cwd);
 		if (path_is_prefix_of_path(new_cluster_pgdata, cwd))
 			pg_fatal("cannot run pg_upgrade from inside the new cluster data directory on Windows\n");
@@ -293,6 +299,7 @@ usage(void)
 	printf(_("  -U, --username=NAME           cluster superuser (default \"%s\")\n"), os_info.user);
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
+	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"
@@ -341,8 +348,8 @@ usage(void)
  */
 static void
 check_required_directory(char **dirpath, char **configpath,
-						 char *envVarName, char *cmdLineOption,
-						 char *description)
+						 const char *envVarName, const char *cmdLineOption,
+						 const char *description)
 {
 	if (*dirpath == NULL || strlen(*dirpath) == 0)
 	{
@@ -459,7 +466,7 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 			/* Use the current directory for the socket */
 			cluster->sockdir = pg_malloc(MAXPGPATH);
 			if (!getcwd(cluster->sockdir, MAXPGPATH))
-				pg_fatal("cannot find current directory\n");
+				pg_fatal("could not determine current directory\n");
 		}
 		else
 		{
@@ -477,14 +484,16 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 			snprintf(filename, sizeof(filename), "%s/postmaster.pid",
 					 cluster->pgdata);
 			if ((fp = fopen(filename, "r")) == NULL)
-				pg_fatal("Cannot open file %s: %m\n", filename);
+				pg_fatal("could not open file \"%s\": %s\n",
+						 filename, strerror(errno));
 
 			for (lineno = 1;
 				 lineno <= Max(LOCK_FILE_LINE_PORT, LOCK_FILE_LINE_SOCKET_DIR);
 				 lineno++)
 			{
 				if (fgets(line, sizeof(line), fp) == NULL)
-					pg_fatal("Cannot read line %d from %s: %m\n", lineno, filename);
+					pg_fatal("could not read line %d from file \"%s\": %s\n",
+							 lineno, filename, strerror(errno));
 
 				/* potentially overwrite user-supplied value */
 				if (lineno == LOCK_FILE_LINE_PORT)
@@ -501,7 +510,7 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 
 			/* warn of port number correction */
 			if (orig_port != DEF_PGUPORT && old_cluster.port != orig_port)
-				pg_log(PG_WARNING, "User-supplied old port number %hu corrected to %hu\n",
+				pg_log(PG_WARNING, "user-supplied old port number %hu corrected to %hu\n",
 					   orig_port, cluster->port);
 		}
 	}

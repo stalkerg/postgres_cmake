@@ -51,6 +51,9 @@ print_action(struct when *w)
 		case W_BREAK:
 			fprintf(base_yyout, "break;");
 			break;
+		case W_CONTINUE:
+			fprintf(base_yyout, "continue;");
+			break;
 		default:
 			fprintf(base_yyout, "{/* %d not implemented yet */}", w->code);
 			break;
@@ -155,6 +158,7 @@ output_statement(char *stmt, int whenever_mode, enum ECPG_statement_type st)
 	free(stmt);
 	if (connection != NULL)
 		free(connection);
+	connection = NULL;
 }
 
 void
@@ -169,6 +173,7 @@ output_prepare_statement(char *name, char *stmt)
 	free(name);
 	if (connection != NULL)
 		free(connection);
+	connection = NULL;
 }
 
 void
@@ -189,6 +194,7 @@ output_deallocate_prepare_statement(char *name)
 	free(name);
 	if (connection != NULL)
 		free(connection);
+	connection = NULL;
 }
 
 static void

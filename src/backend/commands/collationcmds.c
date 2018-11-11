@@ -3,7 +3,7 @@
  * collationcmds.c
  *	  collation-related commands support code
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_collation_fn.h"
 #include "commands/alter.h"
 #include "commands/collationcmds.h"
 #include "commands/comment.h"
@@ -74,7 +73,7 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 
 	aclresult = pg_namespace_aclcheck(collNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(collNamespace));
 
 	foreach(pl, parameters)
@@ -82,17 +81,17 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 		DefElem    *defel = lfirst_node(DefElem, pl);
 		DefElem   **defelp;
 
-		if (pg_strcasecmp(defel->defname, "from") == 0)
+		if (strcmp(defel->defname, "from") == 0)
 			defelp = &fromEl;
-		else if (pg_strcasecmp(defel->defname, "locale") == 0)
+		else if (strcmp(defel->defname, "locale") == 0)
 			defelp = &localeEl;
-		else if (pg_strcasecmp(defel->defname, "lc_collate") == 0)
+		else if (strcmp(defel->defname, "lc_collate") == 0)
 			defelp = &lccollateEl;
-		else if (pg_strcasecmp(defel->defname, "lc_ctype") == 0)
+		else if (strcmp(defel->defname, "lc_ctype") == 0)
 			defelp = &lcctypeEl;
-		else if (pg_strcasecmp(defel->defname, "provider") == 0)
+		else if (strcmp(defel->defname, "provider") == 0)
 			defelp = &providerEl;
-		else if (pg_strcasecmp(defel->defname, "version") == 0)
+		else if (strcmp(defel->defname, "version") == 0)
 			defelp = &versionEl;
 		else
 		{
@@ -278,7 +277,7 @@ AlterCollation(AlterCollationStmt *stmt)
 	collOid = get_collation_oid(stmt->collname, false);
 
 	if (!pg_collation_ownercheck(collOid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_COLLATION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_COLLATION,
 					   NameListToString(stmt->collname));
 
 	tup = SearchSysCacheCopy1(COLLOID, ObjectIdGetDatum(collOid));
@@ -667,7 +666,16 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 	}
 #endif							/* READ_LOCALE_A_OUTPUT */
 
-	/* Load collations known to ICU */
+	/*
+	 * Load collations known to ICU
+	 *
+	 * We use uloc_countAvailable()/uloc_getAvailable() rather than
+	 * ucol_countAvailable()/ucol_getAvailable().  The former returns a full
+	 * set of language+region combinations, whereas the latter only returns
+	 * language+region combinations of they are distinct from the language's
+	 * base collation.  So there might not be a de-DE or en-GB, which would be
+	 * confusing.
+	 */
 #ifdef USE_ICU
 	{
 		int			i;
@@ -676,37 +684,18 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 		 * Start the loop at -1 to sneak in the root locale without too much
 		 * code duplication.
 		 */
-		for (i = -1; i < ucol_countAvailable(); i++)
+		for (i = -1; i < uloc_countAvailable(); i++)
 		{
-			/*
-			 * In ICU 4.2, ucol_getKeywordValuesForLocale() sometimes returns
-			 * values that will not be accepted by uloc_toLanguageTag().  Skip
-			 * loading keyword variants in that version.  (Both
-			 * ucol_getKeywordValuesForLocale() and uloc_toLanguageTag() are
-			 * new in ICU 4.2, so older versions are not supported at all.)
-			 *
-			 * XXX We have no information about ICU 4.3 through 4.7, but we
-			 * know the code below works with 4.8.
-			 */
-#if U_ICU_VERSION_MAJOR_NUM > 4 || (U_ICU_VERSION_MAJOR_NUM == 4 && U_ICU_VERSION_MINOR_NUM > 2)
-#define LOAD_ICU_KEYWORD_VARIANTS
-#endif
-
 			const char *name;
 			char	   *langtag;
 			char	   *icucomment;
 			const char *collcollate;
 			Oid			collid;
-#ifdef LOAD_ICU_KEYWORD_VARIANTS
-			UEnumeration *en;
-			UErrorCode	status;
-			const char *val;
-#endif
 
 			if (i == -1)
 				name = "";		/* ICU root locale */
 			else
-				name = ucol_getAvailable(i);
+				name = uloc_getAvailable(i);
 
 			langtag = get_icu_language_tag(name);
 			collcollate = U_ICU_VERSION_MAJOR_NUM >= 54 ? langtag : name;
@@ -735,58 +724,6 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 					CreateComments(collid, CollationRelationId, 0,
 								   icucomment);
 			}
-
-			/*
-			 * Add keyword variants, if enabled.
-			 */
-#ifdef LOAD_ICU_KEYWORD_VARIANTS
-			status = U_ZERO_ERROR;
-			en = ucol_getKeywordValuesForLocale("collation", name, TRUE, &status);
-			if (U_FAILURE(status))
-				ereport(ERROR,
-						(errmsg("could not get keyword values for locale \"%s\": %s",
-								name, u_errorName(status))));
-
-			status = U_ZERO_ERROR;
-			uenum_reset(en, &status);
-			while ((val = uenum_next(en, NULL, &status)))
-			{
-				char	   *localeid = psprintf("%s@collation=%s", name, val);
-
-				langtag = get_icu_language_tag(localeid);
-				collcollate = U_ICU_VERSION_MAJOR_NUM >= 54 ? langtag : localeid;
-
-				/*
-				 * Be paranoid about not allowing any non-ASCII strings into
-				 * pg_collation
-				 */
-				if (!is_all_ascii(langtag) || !is_all_ascii(collcollate))
-					continue;
-
-				collid = CollationCreate(psprintf("%s-x-icu", langtag),
-										 nspid, GetUserId(),
-										 COLLPROVIDER_ICU, -1,
-										 collcollate, collcollate,
-										 get_collation_actual_version(COLLPROVIDER_ICU, collcollate),
-										 true, true);
-				if (OidIsValid(collid))
-				{
-					ncreated++;
-
-					CommandCounterIncrement();
-
-					icucomment = get_icu_locale_comment(name);
-					if (icucomment)
-						CreateComments(collid, CollationRelationId, 0,
-									   icucomment);
-				}
-			}
-			if (U_FAILURE(status))
-				ereport(ERROR,
-						(errmsg("could not get keyword values for locale \"%s\": %s",
-								name, u_errorName(status))));
-			uenum_close(en);
-#endif							/* LOAD_ICU_KEYWORD_VARIANTS */
 		}
 	}
 #endif							/* USE_ICU */

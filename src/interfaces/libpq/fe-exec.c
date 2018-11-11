@@ -3,7 +3,7 @@
  * fe-exec.c
  *	  functions related to sending a query down to the backend
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,6 +16,7 @@
 
 #include <ctype.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -50,8 +51,9 @@ static int	static_client_encoding = PG_SQL_ASCII;
 static bool static_std_strings = false;
 
 
-static PGEvent *dupEvents(PGEvent *events, int count);
-static bool pqAddTuple(PGresult *res, PGresAttValue *tup);
+static PGEvent *dupEvents(PGEvent *events, int count, size_t *memSize);
+static bool pqAddTuple(PGresult *res, PGresAttValue *tup,
+		   const char **errmsgp);
 static bool PQsendQueryStart(PGconn *conn);
 static int PQsendQueryGuts(PGconn *conn,
 				const char *command,
@@ -164,6 +166,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curBlock = NULL;
 	result->curOffset = 0;
 	result->spaceLeft = 0;
+	result->memorySize = sizeof(PGresult);
 
 	if (conn)
 	{
@@ -191,7 +194,8 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		/* copy events last; result must be valid if we need to PQclear */
 		if (conn->nEvents > 0)
 		{
-			result->events = dupEvents(conn->events, conn->nEvents);
+			result->events = dupEvents(conn->events, conn->nEvents,
+									   &result->memorySize);
 			if (!result->events)
 			{
 				PQclear(result);
@@ -229,17 +233,17 @@ PQsetResultAttrs(PGresult *res, int numAttributes, PGresAttDesc *attDescs)
 
 	/* If attrs already exist, they cannot be overwritten. */
 	if (!res || res->numAttributes > 0)
-		return FALSE;
+		return false;
 
 	/* ignore no-op request */
 	if (numAttributes <= 0 || !attDescs)
-		return TRUE;
+		return true;
 
 	res->attDescs = (PGresAttDesc *)
 		PQresultAlloc(res, numAttributes * sizeof(PGresAttDesc));
 
 	if (!res->attDescs)
-		return FALSE;
+		return false;
 
 	res->numAttributes = numAttributes;
 	memcpy(res->attDescs, attDescs, numAttributes * sizeof(PGresAttDesc));
@@ -254,13 +258,13 @@ PQsetResultAttrs(PGresult *res, int numAttributes, PGresAttDesc *attDescs)
 			res->attDescs[i].name = res->null_field;
 
 		if (!res->attDescs[i].name)
-			return FALSE;
+			return false;
 
 		if (res->attDescs[i].format == 0)
 			res->binary = 0;
 	}
 
-	return TRUE;
+	return true;
 }
 
 /*
@@ -342,7 +346,8 @@ PQcopyResult(const PGresult *src, int flags)
 	/* Wants to copy PGEvents? */
 	if ((flags & PG_COPYRES_EVENTS) && src->nEvents > 0)
 	{
-		dest->events = dupEvents(src->events, src->nEvents);
+		dest->events = dupEvents(src->events, src->nEvents,
+								 &dest->memorySize);
 		if (!dest->events)
 		{
 			PQclear(dest);
@@ -366,7 +371,7 @@ PQcopyResult(const PGresult *src, int flags)
 				PQclear(dest);
 				return NULL;
 			}
-			dest->events[i].resultInitialized = TRUE;
+			dest->events[i].resultInitialized = true;
 		}
 	}
 
@@ -377,17 +382,20 @@ PQcopyResult(const PGresult *src, int flags)
  * Copy an array of PGEvents (with no extra space for more).
  * Does not duplicate the event instance data, sets this to NULL.
  * Also, the resultInitialized flags are all cleared.
+ * The total space allocated is added to *memSize.
  */
 static PGEvent *
-dupEvents(PGEvent *events, int count)
+dupEvents(PGEvent *events, int count, size_t *memSize)
 {
 	PGEvent    *newEvents;
+	size_t		msize;
 	int			i;
 
 	if (!events || count <= 0)
 		return NULL;
 
-	newEvents = (PGEvent *) malloc(count * sizeof(PGEvent));
+	msize = count * sizeof(PGEvent);
+	newEvents = (PGEvent *) malloc(msize);
 	if (!newEvents)
 		return NULL;
 
@@ -396,7 +404,7 @@ dupEvents(PGEvent *events, int count)
 		newEvents[i].proc = events[i].proc;
 		newEvents[i].passThrough = events[i].passThrough;
 		newEvents[i].data = NULL;
-		newEvents[i].resultInitialized = FALSE;
+		newEvents[i].resultInitialized = false;
 		newEvents[i].name = strdup(events[i].name);
 		if (!newEvents[i].name)
 		{
@@ -405,8 +413,10 @@ dupEvents(PGEvent *events, int count)
 			free(newEvents);
 			return NULL;
 		}
+		msize += strlen(events[i].name) + 1;
 	}
 
+	*memSize += msize;
 	return newEvents;
 }
 
@@ -416,18 +426,26 @@ dupEvents(PGEvent *events, int count)
  * equal to PQntuples(res).  If it is equal, a new tuple is created and
  * added to the result.
  * Returns a non-zero value for success and zero for failure.
+ * (On failure, we report the specific problem via pqInternalNotice.)
  */
 int
 PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 {
 	PGresAttValue *attval;
+	const char *errmsg = NULL;
 
+	/* Note that this check also protects us against null "res" */
 	if (!check_field_number(res, field_num))
-		return FALSE;
+		return false;
 
 	/* Invalid tup_num, must be <= ntups */
 	if (tup_num < 0 || tup_num > res->ntups)
-		return FALSE;
+	{
+		pqInternalNotice(&res->noticeHooks,
+						 "row number %d is out of range 0..%d",
+						 tup_num, res->ntups);
+		return false;
+	}
 
 	/* need to allocate a new tuple? */
 	if (tup_num == res->ntups)
@@ -437,10 +455,10 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 
 		tup = (PGresAttValue *)
 			pqResultAlloc(res, res->numAttributes * sizeof(PGresAttValue),
-						  TRUE);
+						  true);
 
 		if (!tup)
-			return FALSE;
+			goto fail;
 
 		/* initialize each column to NULL */
 		for (i = 0; i < res->numAttributes; i++)
@@ -450,8 +468,8 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 		}
 
 		/* add it to the array */
-		if (!pqAddTuple(res, tup))
-			return FALSE;
+		if (!pqAddTuple(res, tup, &errmsg))
+			goto fail;
 	}
 
 	attval = &res->tuples[tup_num][field_num];
@@ -469,15 +487,26 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 	}
 	else
 	{
-		attval->value = (char *) pqResultAlloc(res, len + 1, TRUE);
+		attval->value = (char *) pqResultAlloc(res, len + 1, true);
 		if (!attval->value)
-			return FALSE;
+			goto fail;
 		attval->len = len;
 		memcpy(attval->value, value, len);
 		attval->value[len] = '\0';
 	}
 
-	return TRUE;
+	return true;
+
+	/*
+	 * Report failure via pqInternalNotice.  If preceding code didn't provide
+	 * an error message, assume "out of memory" was meant.
+	 */
+fail:
+	if (!errmsg)
+		errmsg = libpq_gettext("out of memory");
+	pqInternalNotice(&res->noticeHooks, "%s", errmsg);
+
+	return false;
 }
 
 /*
@@ -489,7 +518,7 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 void *
 PQresultAlloc(PGresult *res, size_t nBytes)
 {
-	return pqResultAlloc(res, nBytes, TRUE);
+	return pqResultAlloc(res, nBytes, true);
 }
 
 /*
@@ -546,9 +575,12 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	 */
 	if (nBytes >= PGRESULT_SEP_ALLOC_THRESHOLD)
 	{
-		block = (PGresult_data *) malloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
+		size_t		alloc_size = nBytes + PGRESULT_BLOCK_OVERHEAD;
+
+		block = (PGresult_data *) malloc(alloc_size);
 		if (!block)
 			return NULL;
+		res->memorySize += alloc_size;
 		space = block->space + PGRESULT_BLOCK_OVERHEAD;
 		if (res->curBlock)
 		{
@@ -573,6 +605,7 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	block = (PGresult_data *) malloc(PGRESULT_DATA_BLOCKSIZE);
 	if (!block)
 		return NULL;
+	res->memorySize += PGRESULT_DATA_BLOCKSIZE;
 	block->next = res->curBlock;
 	res->curBlock = block;
 	if (isBinary)
@@ -595,13 +628,25 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 }
 
 /*
+ * PQresultMemorySize -
+ *		Returns total space allocated for the PGresult.
+ */
+size_t
+PQresultMemorySize(const PGresult *res)
+{
+	if (!res)
+		return 0;
+	return res->memorySize;
+}
+
+/*
  * pqResultStrdup -
  *		Like strdup, but the space is subsidiary PGresult space.
  */
 char *
 pqResultStrdup(PGresult *res, const char *str)
 {
-	char	   *space = (char *) pqResultAlloc(res, strlen(str) + 1, FALSE);
+	char	   *space = (char *) pqResultAlloc(res, strlen(str) + 1, false);
 
 	if (space)
 		strcpy(space, str);
@@ -831,7 +876,7 @@ pqInternalNotice(const PGNoticeHooks *hooks, const char *fmt,...)
 	 * Result text is always just the primary message + newline. If we can't
 	 * allocate it, don't bother invoking the receiver.
 	 */
-	res->errMsg = (char *) pqResultAlloc(res, strlen(msgBuf) + 2, FALSE);
+	res->errMsg = (char *) pqResultAlloc(res, strlen(msgBuf) + 2, false);
 	if (res->errMsg)
 	{
 		sprintf(res->errMsg, "%s\n", msgBuf);
@@ -839,7 +884,7 @@ pqInternalNotice(const PGNoticeHooks *hooks, const char *fmt,...)
 		/*
 		 * Pass to receiver, then free it.
 		 */
-		(*res->noticeHooks.noticeRec) (res->noticeHooks.noticeRecArg, res);
+		res->noticeHooks.noticeRec(res->noticeHooks.noticeRecArg, res);
 	}
 	PQclear(res);
 }
@@ -847,10 +892,13 @@ pqInternalNotice(const PGNoticeHooks *hooks, const char *fmt,...)
 /*
  * pqAddTuple
  *	  add a row pointer to the PGresult structure, growing it if necessary
- *	  Returns TRUE if OK, FALSE if not enough memory to add the row
+ *	  Returns true if OK, false if an error prevented adding the row
+ *
+ * On error, *errmsgp can be set to an error string to be returned.
+ * If it is left NULL, the error is presumed to be "out of memory".
  */
 static bool
-pqAddTuple(PGresult *res, PGresAttValue *tup)
+pqAddTuple(PGresult *res, PGresAttValue *tup, const char **errmsgp)
 {
 	if (res->ntups >= res->tupArrSize)
 	{
@@ -865,8 +913,35 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 		 * existing allocation. Note that the positions beyond res->ntups are
 		 * garbage, not necessarily NULL.
 		 */
-		int			newSize = (res->tupArrSize > 0) ? res->tupArrSize * 2 : 128;
+		int			newSize;
 		PGresAttValue **newTuples;
+
+		/*
+		 * Since we use integers for row numbers, we can't support more than
+		 * INT_MAX rows.  Make sure we allow that many, though.
+		 */
+		if (res->tupArrSize <= INT_MAX / 2)
+			newSize = (res->tupArrSize > 0) ? res->tupArrSize * 2 : 128;
+		else if (res->tupArrSize < INT_MAX)
+			newSize = INT_MAX;
+		else
+		{
+			*errmsgp = libpq_gettext("PGresult cannot support more than INT_MAX tuples");
+			return false;
+		}
+
+		/*
+		 * Also, on 32-bit platforms we could, in theory, overflow size_t even
+		 * before newSize gets to INT_MAX.  (In practice we'd doubtless hit
+		 * OOM long before that, but let's check.)
+		 */
+#if INT_MAX >= (SIZE_MAX / 2)
+		if (newSize > SIZE_MAX / sizeof(PGresAttValue *))
+		{
+			*errmsgp = libpq_gettext("size_t overflow");
+			return false;
+		}
+#endif
 
 		if (res->tuples == NULL)
 			newTuples = (PGresAttValue **)
@@ -875,13 +950,15 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 			newTuples = (PGresAttValue **)
 				realloc(res->tuples, newSize * sizeof(PGresAttValue *));
 		if (!newTuples)
-			return FALSE;		/* malloc or realloc failed */
+			return false;		/* malloc or realloc failed */
+		res->memorySize +=
+			(newSize - res->tupArrSize) * sizeof(PGresAttValue *);
 		res->tupArrSize = newSize;
 		res->tuples = newTuples;
 	}
 	res->tuples[res->ntups] = tup;
 	res->ntups++;
-	return TRUE;
+	return true;
 }
 
 /*
@@ -896,7 +973,7 @@ pqSaveMessageField(PGresult *res, char code, const char *value)
 		pqResultAlloc(res,
 					  offsetof(PGMessageField, contents) +
 					  strlen(value) + 1,
-					  TRUE);
+					  true);
 	if (!pfield)
 		return;					/* out of memory? */
 	pfield->code = code;
@@ -1060,7 +1137,7 @@ pqRowProcessor(PGconn *conn, const char **errmsgp)
 	 * memory for gettext() to do anything.
 	 */
 	tup = (PGresAttValue *)
-		pqResultAlloc(res, nfields * sizeof(PGresAttValue), TRUE);
+		pqResultAlloc(res, nfields * sizeof(PGresAttValue), true);
 	if (tup == NULL)
 		goto fail;
 
@@ -1093,7 +1170,7 @@ pqRowProcessor(PGconn *conn, const char **errmsgp)
 	}
 
 	/* And add the tuple to the PGresult's tuple array */
-	if (!pqAddTuple(res, tup))
+	if (!pqAddTuple(res, tup, errmsgp))
 		goto fail;
 
 	/*
@@ -1674,14 +1751,14 @@ parseInput(PGconn *conn)
 
 /*
  * PQisBusy
- *	 Return TRUE if PQgetResult would block waiting for input.
+ *	 Return true if PQgetResult would block waiting for input.
  */
 
 int
 PQisBusy(PGconn *conn)
 {
 	if (!conn)
-		return FALSE;
+		return false;
 
 	/* Parse any available data, if our state permits. */
 	parseInput(conn);
@@ -1720,7 +1797,7 @@ PQgetResult(PGconn *conn)
 		 */
 		while ((flushResult = pqFlush(conn)) > 0)
 		{
-			if (pqWait(FALSE, TRUE, conn))
+			if (pqWait(false, true, conn))
 			{
 				flushResult = -1;
 				break;
@@ -1729,7 +1806,7 @@ PQgetResult(PGconn *conn)
 
 		/* Wait for some more data, and load it. */
 		if (flushResult ||
-			pqWait(TRUE, FALSE, conn) ||
+			pqWait(true, false, conn) ||
 			pqReadData(conn) < 0)
 		{
 			/*
@@ -1793,7 +1870,7 @@ PQgetResult(PGconn *conn)
 				res->resultStatus = PGRES_FATAL_ERROR;
 				break;
 			}
-			res->events[i].resultInitialized = TRUE;
+			res->events[i].resultInitialized = true;
 		}
 	}
 
@@ -2188,6 +2265,9 @@ sendFailed:
  * no unhandled async notification from the backend
  *
  * the CALLER is responsible for FREE'ing the structure returned
+ *
+ * Note that this function does not read any new data from the socket;
+ * so usually, caller should call PQconsumeInput() first.
  */
 PGnotify *
 PQnotifies(PGconn *conn)
@@ -2695,22 +2775,22 @@ PQbinaryTuples(const PGresult *res)
 
 /*
  * Helper routines to range-check field numbers and tuple numbers.
- * Return TRUE if OK, FALSE if not
+ * Return true if OK, false if not
  */
 
 static int
 check_field_number(const PGresult *res, int field_num)
 {
 	if (!res)
-		return FALSE;			/* no way to display error message... */
+		return false;			/* no way to display error message... */
 	if (field_num < 0 || field_num >= res->numAttributes)
 	{
 		pqInternalNotice(&res->noticeHooks,
 						 "column number %d is out of range 0..%d",
 						 field_num, res->numAttributes - 1);
-		return FALSE;
+		return false;
 	}
-	return TRUE;
+	return true;
 }
 
 static int
@@ -2718,38 +2798,38 @@ check_tuple_field_number(const PGresult *res,
 						 int tup_num, int field_num)
 {
 	if (!res)
-		return FALSE;			/* no way to display error message... */
+		return false;			/* no way to display error message... */
 	if (tup_num < 0 || tup_num >= res->ntups)
 	{
 		pqInternalNotice(&res->noticeHooks,
 						 "row number %d is out of range 0..%d",
 						 tup_num, res->ntups - 1);
-		return FALSE;
+		return false;
 	}
 	if (field_num < 0 || field_num >= res->numAttributes)
 	{
 		pqInternalNotice(&res->noticeHooks,
 						 "column number %d is out of range 0..%d",
 						 field_num, res->numAttributes - 1);
-		return FALSE;
+		return false;
 	}
-	return TRUE;
+	return true;
 }
 
 static int
 check_param_number(const PGresult *res, int param_num)
 {
 	if (!res)
-		return FALSE;			/* no way to display error message... */
+		return false;			/* no way to display error message... */
 	if (param_num < 0 || param_num >= res->numParameters)
 	{
 		pqInternalNotice(&res->noticeHooks,
 						 "parameter number %d is out of range 0..%d",
 						 param_num, res->numParameters - 1);
-		return FALSE;
+		return false;
 	}
 
-	return TRUE;
+	return true;
 }
 
 /*
@@ -3126,8 +3206,8 @@ PQparamtype(const PGresult *res, int param_num)
 
 
 /* PQsetnonblocking:
- *	sets the PGconn's database connection non-blocking if the arg is TRUE
- *	or makes it blocking if the arg is FALSE, this will not protect
+ *	sets the PGconn's database connection non-blocking if the arg is true
+ *	or makes it blocking if the arg is false, this will not protect
  *	you from PQexec(), you'll only be safe when using the non-blocking API.
  *	Needs to be called only on a connected database connection.
  */
@@ -3139,7 +3219,7 @@ PQsetnonblocking(PGconn *conn, int arg)
 	if (!conn || conn->status == CONNECTION_BAD)
 		return -1;
 
-	barg = (arg ? TRUE : FALSE);
+	barg = (arg ? true : false);
 
 	/* early out if the socket is already in the state requested */
 	if (barg == conn->nonblocking)
@@ -3162,7 +3242,7 @@ PQsetnonblocking(PGconn *conn, int arg)
 
 /*
  * return the blocking status of the database connection
- *		TRUE == nonblocking, FALSE == blocking
+ *		true == nonblocking, false == blocking
  */
 int
 PQisnonblocking(const PGconn *conn)

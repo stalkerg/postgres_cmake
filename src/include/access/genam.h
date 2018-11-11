@@ -4,7 +4,7 @@
  *	  POSTGRES generalized index access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/genam.h
@@ -174,6 +174,9 @@ extern RegProcedure index_getprocid(Relation irel, AttrNumber attnum,
 				uint16 procnum);
 extern FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
 				  uint16 procnum);
+extern void index_store_float8_orderby_distances(IndexScanDesc scan,
+									 Oid *orderByTypes, double *distances,
+									 bool recheckOrderBy);
 
 /*
  * index access method support routines (in genam.c)

@@ -3,7 +3,7 @@
  *
  *	Postgres-version-specific routines
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/version.c
  */
 
@@ -11,7 +11,7 @@
 
 #include "pg_upgrade.h"
 
-#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
 #include "fe_utils/string_utils.h"
 
 
@@ -82,7 +82,7 @@ new_9_0_populate_pg_largeobject_metadata(ClusterInfo *cluster, bool check_mode)
 			pg_log(PG_WARNING, "\n"
 				   "Your installation contains large objects.  The new database has an\n"
 				   "additional large object permission table.  After upgrading, you will be\n"
-				   "given a command to populate the pg_largeobject permission table with\n"
+				   "given a command to populate the pg_largeobject_metadata table with\n"
 				   "default permissions.\n\n");
 		else
 			pg_log(PG_WARNING, "\n"
@@ -115,7 +115,7 @@ old_9_3_check_for_line_data_type_usage(ClusterInfo *cluster)
 	bool		found = false;
 	char		output_path[MAXPGPATH];
 
-	prep_status("Checking for invalid \"line\" user columns");
+	prep_status("Checking for incompatible \"line\" data type");
 
 	snprintf(output_path, sizeof(output_path), "tables_using_line.txt");
 
@@ -390,7 +390,7 @@ old_9_6_invalidate_hash_indexes(ClusterInfo *cluster, bool check_mode)
 			pg_log(PG_WARNING, "\n"
 				   "Your installation contains hash indexes.  These indexes have different\n"
 				   "internal formats between your old and new clusters, so they must be\n"
-				   "reindexed with the REINDEX command.  The file:\n"
+				   "reindexed with the REINDEX command.  The file\n"
 				   "    %s\n"
 				   "when executed by psql by the database superuser will recreate all invalid\n"
 				   "indexes; until then, none of these indexes will be used.\n\n",

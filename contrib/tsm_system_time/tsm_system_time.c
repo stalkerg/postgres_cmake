@@ -13,7 +13,7 @@
  * However, we do what we can to reduce surprising behavior by selecting
  * the sampling pattern just once per query, much as in tsm_system_rows.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,9 +24,6 @@
 
 #include "postgres.h"
 
-#ifdef _MSC_VER
-#include <float.h>				/* for _isnan */
-#endif
 #include <math.h>
 
 #include "access/relscan.h"

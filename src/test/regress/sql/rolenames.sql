@@ -385,7 +385,7 @@ GRANT regress_testrol0 TO pg_signal_backend; -- success
 
 SET ROLE pg_signal_backend; --success
 RESET ROLE;
-CREATE SCHEMA test_schema AUTHORIZATION pg_signal_backend; --success
+CREATE SCHEMA test_roles_schema AUTHORIZATION pg_signal_backend; --success
 SET ROLE regress_testrol2;
 
 UPDATE pg_proc SET proacl = null WHERE proname LIKE 'testagg_';
@@ -438,10 +438,43 @@ REVOKE ALL PRIVILEGES ON FUNCTION testagg9(int2) FROM "none"; --error
 
 SELECT proname, proacl FROM pg_proc WHERE proname LIKE 'testagg_';
 
+-- DEFAULT MONITORING ROLES
+CREATE ROLE regress_role_haspriv;
+CREATE ROLE regress_role_nopriv;
+
+-- pg_read_all_stats
+GRANT pg_read_all_stats TO regress_role_haspriv;
+SET SESSION AUTHORIZATION regress_role_haspriv;
+-- returns true with role member of pg_read_all_stats
+SELECT COUNT(*) = 0 AS haspriv FROM pg_stat_activity
+  WHERE query = '<insufficient privilege>';
+SET SESSION AUTHORIZATION regress_role_nopriv;
+-- returns false with role not member of pg_read_all_stats
+SELECT COUNT(*) = 0 AS haspriv FROM pg_stat_activity
+  WHERE query = '<insufficient privilege>';
+RESET SESSION AUTHORIZATION;
+REVOKE pg_read_all_stats FROM regress_role_haspriv;
+
+-- pg_read_all_settings
+GRANT pg_read_all_settings TO regress_role_haspriv;
+BEGIN;
+-- A GUC using GUC_SUPERUSER_ONLY is useful for negative tests.
+SET LOCAL session_preload_libraries TO 'path-to-preload-libraries';
+SET SESSION AUTHORIZATION regress_role_haspriv;
+-- passes with role member of pg_read_all_settings
+SHOW session_preload_libraries;
+SET SESSION AUTHORIZATION regress_role_nopriv;
+-- fails with role not member of pg_read_all_settings
+SHOW session_preload_libraries;
+RESET SESSION AUTHORIZATION;
+ROLLBACK;
+REVOKE pg_read_all_settings FROM regress_role_haspriv;
+
 -- clean up
 \c
 
-DROP SCHEMA test_schema;
+DROP SCHEMA test_roles_schema;
 DROP OWNED BY regress_testrol0, "Public", "current_user", regress_testrol1, regress_testrol2, regress_testrolx CASCADE;
 DROP ROLE regress_testrol0, regress_testrol1, regress_testrol2, regress_testrolx;
 DROP ROLE "Public", "None", "current_user", "session_user", "user";
+DROP ROLE regress_role_haspriv, regress_role_nopriv;

@@ -24,6 +24,11 @@ OBJS = pl_gram.o pl_handler.o pl_comp.o pl_exec.o \
 
 DATA = plpgsql.control plpgsql--1.0.sql plpgsql--unpackaged--1.0.sql
 
+REGRESS_OPTS = --dbname=$(PL_TESTDB)
+
+REGRESS = plpgsql_call plpgsql_control plpgsql_domain plpgsql_record \
+	plpgsql_cache plpgsql_transaction plpgsql_varprops
+
 all: all-lib
 
 # Shared library stuff
@@ -58,12 +63,26 @@ uninstall-headers:
 pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plpgsql.h pl_gram.h plerrcodes.h
 
 # See notes in src/backend/parser/Makefile about the following two rules
-pl_gram.h: pl_gram.c ;
+pl_gram.h: pl_gram.c
+	touch $@
+
 pl_gram.c: BISONFLAGS += -d
 
 # generate plerrcodes.h from src/backend/utils/errcodes.txt
 plerrcodes.h: $(top_srcdir)/src/backend/utils/errcodes.txt generate-plerrcodes.pl
 	$(PERL) $(srcdir)/generate-plerrcodes.pl $< > $@
+
+
+check: submake
+	$(pg_regress_check) $(REGRESS_OPTS) $(REGRESS)
+
+installcheck: submake
+	$(pg_regress_installcheck) $(REGRESS_OPTS) $(REGRESS)
+
+.PHONY: submake
+submake:
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
+
 
 distprep: pl_gram.h pl_gram.c plerrcodes.h
 
@@ -71,6 +90,7 @@ distprep: pl_gram.h pl_gram.c plerrcodes.h
 # so they are not cleaned here.
 clean distclean: clean-lib
 	rm -f $(OBJS)
+	rm -rf $(pg_regress_clean_files)
 
-maintainer-clean: clean
+maintainer-clean: distclean
 	rm -f pl_gram.c pl_gram.h plerrcodes.h
