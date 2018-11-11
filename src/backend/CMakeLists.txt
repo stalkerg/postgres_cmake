@@ -5,11 +5,13 @@ include_directories(
 )
 
 set(postgres_include_catalog "${PROJECT_SOURCE_DIR}/src/include/catalog")
+set(postgres_include_dir "${PROJECT_SOURCE_DIR}/src/include")
 
 set(gen_fmgrtab_depend
 	utils/Gen_fmgrtab.pl
 	${CMAKE_CURRENT_SOURCE_DIR}/catalog/Catalog.pm
 	${postgres_include_catalog}/pg_proc.h
+	${postgres_include_dir}/access/transam.h
 )
 set(gen_fmgrtab_output
 	${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
@@ -20,7 +22,7 @@ set(gen_fmgrtab_output
 add_custom_command(
 	MAIN_DEPENDENCY ${gen_fmgrtab_depend}
 	OUTPUT ${gen_fmgrtab_output}
-	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl ${postgres_include_catalog}/pg_proc.h
+	COMMAND ${PERL_EXECUTABLE} -I${CMAKE_CURRENT_SOURCE_DIR}/catalog Gen_fmgrtab.pl -I${postgres_include_dir} ${postgres_include_catalog}/pg_proc.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgroids.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgroids.h
 	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/utils/fmgrprotos.h ${PROJECT_SOURCE_DIR}/src/include/utils/fmgrprotos.h
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/utils
@@ -140,6 +142,7 @@ set(access_SRCS
 	access/common/scankey.c
 	access/common/tupconvert.c
 	access/common/tupdesc.c
+	access/common/session.c
 
 	access/gin/ginutil.c
 	access/gin/gininsert.c
@@ -481,6 +484,7 @@ set(executor_SRCS
 	executor/nodeTableFuncscan.c
 	executor/tstoreReceiver.c
 	executor/spi.c
+	executor/execPartition.c
 )
 
 set(lib_SRCS
@@ -492,6 +496,7 @@ set(lib_SRCS
 	lib/rbtree.c
 	lib/stringinfo.c
 	lib/knapsack.c
+	lib/dshash.c
 )
 
 if(OPENSSL_FOUND)
@@ -514,159 +519,195 @@ set(libpq_SRCS
 )
 
 set(utils_SRCS
-	utils/error/assert.c
-	utils/error/elog.c
-	utils/cache/attoptcache.c
-	utils/cache/catcache.c
-	utils/cache/evtcache.c
-	utils/cache/inval.c
-	utils/cache/plancache.c
-	utils/cache/relcache.c
-	utils/cache/relmapper.c
-	utils/cache/relfilenodemap.c
-	utils/cache/spccache.c
-	utils/cache/syscache.c
-	utils/cache/lsyscache.c
-	utils/cache/typcache.c
-	utils/cache/ts_cache.c
-	utils/mmgr/aset.c
-	utils/mmgr/dsa.c
-	utils/mmgr/mcxt.c
-	utils/mmgr/portalmem.c
-	utils/mmgr/freepage.c
-	utils/mmgr/memdebug.c
-	utils/mmgr/slab.c
-	utils/adt/acl.c
-	utils/adt/arrayfuncs.c
-	utils/adt/array_expanded.c
-	utils/adt/array_selfuncs.c
-	utils/adt/array_typanalyze.c
-	utils/adt/array_userfuncs.c
-	utils/adt/arrayutils.c
-	utils/adt/ascii.c
-	utils/adt/bool.c
-	utils/adt/cash.c
-	utils/adt/char.c
-	utils/adt/date.c
-	utils/adt/datetime.c
-	utils/adt/datum.c
-	utils/adt/dbsize.c
-	utils/adt/domains.c
-	utils/adt/encode.c
-	utils/adt/enum.c
-	utils/adt/expandeddatum.c
-	utils/adt/float.c
-	utils/adt/format_type.c
-	utils/adt/formatting.c
-	utils/adt/genfile.c
-	utils/adt/geo_ops.c
-	utils/adt/geo_selfuncs.c
-	utils/adt/geo_spgist.c
-	utils/adt/inet_cidr_ntop.c
-	utils/adt/inet_net_pton.c
-	utils/adt/int.c
-	utils/adt/int8.c
-	utils/adt/json.c
-	utils/adt/jsonb.c
-	utils/adt/jsonb_gin.c
-	utils/adt/jsonb_op.c
-	utils/adt/jsonb_util.c
-	utils/adt/jsonfuncs.c
-	utils/adt/like.c
-	#utils/adt/like_match.c
-	utils/adt/lockfuncs.c
-	utils/adt/mac.c
-	utils/adt/misc.c
-	utils/adt/nabstime.c
-	utils/adt/name.c
-	utils/adt/network.c
-	utils/adt/network_gist.c
-	utils/adt/network_selfuncs.c
-	utils/adt/numeric.c
-	utils/adt/numutils.c
-	utils/adt/oid.c
-	utils/adt/oracle_compat.c
-	utils/adt/orderedsetaggs.c
-	utils/adt/pg_locale.c
-	utils/adt/pg_lsn.c
-	utils/adt/pg_upgrade_support.c
-	utils/adt/pgstatfuncs.c
-	utils/adt/pseudotypes.c
-	utils/adt/quote.c
-	utils/adt/rangetypes.c
-	utils/adt/rangetypes_gist.c
-	utils/adt/rangetypes_selfuncs.c
-	utils/adt/rangetypes_spgist.c
-	utils/adt/rangetypes_typanalyze.c
-	utils/adt/regexp.c
-	utils/adt/regproc.c
-	utils/adt/ri_triggers.c
-	utils/adt/rowtypes.c
-	utils/adt/ruleutils.c
-	utils/adt/selfuncs.c
-	utils/adt/tid.c
-	utils/adt/timestamp.c
-	utils/adt/trigfuncs.c
-	utils/adt/tsginidx.c
-	utils/adt/tsgistidx.c
-	utils/adt/tsquery.c
-	utils/adt/tsquery_cleanup.c
-	utils/adt/tsquery_gist.c
-	utils/adt/tsquery_op.c
-	utils/adt/tsquery_rewrite.c
-	utils/adt/tsquery_util.c
-	utils/adt/tsrank.c
-	utils/adt/tsvector.c
-	utils/adt/tsvector_op.c
-	utils/adt/tsvector_parser.c
-	utils/adt/txid.c
-	utils/adt/uuid.c
-	utils/adt/varbit.c
-	utils/adt/varchar.c
-	utils/adt/varlena.c
-	utils/adt/amutils.c
-	utils/adt/version.c
-	utils/adt/windowfuncs.c
-	utils/adt/xid.c
-	utils/adt/xml.c
-	utils/adt/network_spgist.c
-	utils/adt/mac8.c
-	utils/fmgr/dfmgr.c
-	utils/fmgr/fmgr.c
-	utils/fmgr/funcapi.c
-	utils/hash/dynahash.c
-	utils/hash/hashfn.c
-	utils/hash/pg_crc.c
-	utils/init/globals.c
+	utils/misc/tzparser.c
+	utils/misc/guc.c
+	utils/misc/ps_status.c
+	utils/misc/timeout.c
+	utils/misc/sampling.c
+	utils/misc/queryenvironment.c
+	utils/misc/pg_config.c
+	utils/misc/pg_controldata.c
+	utils/misc/rls.c
+	utils/misc/pg_rusage.c
+	utils/misc/backend_random.c
+	utils/misc/superuser.c
+	utils/misc/help_config.c
 	utils/init/miscinit.c
 	utils/init/postinit.c
+	utils/init/globals.c
+	utils/adt/geo_selfuncs.c
+	utils/adt/array_selfuncs.c
+	utils/adt/json.c
+	utils/adt/xml.c
+	utils/adt/tsquery_op.c
+	utils/adt/cash.c
+	utils/adt/network_gist.c
+	utils/adt/network.c
+	utils/adt/rangetypes_typanalyze.c
+	utils/adt/tsginidx.c
+	utils/adt/varchar.c
+	utils/adt/datum.c
+	utils/adt/ri_triggers.c
+	utils/adt/tsquery_gist.c
+	utils/adt/ascii.c
+	utils/adt/rangetypes_selfuncs.c
+	utils/adt/like_match.c
+	utils/adt/char.c
+	utils/adt/jsonfuncs.c
+	utils/adt/genfile.c
+	utils/adt/array_userfuncs.c
+	utils/adt/oracle_compat.c
+	utils/adt/tsquery_rewrite.c
+	utils/adt/inet_cidr_ntop.c
+	utils/adt/tsgistidx.c
+	utils/adt/mac.c
+	utils/adt/trigfuncs.c
+	utils/adt/network_selfuncs.c
+	utils/adt/dbsize.c
+	utils/adt/jsonb.c
+	utils/adt/array_typanalyze.c
+	utils/adt/expandeddatum.c
+	utils/adt/levenshtein.c
+	utils/adt/tsquery_util.c
+	utils/adt/expandedrecord.c
+	utils/adt/tsvector_parser.c
+	utils/adt/geo_spgist.c
+	utils/adt/int8.c
+	utils/adt/tsvector_op.c
+	utils/adt/tid.c
+	utils/adt/txid.c
+	utils/adt/regexp.c
+	utils/adt/arrayfuncs.c
+	utils/adt/ruleutils.c
+	utils/adt/timestamp.c
+	utils/adt/mac8.c
+	utils/adt/encode.c
+	utils/adt/pg_locale.c
+	utils/adt/like.c
+	utils/adt/geo_ops.c
+	utils/adt/varlena.c
+	utils/adt/quote.c
+	utils/adt/jsonb_op.c
+	utils/adt/rangetypes.c
+	utils/adt/cryptohashes.c
+	utils/adt/tsrank.c
+	utils/adt/lockfuncs.c
+	utils/adt/windowfuncs.c
+	utils/adt/array_expanded.c
+	utils/adt/pg_lsn.c
+	utils/adt/oid.c
+	utils/adt/selfuncs.c
+	utils/adt/xid.c
+	utils/adt/formatting.c
+	utils/adt/tsvector.c
+	utils/adt/numeric.c
+	utils/adt/enum.c
+	utils/adt/tsquery_cleanup.c
+	utils/adt/jsonb_util.c
+	utils/adt/uuid.c
+	utils/adt/partitionfuncs.c
+	utils/adt/varbit.c
+	utils/adt/float.c
+	utils/adt/name.c
+	utils/adt/amutils.c
+	utils/adt/pgstatfuncs.c
+	utils/adt/version.c
+	utils/adt/acl.c
+	utils/adt/pseudotypes.c
+	utils/adt/numutils.c
+	utils/adt/arrayutils.c
+	utils/adt/regproc.c
+	utils/adt/date.c
+	utils/adt/orderedsetaggs.c
+	utils/adt/jsonb_gin.c
+	utils/adt/rangetypes_spgist.c
+	utils/adt/tsquery.c
+	utils/adt/bool.c
+	utils/adt/misc.c
+	utils/adt/domains.c
+	utils/adt/inet_net_pton.c
+	utils/adt/int.c
+	utils/adt/format_type.c
+	utils/adt/network_spgist.c
+	utils/adt/pg_upgrade_support.c
+	utils/adt/rangetypes_gist.c
+	utils/adt/datetime.c
+	utils/adt/rowtypes.c
+	utils/cache/inval.c
+	utils/cache/partcache.c
+	utils/cache/relmapper.c
+	utils/cache/evtcache.c
+	utils/cache/catcache.c
+	utils/cache/lsyscache.c
+	utils/cache/typcache.c
+	utils/cache/relcache.c
+	utils/cache/relfilenodemap.c
+	utils/cache/syscache.c
+	utils/cache/spccache.c
+	utils/cache/attoptcache.c
+	utils/cache/plancache.c
+	utils/cache/ts_cache.c
 	utils/resowner/resowner.c
 	utils/sort/logtape.c
+	utils/sort/sharedtuplestore.c
 	utils/sort/sortsupport.c
-	utils/sort/tuplesort.c
 	utils/sort/tuplestore.c
+	utils/sort/tuplesort.c
+	utils/hash/pg_crc.c
+	utils/hash/dynahash.c
+	utils/hash/hashfn.c
+	utils/mmgr/freepage.c
+	utils/mmgr/slab.c
+	utils/mmgr/portalmem.c
+	utils/mmgr/dsa.c
+	utils/mmgr/mcxt.c
+	utils/mmgr/aset.c
+	utils/mmgr/memdebug.c
+	utils/mmgr/generation.c
+	utils/fmgr/fmgr.c
+	utils/fmgr/funcapi.c
+	utils/fmgr/dfmgr.c
 	utils/time/combocid.c
-	utils/time/tqual.c
 	utils/time/snapmgr.c
-	utils/misc/guc.c
-	utils/misc/help_config.c
-	utils/misc/pg_rusage.c
-	utils/misc/pg_controldata.c
-	utils/misc/pg_config.c
-	utils/misc/ps_status.c
-	utils/misc/rls.c
-	utils/misc/sampling.c
-	utils/misc/superuser.c
-	utils/misc/timeout.c
-	utils/misc/tzparser.c
-	utils/misc/backend_random.c
-	utils/misc/queryenvironment.c
-	utils/mb/encnames.c
-	utils/mb/conv.c
-	utils/mb/mbutils.c
-	utils/mb/wchar.c
+	utils/time/tqual.c
 	utils/mb/wstrcmp.c
+	utils/mb/win866.c
+	utils/mb/wchar.c
+	utils/mb/win1251.c
+	utils/mb/conv.c
 	utils/mb/wstrncmp.c
+	utils/mb/iso.c
+	utils/mb/conversion_procs/cyrillic_and_mic/cyrillic_and_mic.c
+	utils/mb/conversion_procs/euc_kr_and_mic/euc_kr_and_mic.c
+	utils/mb/conversion_procs/utf8_and_euc_cn/utf8_and_euc_cn.c
+	utils/mb/conversion_procs/utf8_and_cyrillic/utf8_and_cyrillic.c
+	utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c
+	utils/mb/conversion_procs/utf8_and_johab/utf8_and_johab.c
+	utils/mb/conversion_procs/utf8_and_euc_tw/utf8_and_euc_tw.c
+	utils/mb/conversion_procs/utf8_and_ascii/utf8_and_ascii.c
+	utils/mb/conversion_procs/utf8_and_gbk/utf8_and_gbk.c
+	utils/mb/conversion_procs/ascii_and_mic/ascii_and_mic.c
+	utils/mb/conversion_procs/utf8_and_sjis2004/utf8_and_sjis2004.c
+	utils/mb/conversion_procs/latin2_and_win1250/latin2_and_win1250.c
+	utils/mb/conversion_procs/utf8_and_big5/utf8_and_big5.c
+	utils/mb/conversion_procs/latin_and_mic/latin_and_mic.c
+	utils/mb/conversion_procs/utf8_and_uhc/utf8_and_uhc.c
+	utils/mb/conversion_procs/utf8_and_sjis/utf8_and_sjis.c
+	utils/mb/conversion_procs/utf8_and_win/utf8_and_win.c
+	utils/mb/conversion_procs/utf8_and_gb18030/utf8_and_gb18030.c
+	utils/mb/conversion_procs/euc2004_sjis2004/euc2004_sjis2004.c
+	utils/mb/conversion_procs/utf8_and_euc_jp/utf8_and_euc_jp.c
+	utils/mb/conversion_procs/utf8_and_iso8859_1/utf8_and_iso8859_1.c
+	utils/mb/conversion_procs/euc_tw_and_big5/big5.c
+	utils/mb/conversion_procs/euc_tw_and_big5/euc_tw_and_big5.c
+	utils/mb/conversion_procs/utf8_and_euc2004/utf8_and_euc2004.c
+	utils/mb/conversion_procs/euc_cn_and_mic/euc_cn_and_mic.c
+	utils/mb/conversion_procs/euc_jp_and_sjis/euc_jp_and_sjis.c
+	utils/mb/conversion_procs/utf8_and_euc_kr/utf8_and_euc_kr.c
+	utils/mb/encnames.c
+	utils/mb/mbutils.c
+	utils/error/elog.c
+	utils/error/assert.c
 )
 
 set(nodes_SRCS
@@ -896,6 +937,7 @@ set(storage_SRCS
 	storage/file/buffile.c
 	storage/file/copydir.c
 	storage/file/reinit.c
+	storage/file/sharedfileset.c
 	storage/freespace/freespace.c
 	storage/freespace/fsmpage.c
 	storage/freespace/indexfsm.c
@@ -914,6 +956,7 @@ set(storage_SRCS
 	storage/ipc/sinvaladt.c
 	storage/ipc/standby.c
 	storage/ipc/latch.c
+	storage/ipc/barrier.c
 	storage/large_object/inv_api.c
 	storage/lmgr/lmgr.c # Need some for check s_lock
 	storage/lmgr/lock.c

@@ -17,6 +17,7 @@ install(TARGETS ${extension_name}
 		LIBRARY DESTINATION ${LIBDIR})
 install(FILES
 	${extension_name}.control
+	${extension_name}--1.4--1.5.sql
 	${extension_name}--1.4.sql
 	${extension_name}--1.3--1.4.sql
 	${extension_name}--1.2--1.3.sql
