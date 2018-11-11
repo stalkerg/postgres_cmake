@@ -3,7 +3,7 @@
  * fdwapi.h
  *	  API for foreign-data wrappers
  *
- * Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  * src/include/foreign/fdwapi.h
  *
@@ -62,7 +62,8 @@ typedef void (*GetForeignJoinPaths_function) (PlannerInfo *root,
 typedef void (*GetForeignUpperPaths_function) (PlannerInfo *root,
 											   UpperRelationKind stage,
 											   RelOptInfo *input_rel,
-											   RelOptInfo *output_rel);
+											   RelOptInfo *output_rel,
+											   void *extra);
 
 typedef void (*AddForeignUpdateTargets_function) (Query *parsetree,
 												  RangeTblEntry *target_rte,
@@ -95,6 +96,12 @@ typedef TupleTableSlot *(*ExecForeignDelete_function) (EState *estate,
 													   TupleTableSlot *planSlot);
 
 typedef void (*EndForeignModify_function) (EState *estate,
+										   ResultRelInfo *rinfo);
+
+typedef void (*BeginForeignInsert_function) (ModifyTableState *mtstate,
+											 ResultRelInfo *rinfo);
+
+typedef void (*EndForeignInsert_function) (EState *estate,
 										   ResultRelInfo *rinfo);
 
 typedef int (*IsForeignRelUpdatable_function) (Relation rel);
@@ -148,6 +155,9 @@ typedef Size (*EstimateDSMForeignScan_function) (ForeignScanState *node,
 typedef void (*InitializeDSMForeignScan_function) (ForeignScanState *node,
 												   ParallelContext *pcxt,
 												   void *coordinate);
+typedef void (*ReInitializeDSMForeignScan_function) (ForeignScanState *node,
+													 ParallelContext *pcxt,
+													 void *coordinate);
 typedef void (*InitializeWorkerForeignScan_function) (ForeignScanState *node,
 													  shm_toc *toc,
 													  void *coordinate);
@@ -155,6 +165,9 @@ typedef void (*ShutdownForeignScan_function) (ForeignScanState *node);
 typedef bool (*IsForeignScanParallelSafe_function) (PlannerInfo *root,
 													RelOptInfo *rel,
 													RangeTblEntry *rte);
+typedef List *(*ReparameterizeForeignPathByChild_function) (PlannerInfo *root,
+															List *fdw_private,
+															RelOptInfo *child_rel);
 
 /*
  * FdwRoutine is the struct returned by a foreign-data wrapper's handler
@@ -198,6 +211,8 @@ typedef struct FdwRoutine
 	ExecForeignUpdate_function ExecForeignUpdate;
 	ExecForeignDelete_function ExecForeignDelete;
 	EndForeignModify_function EndForeignModify;
+	BeginForeignInsert_function BeginForeignInsert;
+	EndForeignInsert_function EndForeignInsert;
 	IsForeignRelUpdatable_function IsForeignRelUpdatable;
 	PlanDirectModify_function PlanDirectModify;
 	BeginDirectModify_function BeginDirectModify;
@@ -224,8 +239,12 @@ typedef struct FdwRoutine
 	IsForeignScanParallelSafe_function IsForeignScanParallelSafe;
 	EstimateDSMForeignScan_function EstimateDSMForeignScan;
 	InitializeDSMForeignScan_function InitializeDSMForeignScan;
+	ReInitializeDSMForeignScan_function ReInitializeDSMForeignScan;
 	InitializeWorkerForeignScan_function InitializeWorkerForeignScan;
 	ShutdownForeignScan_function ShutdownForeignScan;
+
+	/* Support functions for path reparameterization. */
+	ReparameterizeForeignPathByChild_function ReparameterizeForeignPathByChild;
 } FdwRoutine;
 
 

@@ -2,7 +2,7 @@
  *
  * createuser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/scripts/createuser.c
@@ -252,7 +252,7 @@ main(int argc, char *argv[])
 		login = TRI_YES;
 
 	conn = connectDatabase("postgres", host, port, username, prompt_password,
-						   progname, false, false);
+						   progname, echo, false, false);
 
 	initPQExpBuffer(&sql);
 

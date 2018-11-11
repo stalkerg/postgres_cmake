@@ -3,7 +3,7 @@
  * test_rls_hooks.c
  *		Code for testing RLS hooks.
  *
- * Copyright (c) 2015-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_rls_hooks/test_rls_hooks.c
@@ -18,16 +18,16 @@
 
 #include "test_rls_hooks.h"
 
-#include <catalog/pg_type.h>
-#include <nodes/makefuncs.h>
-#include <nodes/makefuncs.h>
-#include <parser/parse_clause.h>
-#include <parser/parse_node.h>
-#include <parser/parse_relation.h>
-#include <rewrite/rowsecurity.h>
-#include <utils/acl.h>
-#include <utils/rel.h>
-#include <utils/relcache.h>
+#include "catalog/pg_type.h"
+#include "nodes/makefuncs.h"
+#include "nodes/makefuncs.h"
+#include "parser/parse_clause.h"
+#include "parser/parse_node.h"
+#include "parser/parse_relation.h"
+#include "rewrite/rowsecurity.h"
+#include "utils/acl.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
 
 PG_MODULE_MAGIC;
 
@@ -80,8 +80,8 @@ test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 
 	qual_pstate = make_parsestate(NULL);
 
-	rte = addRangeTableEntryForRelation(qual_pstate, relation, NULL, false,
-										false);
+	rte = addRangeTableEntryForRelation(qual_pstate, relation, AccessShareLock,
+										NULL, false, false);
 	addRTEtoQuery(qual_pstate, rte, false, true, true);
 
 	role = ObjectIdGetDatum(ACL_ID_PUBLIC);
@@ -143,8 +143,8 @@ test_rls_hooks_restrictive(CmdType cmdtype, Relation relation)
 
 	qual_pstate = make_parsestate(NULL);
 
-	rte = addRangeTableEntryForRelation(qual_pstate, relation, NULL, false,
-										false);
+	rte = addRangeTableEntryForRelation(qual_pstate, relation, AccessShareLock,
+										NULL, false, false);
 	addRTEtoQuery(qual_pstate, rte, false, true, true);
 
 	role = ObjectIdGetDatum(ACL_ID_PUBLIC);

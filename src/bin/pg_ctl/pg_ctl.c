@@ -2,20 +2,12 @@
  *
  * pg_ctl --- start/stops/restarts the PostgreSQL server
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * src/bin/pg_ctl/pg_ctl.c
  *
  *-------------------------------------------------------------------------
  */
-
-#ifdef WIN32
-/*
- * Need this to get defines for restricted tokens and jobs. And it
- * has to be set before any header from the Win32 API is loaded.
- */
-#define _WIN32_WINNT 0x0501
-#endif
 
 #include "postgres_fe.h"
 
@@ -33,6 +25,7 @@
 
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
+#include "common/file_perm.h"
 #include "getopt_long.h"
 #include "utils/pidfile.h"
 
@@ -68,6 +61,7 @@ typedef enum
 	RELOAD_COMMAND,
 	STATUS_COMMAND,
 	PROMOTE_COMMAND,
+	LOGROTATE_COMMAND,
 	KILL_COMMAND,
 	REGISTER_COMMAND,
 	UNREGISTER_COMMAND,
@@ -107,6 +101,7 @@ static char version_file[MAXPGPATH];
 static char pid_file[MAXPGPATH];
 static char backup_file[MAXPGPATH];
 static char promote_file[MAXPGPATH];
+static char logrotate_file[MAXPGPATH];
 
 #ifdef WIN32
 static DWORD pgctl_start_type = SERVICE_AUTO_START;
@@ -132,6 +127,7 @@ static void do_restart(void);
 static void do_reload(void);
 static void do_status(void);
 static void do_promote(void);
+static void do_logrotate(void);
 static void do_kill(pgpid_t pid);
 static void print_msg(const char *msg);
 static void adjust_data_dir(void);
@@ -152,6 +148,7 @@ static void WINAPI pgwin32_ServiceHandler(DWORD);
 static void WINAPI pgwin32_ServiceMain(DWORD, LPTSTR *);
 static void pgwin32_doRunAsService(void);
 static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_service);
+static PTOKEN_PRIVILEGES GetPrivilegesToDelete(HANDLE hToken);
 #endif
 
 static pgpid_t get_pgpid(bool is_status_request);
@@ -965,7 +962,7 @@ do_restart(void)
 		write_stderr(_("%s: PID file \"%s\" does not exist\n"),
 					 progname, pid_file);
 		write_stderr(_("Is server running?\n"));
-		write_stderr(_("starting server anyway\n"));
+		write_stderr(_("trying to start server anyway\n"));
 		do_start();
 		return;
 	}
@@ -1175,6 +1172,62 @@ do_promote(void)
 	}
 	else
 		print_msg(_("server promoting\n"));
+}
+
+/*
+ * log rotate
+ */
+
+static void
+do_logrotate(void)
+{
+	FILE	   *logrotatefile;
+	pgpid_t		pid;
+
+	pid = get_pgpid(false);
+
+	if (pid == 0)				/* no pid file */
+	{
+		write_stderr(_("%s: PID file \"%s\" does not exist\n"), progname, pid_file);
+		write_stderr(_("Is server running?\n"));
+		exit(1);
+	}
+	else if (pid < 0)			/* standalone backend, not postmaster */
+	{
+		pid = -pid;
+		write_stderr(_("%s: cannot rotate log file; "
+					   "single-user server is running (PID: %ld)\n"),
+					 progname, pid);
+		exit(1);
+	}
+
+	snprintf(logrotate_file, MAXPGPATH, "%s/logrotate", pg_data);
+
+	if ((logrotatefile = fopen(logrotate_file, "w")) == NULL)
+	{
+		write_stderr(_("%s: could not create log rotation signal file \"%s\": %s\n"),
+					 progname, logrotate_file, strerror(errno));
+		exit(1);
+	}
+	if (fclose(logrotatefile))
+	{
+		write_stderr(_("%s: could not write log rotation signal file \"%s\": %s\n"),
+					 progname, logrotate_file, strerror(errno));
+		exit(1);
+	}
+
+	sig = SIGUSR1;
+	if (kill((pid_t) pid, sig) != 0)
+	{
+		write_stderr(_("%s: could not send log rotation signal (PID: %ld): %s\n"),
+					 progname, pid, strerror(errno));
+		if (unlink(logrotate_file) != 0)
+			write_stderr(_("%s: could not remove log rotation signal file \"%s\": %s\n"),
+						 progname, logrotate_file, strerror(errno));
+		exit(1);
+	}
+
+	print_msg(_("server signaled to rotate log file\n"));
 }
 
 
@@ -1631,11 +1684,6 @@ typedef BOOL (WINAPI * __SetInformationJobObject) (HANDLE, JOBOBJECTINFOCLASS, L
 typedef BOOL (WINAPI * __AssignProcessToJobObject) (HANDLE, HANDLE);
 typedef BOOL (WINAPI * __QueryInformationJobObject) (HANDLE, JOBOBJECTINFOCLASS, LPVOID, DWORD, LPDWORD);
 
-/* Windows API define missing from some versions of MingW headers */
-#ifndef  DISABLE_MAX_PRIVILEGE
-#define DISABLE_MAX_PRIVILEGE	0x1
-#endif
-
 /*
  * Create a restricted token, a job object sandbox, and execute the specified
  * process with it.
@@ -1658,6 +1706,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 	HANDLE		restrictedToken;
 	SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
 	SID_AND_ATTRIBUTES dropSids[2];
+	PTOKEN_PRIVILEGES delPrivs;
 
 	/* Functions loaded dynamically */
 	__CreateRestrictedToken _CreateRestrictedToken = NULL;
@@ -1716,14 +1765,21 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 		return 0;
 	}
 
+	/* Get list of privileges to remove */
+	delPrivs = GetPrivilegesToDelete(origToken);
+	if (delPrivs == NULL)
+		/* Error message already printed */
+		return 0;
+
 	b = _CreateRestrictedToken(origToken,
-							   DISABLE_MAX_PRIVILEGE,
+							   0,
 							   sizeof(dropSids) / sizeof(dropSids[0]),
 							   dropSids,
-							   0, NULL,
+							   delPrivs->PrivilegeCount, delPrivs->Privileges,
 							   0, NULL,
 							   &restrictedToken);
 
+	free(delPrivs);
 	FreeSid(dropSids[1].Sid);
 	FreeSid(dropSids[0].Sid);
 	CloseHandle(origToken);
@@ -1840,6 +1896,66 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 	 */
 	return r;
 }
+
+/*
+ * Get a list of privileges to delete from the access token. We delete all privileges
+ * except SeLockMemoryPrivilege which is needed to use large pages, and
+ * SeChangeNotifyPrivilege which is enabled by default in DISABLE_MAX_PRIVILEGE.
+ */
+static PTOKEN_PRIVILEGES
+GetPrivilegesToDelete(HANDLE hToken)
+{
+	int			i,
+				j;
+	DWORD		length;
+	PTOKEN_PRIVILEGES tokenPrivs;
+	LUID		luidLockPages;
+	LUID		luidChangeNotify;
+
+	if (!LookupPrivilegeValue(NULL, SE_LOCK_MEMORY_NAME, &luidLockPages) ||
+		!LookupPrivilegeValue(NULL, SE_CHANGE_NOTIFY_NAME, &luidChangeNotify))
+	{
+		write_stderr(_("%s: could not get LUIDs for privileges: error code %lu\n"),
+					 progname, (unsigned long) GetLastError());
+		return NULL;
+	}
+
+	if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &length) &&
+		GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+	{
+		write_stderr(_("%s: could not get token information: error code %lu\n"),
+					 progname, (unsigned long) GetLastError());
+		return NULL;
+	}
+
+	tokenPrivs = (PTOKEN_PRIVILEGES) malloc(length);
+	if (tokenPrivs == NULL)
+	{
+		write_stderr(_("%s: out of memory\n"), progname);
+		return NULL;
+	}
+
+	if (!GetTokenInformation(hToken, TokenPrivileges, tokenPrivs, length, &length))
+	{
+		write_stderr(_("%s: could not get token information: error code %lu\n"),
+					 progname, (unsigned long) GetLastError());
+		free(tokenPrivs);
+		return NULL;
+	}
+
+	for (i = 0; i < tokenPrivs->PrivilegeCount; i++)
+	{
+		if (memcmp(&tokenPrivs->Privileges[i].Luid, &luidLockPages, sizeof(LUID)) == 0 ||
+			memcmp(&tokenPrivs->Privileges[i].Luid, &luidChangeNotify, sizeof(LUID)) == 0)
+		{
+			for (j = i; j < tokenPrivs->PrivilegeCount - 1; j++)
+				tokenPrivs->Privileges[j] = tokenPrivs->Privileges[j + 1];
+			tokenPrivs->PrivilegeCount--;
+		}
+	}
+
+	return tokenPrivs;
+}
 #endif							/* WIN32 */
 
 static void
@@ -1855,19 +1971,20 @@ do_help(void)
 {
 	printf(_("%s is a utility to initialize, start, stop, or control a PostgreSQL server.\n\n"), progname);
 	printf(_("Usage:\n"));
-	printf(_("  %s init[db] [-D DATADIR] [-s] [-o OPTIONS]\n"), progname);
-	printf(_("  %s start    [-D DATADIR] [-l FILENAME] [-W] [-t SECS] [-s]\n"
-			 "                  [-o OPTIONS] [-p PATH] [-c]\n"), progname);
-	printf(_("  %s stop     [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"), progname);
-	printf(_("  %s restart  [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
-			 "                  [-o OPTIONS] [-c]\n"), progname);
-	printf(_("  %s reload   [-D DATADIR] [-s]\n"), progname);
-	printf(_("  %s status   [-D DATADIR]\n"), progname);
-	printf(_("  %s promote  [-D DATADIR] [-W] [-t SECS] [-s]\n"), progname);
-	printf(_("  %s kill     SIGNALNAME PID\n"), progname);
+	printf(_("  %s init[db]   [-D DATADIR] [-s] [-o OPTIONS]\n"), progname);
+	printf(_("  %s start      [-D DATADIR] [-l FILENAME] [-W] [-t SECS] [-s]\n"
+			 "                    [-o OPTIONS] [-p PATH] [-c]\n"), progname);
+	printf(_("  %s stop       [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"), progname);
+	printf(_("  %s restart    [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
+			 "                    [-o OPTIONS] [-c]\n"), progname);
+	printf(_("  %s reload     [-D DATADIR] [-s]\n"), progname);
+	printf(_("  %s status     [-D DATADIR]\n"), progname);
+	printf(_("  %s promote    [-D DATADIR] [-W] [-t SECS] [-s]\n"), progname);
+	printf(_("  %s logrotate  [-D DATADIR] [-s]\n"), progname);
+	printf(_("  %s kill       SIGNALNAME PID\n"), progname);
 #ifdef WIN32
-	printf(_("  %s register [-D DATADIR] [-N SERVICENAME] [-U USERNAME] [-P PASSWORD]\n"
-			 "                  [-S START-TYPE] [-e SOURCE] [-W] [-t SECS] [-s] [-o OPTIONS]\n"), progname);
+	printf(_("  %s register   [-D DATADIR] [-N SERVICENAME] [-U USERNAME] [-P PASSWORD]\n"
+			 "                    [-S START-TYPE] [-e SOURCE] [-W] [-t SECS] [-s] [-o OPTIONS]\n"), progname);
 	printf(_("  %s unregister [-N SERVICENAME]\n"), progname);
 #endif
 
@@ -1903,7 +2020,7 @@ do_help(void)
 	printf(_("  immediate   quit without complete shutdown; will lead to recovery on restart\n"));
 
 	printf(_("\nAllowed signal names for kill:\n"));
-	printf("  ABRT HUP INT QUIT TERM USR1 USR2\n");
+	printf("  ABRT HUP INT KILL QUIT TERM USR1 USR2\n");
 
 #ifdef WIN32
 	printf(_("\nOptions for register and unregister:\n"));
@@ -1961,11 +2078,8 @@ set_sig(char *signame)
 		sig = SIGQUIT;
 	else if (strcmp(signame, "ABRT") == 0)
 		sig = SIGABRT;
-#if 0
-	/* probably should NOT provide SIGKILL */
 	else if (strcmp(signame, "KILL") == 0)
 		sig = SIGKILL;
-#endif
 	else if (strcmp(signame, "TERM") == 0)
 		sig = SIGTERM;
 	else if (strcmp(signame, "USR1") == 0)
@@ -2118,7 +2232,8 @@ main(int argc, char **argv)
 	 */
 	argv0 = argv[0];
 
-	umask(S_IRWXG | S_IRWXO);
+	/* Set restrictive mode mask until PGDATA permissions are checked */
+	umask(PG_MODE_MASK_OWNER);
 
 	/* support --help and --version even if invoked as root */
 	if (argc > 1)
@@ -2282,6 +2397,8 @@ main(int argc, char **argv)
 				ctl_command = STATUS_COMMAND;
 			else if (strcmp(argv[optind], "promote") == 0)
 				ctl_command = PROMOTE_COMMAND;
+			else if (strcmp(argv[optind], "logrotate") == 0)
+				ctl_command = LOGROTATE_COMMAND;
 			else if (strcmp(argv[optind], "kill") == 0)
 			{
 				if (argc - optind < 3)
@@ -2353,6 +2470,16 @@ main(int argc, char **argv)
 		snprintf(version_file, MAXPGPATH, "%s/PG_VERSION", pg_data);
 		snprintf(pid_file, MAXPGPATH, "%s/postmaster.pid", pg_data);
 		snprintf(backup_file, MAXPGPATH, "%s/backup_label", pg_data);
+
+		/*
+		 * Set mask based on PGDATA permissions,
+		 *
+		 * Don't error here if the data directory cannot be stat'd. This is
+		 * handled differently based on the command and we don't want to
+		 * interfere with that logic.
+		 */
+		if (GetDataDirectoryCreatePerm(pg_data))
+			umask(pg_mode_mask);
 	}
 
 	switch (ctl_command)
@@ -2377,6 +2504,9 @@ main(int argc, char **argv)
 			break;
 		case PROMOTE_COMMAND:
 			do_promote();
+			break;
+		case LOGROTATE_COMMAND:
+			do_logrotate();
 			break;
 		case KILL_COMMAND:
 			do_kill(killproc);

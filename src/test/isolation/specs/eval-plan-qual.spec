@@ -9,6 +9,11 @@ setup
  CREATE TABLE accounts (accountid text PRIMARY KEY, balance numeric not null);
  INSERT INTO accounts VALUES ('checking', 600), ('savings', 600);
 
+ CREATE TABLE accounts_ext (accountid text PRIMARY KEY, balance numeric not null, other text);
+ INSERT INTO accounts_ext VALUES ('checking', 600, 'other'), ('savings', 700, null);
+ ALTER TABLE accounts_ext ADD COLUMN newcol int DEFAULT 42;
+ ALTER TABLE accounts_ext ADD COLUMN newcol2 text DEFAULT NULL;
+
  CREATE TABLE p (a int, b int, c int);
  CREATE TABLE c1 () INHERITS (p);
  CREATE TABLE c2 () INHERITS (p);
@@ -21,13 +26,17 @@ setup
  CREATE TABLE table_b (id integer, value text);
  INSERT INTO table_a VALUES (1, 'tableAValue');
  INSERT INTO table_b VALUES (1, 'tableBValue');
+
+ CREATE TABLE jointest AS SELECT generate_series(1,10) AS id, 0 AS data;
+ CREATE INDEX ON jointest(id);
 }
 
 teardown
 {
  DROP TABLE accounts;
+ DROP TABLE accounts_ext;
  DROP TABLE p CASCADE;
- DROP TABLE table_a, table_b;
+ DROP TABLE table_a, table_b, jointest;
 }
 
 session "s1"
@@ -69,6 +78,11 @@ step "lockwithvalues"	{
 	  WHERE a1.accountid = v.id
 	  FOR UPDATE OF a1;
 }
+step "partiallock_ext"	{
+	SELECT * FROM accounts_ext a1, accounts_ext a2
+	  WHERE a1.accountid = a2.accountid
+	  FOR UPDATE OF a1;
+}
 
 # these tests exercise EvalPlanQual with a SubLink sub-select (which should be
 # unaffected by any EPQ recheck behavior in the outer query); cf bug #14034
@@ -76,6 +90,24 @@ step "lockwithvalues"	{
 step "updateforss"	{
 	UPDATE table_a SET value = 'newTableAValue' WHERE id = 1;
 	UPDATE table_b SET value = 'newTableBValue' WHERE id = 1;
+}
+
+# these tests exercise EvalPlanQual with conditional InitPlans which
+# have not been executed prior to the EPQ
+
+step "updateforcip"	{
+	UPDATE table_a SET value = NULL WHERE id = 1;
+}
+
+# these tests exercise mark/restore during EPQ recheck, cf bug #15032
+
+step "selectjoinforupdate"	{
+	set enable_nestloop to 0;
+	set enable_hashjoin to 0;
+	set enable_seqscan to 0;
+	explain (costs off)
+	select * from jointest a join jointest b on a.id=b.id for update;
+	select * from jointest a join jointest b on a.id=b.id for update;
 }
 
 
@@ -91,6 +123,7 @@ step "upsert2"	{
 	INSERT INTO accounts SELECT 'savings', 1234
 	  WHERE NOT EXISTS (SELECT 1 FROM upsert);
 }
+step "wx2_ext"	{ UPDATE accounts_ext SET balance = balance + 450; }
 step "readp2"	{ SELECT tableoid::regclass, ctid, * FROM p WHERE b IN (0, 1) AND c = 0 FOR UPDATE; }
 step "returningp1" {
 	WITH u AS ( UPDATE p SET b = b WHERE a > 0 RETURNING * )
@@ -103,12 +136,22 @@ step "readforss"	{
 	FROM table_a ta
 	WHERE ta.id = 1 FOR UPDATE OF ta;
 }
+step "updateforcip2"	{
+	UPDATE table_a SET value = COALESCE(value, (SELECT text 'newValue')) WHERE id = 1;
+}
+step "updateforcip3"	{
+	WITH d(val) AS (SELECT text 'newValue' FROM generate_series(1,1))
+	UPDATE table_a SET value = COALESCE(value, (SELECT val FROM d)) WHERE id = 1;
+}
 step "wrtwcte"	{ UPDATE table_a SET value = 'tableAValue2' WHERE id = 1; }
+step "wrjt"	{ UPDATE jointest SET data = 42 WHERE id = 7; }
 step "c2"	{ COMMIT; }
 
 session "s3"
 setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
 step "read"	{ SELECT * FROM accounts ORDER BY accountid; }
+step "read_ext"	{ SELECT * FROM accounts_ext ORDER BY accountid; }
+step "read_a"	{ SELECT * FROM table_a ORDER BY id; }
 
 # this test exercises EvalPlanQual with a CTE, cf bug #14328
 step "readwcte"	{
@@ -124,6 +167,14 @@ step "readwcte"	{
 	SELECT * FROM cte2;
 }
 
+# this test exercises a different CTE misbehavior, cf bug #14870
+step "multireadwcte"	{
+	WITH updated AS (
+	  UPDATE table_a SET value = 'tableAValue3' WHERE id = 1 RETURNING id
+	)
+	SELECT (SELECT id FROM updated) AS subid, * FROM updated;
+}
+
 teardown	{ COMMIT; }
 
 permutation "wx1" "wx2" "c1" "c2" "read"
@@ -133,5 +184,10 @@ permutation "readp1" "writep1" "readp2" "c1" "c2"
 permutation "writep2" "returningp1" "c1" "c2"
 permutation "wx2" "partiallock" "c2" "c1" "read"
 permutation "wx2" "lockwithvalues" "c2" "c1" "read"
+permutation "wx2_ext" "partiallock_ext" "c2" "c1" "read_ext"
 permutation "updateforss" "readforss" "c1" "c2"
+permutation "updateforcip" "updateforcip2" "c1" "c2" "read_a"
+permutation "updateforcip" "updateforcip3" "c1" "c2" "read_a"
 permutation "wrtwcte" "readwcte" "c1" "c2"
+permutation "wrjt" "selectjoinforupdate" "c2" "c1"
+permutation "wrtwcte" "multireadwcte" "c1" "c2"

@@ -11,7 +11,7 @@
  *			- Add a pgstat config column to pg_database, so this
  *			  entire thing can be enabled/disabled on a per db basis.
  *
- *	Copyright (c) 2001-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2001-2018, PostgreSQL Global Development Group
  *
  *	src/backend/postmaster/pgstat.c
  * ----------
@@ -2650,7 +2650,7 @@ CreateSharedBackendStatus(void)
 	}
 
 	/* Create or attach to the shared appname buffer */
-	size = mul_size(NAMEDATALEN, MaxBackends);
+	size = mul_size(NAMEDATALEN, NumBackendStatSlots);
 	BackendAppnameBuffer = (char *)
 		ShmemInitStruct("Backend Application Name Buffer", size, &found);
 
@@ -2668,7 +2668,7 @@ CreateSharedBackendStatus(void)
 	}
 
 	/* Create or attach to the shared client hostname buffer */
-	size = mul_size(NAMEDATALEN, MaxBackends);
+	size = mul_size(NAMEDATALEN, NumBackendStatSlots);
 	BackendClientHostnameBuffer = (char *)
 		ShmemInitStruct("Backend Client Host Name Buffer", size, &found);
 
@@ -2695,13 +2695,13 @@ CreateSharedBackendStatus(void)
 
 	if (!found)
 	{
-		MemSet(BackendActivityBuffer, 0, size);
+		MemSet(BackendActivityBuffer, 0, BackendActivityBufferSize);
 
 		/* Initialize st_activity pointers. */
 		buffer = BackendActivityBuffer;
 		for (i = 0; i < NumBackendStatSlots; i++)
 		{
-			BackendStatusArray[i].st_activity = buffer;
+			BackendStatusArray[i].st_activity_raw = buffer;
 			buffer += pgstat_track_activity_query_size;
 		}
 	}
@@ -2784,21 +2784,13 @@ pgstat_initialize(void)
 void
 pgstat_bestart(void)
 {
-	TimestampTz proc_start_timestamp;
 	SockAddr	clientaddr;
 	volatile PgBackendStatus *beentry;
 
 	/*
 	 * To minimize the time spent modifying the PgBackendStatus entry, fetch
 	 * all the needed data first.
-	 *
-	 * If we have a MyProcPort, use its session start time (for consistency,
-	 * and to save a kernel call).
 	 */
-	if (MyProcPort)
-		proc_start_timestamp = MyProcPort->SessionStartTime;
-	else
-		proc_start_timestamp = GetCurrentTimestamp();
 
 	/*
 	 * We may not have a MyProcPort (eg, if this is the autovacuum process).
@@ -2883,7 +2875,7 @@ pgstat_bestart(void)
 	} while ((beentry->st_changecount & 1) == 0);
 
 	beentry->st_procpid = MyProcPid;
-	beentry->st_proc_start_timestamp = proc_start_timestamp;
+	beentry->st_proc_start_timestamp = MyStartTimestamp;
 	beentry->st_activity_start_timestamp = 0;
 	beentry->st_state_start_timestamp = 0;
 	beentry->st_xact_start_timestamp = 0;
@@ -2909,8 +2901,8 @@ pgstat_bestart(void)
 		beentry->st_ssl = true;
 		beentry->st_sslstatus->ssl_bits = be_tls_get_cipher_bits(MyProcPort);
 		beentry->st_sslstatus->ssl_compression = be_tls_get_compression(MyProcPort);
-		be_tls_get_version(MyProcPort, beentry->st_sslstatus->ssl_version, NAMEDATALEN);
-		be_tls_get_cipher(MyProcPort, beentry->st_sslstatus->ssl_cipher, NAMEDATALEN);
+		strlcpy(beentry->st_sslstatus->ssl_version, be_tls_get_version(MyProcPort), NAMEDATALEN);
+		strlcpy(beentry->st_sslstatus->ssl_cipher, be_tls_get_cipher(MyProcPort), NAMEDATALEN);
 		be_tls_get_peerdn_name(MyProcPort, beentry->st_sslstatus->ssl_clientdn, NAMEDATALEN);
 	}
 	else
@@ -2922,11 +2914,11 @@ pgstat_bestart(void)
 #endif
 	beentry->st_state = STATE_UNDEFINED;
 	beentry->st_appname[0] = '\0';
-	beentry->st_activity[0] = '\0';
+	beentry->st_activity_raw[0] = '\0';
 	/* Also make sure the last byte in each string area is always 0 */
 	beentry->st_clienthostname[NAMEDATALEN - 1] = '\0';
 	beentry->st_appname[NAMEDATALEN - 1] = '\0';
-	beentry->st_activity[pgstat_track_activity_query_size - 1] = '\0';
+	beentry->st_activity_raw[pgstat_track_activity_query_size - 1] = '\0';
 	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
 	beentry->st_progress_command_target = InvalidOid;
 
@@ -3017,7 +3009,7 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			pgstat_increment_changecount_before(beentry);
 			beentry->st_state = STATE_DISABLED;
 			beentry->st_state_start_timestamp = 0;
-			beentry->st_activity[0] = '\0';
+			beentry->st_activity_raw[0] = '\0';
 			beentry->st_activity_start_timestamp = 0;
 			/* st_xact_start_timestamp and wait_event_info are also disabled */
 			beentry->st_xact_start_timestamp = 0;
@@ -3034,8 +3026,12 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 	start_timestamp = GetCurrentStatementStartTimestamp();
 	if (cmd_str != NULL)
 	{
-		len = pg_mbcliplen(cmd_str, strlen(cmd_str),
-						   pgstat_track_activity_query_size - 1);
+		/*
+		 * Compute length of to-be-stored string unaware of multi-byte
+		 * characters. For speed reasons that'll get corrected on read, rather
+		 * than computed every write.
+		 */
+		len = Min(strlen(cmd_str), pgstat_track_activity_query_size - 1);
 	}
 	current_timestamp = GetCurrentTimestamp();
 
@@ -3049,8 +3045,8 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 
 	if (cmd_str != NULL)
 	{
-		memcpy((char *) beentry->st_activity, cmd_str, len);
-		beentry->st_activity[len] = '\0';
+		memcpy((char *) beentry->st_activity_raw, cmd_str, len);
+		beentry->st_activity_raw[len] = '\0';
 		beentry->st_activity_start_timestamp = start_timestamp;
 	}
 
@@ -3220,6 +3216,7 @@ pgstat_read_current_status(void)
 	LocalPgBackendStatus *localtable;
 	LocalPgBackendStatus *localentry;
 	char	   *localappname,
+			   *localclienthostname,
 			   *localactivity;
 #ifdef USE_SSL
 	PgBackendSSLStatus *localsslstatus;
@@ -3236,6 +3233,9 @@ pgstat_read_current_status(void)
 		MemoryContextAlloc(pgStatLocalContext,
 						   sizeof(LocalPgBackendStatus) * NumBackendStatSlots);
 	localappname = (char *)
+		MemoryContextAlloc(pgStatLocalContext,
+						   NAMEDATALEN * NumBackendStatSlots);
+	localclienthostname = (char *)
 		MemoryContextAlloc(pgStatLocalContext,
 						   NAMEDATALEN * NumBackendStatSlots);
 	localactivity = (char *)
@@ -3278,8 +3278,10 @@ pgstat_read_current_status(void)
 				 */
 				strcpy(localappname, (char *) beentry->st_appname);
 				localentry->backendStatus.st_appname = localappname;
-				strcpy(localactivity, (char *) beentry->st_activity);
-				localentry->backendStatus.st_activity = localactivity;
+				strcpy(localclienthostname, (char *) beentry->st_clienthostname);
+				localentry->backendStatus.st_clienthostname = localclienthostname;
+				strcpy(localactivity, (char *) beentry->st_activity_raw);
+				localentry->backendStatus.st_activity_raw = localactivity;
 				localentry->backendStatus.st_ssl = beentry->st_ssl;
 #ifdef USE_SSL
 				if (beentry->st_ssl)
@@ -3309,6 +3311,7 @@ pgstat_read_current_status(void)
 
 			localentry++;
 			localappname += NAMEDATALEN;
+			localclienthostname += NAMEDATALEN;
 			localactivity += pgstat_track_activity_query_size;
 #ifdef USE_SSL
 			localsslstatus++;
@@ -3481,11 +3484,11 @@ pgstat_get_wait_activity(WaitEventActivity w)
 		case WAIT_EVENT_CHECKPOINTER_MAIN:
 			event_name = "CheckpointerMain";
 			break;
-		case WAIT_EVENT_LOGICAL_LAUNCHER_MAIN:
-			event_name = "LogicalLauncherMain";
-			break;
 		case WAIT_EVENT_LOGICAL_APPLY_MAIN:
 			event_name = "LogicalApplyMain";
+			break;
+		case WAIT_EVENT_LOGICAL_LAUNCHER_MAIN:
+			event_name = "LogicalLauncherMain";
 			break;
 		case WAIT_EVENT_PGSTAT_MAIN:
 			event_name = "PgStatMain";
@@ -3579,8 +3582,56 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 		case WAIT_EVENT_BTREE_PAGE:
 			event_name = "BtreePage";
 			break;
+		case WAIT_EVENT_CLOG_GROUP_UPDATE:
+			event_name = "ClogGroupUpdate";
+			break;
 		case WAIT_EVENT_EXECUTE_GATHER:
 			event_name = "ExecuteGather";
+			break;
+		case WAIT_EVENT_HASH_BATCH_ALLOCATING:
+			event_name = "Hash/Batch/Allocating";
+			break;
+		case WAIT_EVENT_HASH_BATCH_ELECTING:
+			event_name = "Hash/Batch/Electing";
+			break;
+		case WAIT_EVENT_HASH_BATCH_LOADING:
+			event_name = "Hash/Batch/Loading";
+			break;
+		case WAIT_EVENT_HASH_BUILD_ALLOCATING:
+			event_name = "Hash/Build/Allocating";
+			break;
+		case WAIT_EVENT_HASH_BUILD_ELECTING:
+			event_name = "Hash/Build/Electing";
+			break;
+		case WAIT_EVENT_HASH_BUILD_HASHING_INNER:
+			event_name = "Hash/Build/HashingInner";
+			break;
+		case WAIT_EVENT_HASH_BUILD_HASHING_OUTER:
+			event_name = "Hash/Build/HashingOuter";
+			break;
+		case WAIT_EVENT_HASH_GROW_BATCHES_ALLOCATING:
+			event_name = "Hash/GrowBatches/Allocating";
+			break;
+		case WAIT_EVENT_HASH_GROW_BATCHES_DECIDING:
+			event_name = "Hash/GrowBatches/Deciding";
+			break;
+		case WAIT_EVENT_HASH_GROW_BATCHES_ELECTING:
+			event_name = "Hash/GrowBatches/Electing";
+			break;
+		case WAIT_EVENT_HASH_GROW_BATCHES_FINISHING:
+			event_name = "Hash/GrowBatches/Finishing";
+			break;
+		case WAIT_EVENT_HASH_GROW_BATCHES_REPARTITIONING:
+			event_name = "Hash/GrowBatches/Repartitioning";
+			break;
+		case WAIT_EVENT_HASH_GROW_BUCKETS_ALLOCATING:
+			event_name = "Hash/GrowBuckets/Allocating";
+			break;
+		case WAIT_EVENT_HASH_GROW_BUCKETS_ELECTING:
+			event_name = "Hash/GrowBuckets/Electing";
+			break;
+		case WAIT_EVENT_HASH_GROW_BUCKETS_REINSERTING:
+			event_name = "Hash/GrowBuckets/Reinserting";
 			break;
 		case WAIT_EVENT_LOGICAL_SYNC_DATA:
 			event_name = "LogicalSyncData";
@@ -3600,14 +3651,20 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 		case WAIT_EVENT_MQ_SEND:
 			event_name = "MessageQueueSend";
 			break;
-		case WAIT_EVENT_PARALLEL_FINISH:
-			event_name = "ParallelFinish";
-			break;
 		case WAIT_EVENT_PARALLEL_BITMAP_SCAN:
 			event_name = "ParallelBitmapScan";
 			break;
+		case WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN:
+			event_name = "ParallelCreateIndexScan";
+			break;
+		case WAIT_EVENT_PARALLEL_FINISH:
+			event_name = "ParallelFinish";
+			break;
 		case WAIT_EVENT_PROCARRAY_GROUP_UPDATE:
 			event_name = "ProcArrayGroupUpdate";
+			break;
+		case WAIT_EVENT_PROMOTE:
+			event_name = "Promote";
 			break;
 		case WAIT_EVENT_REPLICATION_ORIGIN_DROP:
 			event_name = "ReplicationOriginDrop";
@@ -3863,6 +3920,9 @@ pgstat_get_wait_io(WaitEventIO w)
 		case WAIT_EVENT_WAL_READ:
 			event_name = "WALRead";
 			break;
+		case WAIT_EVENT_WAL_SYNC:
+			event_name = "WALSync";
+			break;
 		case WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN:
 			event_name = "WALSyncMethodAssign";
 			break;
@@ -3942,10 +4002,13 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 			/* Now it is safe to use the non-volatile pointer */
 			if (checkUser && !superuser() && beentry->st_userid != GetUserId())
 				return "<insufficient privilege>";
-			else if (*(beentry->st_activity) == '\0')
+			else if (*(beentry->st_activity_raw) == '\0')
 				return "<command string not enabled>";
 			else
-				return beentry->st_activity;
+			{
+				/* this'll leak a bit of memory, but that seems acceptable */
+				return pgstat_clip_activity(beentry->st_activity_raw);
+			}
 		}
 
 		beentry++;
@@ -3991,7 +4054,7 @@ pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
 		if (beentry->st_procpid == pid)
 		{
 			/* Read pointer just once, so it can't change after validation */
-			const char *activity = beentry->st_activity;
+			const char *activity = beentry->st_activity_raw;
 			const char *activity_last;
 
 			/*
@@ -4014,7 +4077,8 @@ pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
 			/*
 			 * Copy only ASCII-safe characters so we don't run into encoding
 			 * problems when reporting the message; and be sure not to run off
-			 * the end of memory.
+			 * the end of memory.  As only ASCII characters are reported, it
+			 * doesn't seem necessary to perform multibyte aware clipping.
 			 */
 			ascii_safe_strlcpy(buffer, activity,
 							   Min(buflen, pgstat_track_activity_query_size));
@@ -4213,7 +4277,7 @@ PgstatCollectorMain(int argc, char *argv[])
 	/*
 	 * Identify myself via ps
 	 */
-	init_ps_display("stats collector process", "", "", "");
+	init_ps_display("stats collector", "", "", "");
 
 	/*
 	 * Read in existing stats files or initialize the stats to zero.
@@ -4741,7 +4805,7 @@ get_dbstat_filename(bool permanent, bool tempname, Oid databaseid,
 					   pgstat_stat_directory,
 					   databaseid,
 					   tempname ? "tmp" : "stat");
-	if (printed > len)
+	if (printed >= len)
 		elog(ERROR, "overlength pgstat path");
 }
 
@@ -5259,7 +5323,7 @@ done:
  * pgstat_read_db_statsfile_timestamp() -
  *
  *	Attempt to determine the timestamp of the last db statfile write.
- *	Returns TRUE if successful; the timestamp is stored in *ts.
+ *	Returns true if successful; the timestamp is stored in *ts.
  *
  *	This needs to be careful about handling databases for which no stats file
  *	exists, such as databases without a stat entry or those not yet written:
@@ -6266,4 +6330,48 @@ pgstat_db_requested(Oid databaseid)
 		return true;
 
 	return false;
+}
+
+/*
+ * Convert a potentially unsafely truncated activity string (see
+ * PgBackendStatus.st_activity_raw's documentation) into a correctly truncated
+ * one.
+ *
+ * The returned string is allocated in the caller's memory context and may be
+ * freed.
+ */
+char *
+pgstat_clip_activity(const char *raw_activity)
+{
+	char	   *activity;
+	int			rawlen;
+	int			cliplen;
+
+	/*
+	 * Some callers, like pgstat_get_backend_current_activity(), do not
+	 * guarantee that the buffer isn't concurrently modified. We try to take
+	 * care that the buffer is always terminated by a NUL byte regardless, but
+	 * let's still be paranoid about the string's length. In those cases the
+	 * underlying buffer is guaranteed to be pgstat_track_activity_query_size
+	 * large.
+	 */
+	activity = pnstrdup(raw_activity, pgstat_track_activity_query_size - 1);
+
+	/* now double-guaranteed to be NUL terminated */
+	rawlen = strlen(activity);
+
+	/*
+	 * All supported server-encodings make it possible to determine the length
+	 * of a multi-byte character from its first byte (this is not the case for
+	 * client encodings, see GB18030). As st_activity is always stored using
+	 * server encoding, this allows us to perform multi-byte aware truncation,
+	 * even if the string earlier was truncated in the middle of a multi-byte
+	 * character.
+	 */
+	cliplen = pg_mbcliplen(activity, rawlen,
+						   pgstat_track_activity_query_size - 1);
+
+	activity[cliplen] = '\0';
+
+	return activity;
 }

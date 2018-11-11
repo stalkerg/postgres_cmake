@@ -3,7 +3,7 @@
  *
  *	execution functions
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/exec.c
  */
 
@@ -26,7 +26,7 @@ static int	win32_check_directory_write_permissions(void);
 /*
  * get_bin_version
  *
- *	Fetch versions of binaries for cluster.
+ *	Fetch major version of binaries for cluster.
  */
 static void
 get_bin_version(ClusterInfo *cluster)
@@ -34,8 +34,8 @@ get_bin_version(ClusterInfo *cluster)
 	char		cmd[MAXPGPATH],
 				cmd_output[MAX_STRING];
 	FILE	   *output;
-	int			pre_dot = 0,
-				post_dot = 0;
+	int			v1 = 0,
+				v2 = 0;
 
 	snprintf(cmd, sizeof(cmd), "\"%s/pg_ctl\" --version", cluster->bindir);
 
@@ -46,14 +46,19 @@ get_bin_version(ClusterInfo *cluster)
 
 	pclose(output);
 
-	/* Remove trailing newline */
-	if (strchr(cmd_output, '\n') != NULL)
-		*strchr(cmd_output, '\n') = '\0';
+	if (sscanf(cmd_output, "%*s %*s %d.%d", &v1, &v2) < 1)
+		pg_fatal("could not get pg_ctl version output from %s\n", cmd);
 
-	if (sscanf(cmd_output, "%*s %*s %d.%d", &pre_dot, &post_dot) < 1)
-		pg_fatal("could not get version from %s\n", cmd);
-
-	cluster->bin_version = (pre_dot * 100 + post_dot) * 100;
+	if (v1 < 10)
+	{
+		/* old style, e.g. 9.6.1 */
+		cluster->bin_version = v1 * 10000 + v2 * 100;
+	}
+	else
+	{
+		/* new style, e.g. 10.1 */
+		cluster->bin_version = v1 * 10000;
+	}
 }
 
 
@@ -66,16 +71,14 @@ get_bin_version(ClusterInfo *cluster)
  * and attempts to execute that command.  If the command executes
  * successfully, exec_prog() returns true.
  *
- * If the command fails, an error message is saved to the specified log_file.
- * If throw_error is true, this raises a PG_FATAL error and pg_upgrade
- * terminates; otherwise it is just reported as PG_REPORT and exec_prog()
- * returns false.
+ * If the command fails, an error message is optionally written to the specified
+ * log_file, and the program optionally exits.
  *
  * The code requires it be called first from the primary thread on Windows.
  */
 bool
 exec_prog(const char *log_file, const char *opt_log_file,
-		  bool throw_error, const char *fmt,...)
+		  bool report_error, bool exit_on_error, const char *fmt,...)
 {
 	int			result = 0;
 	int			written;
@@ -143,7 +146,7 @@ exec_prog(const char *log_file, const char *opt_log_file,
 #endif
 
 	if (log == NULL)
-		pg_fatal("cannot write to log file %s\n", log_file);
+		pg_fatal("could not write to log file \"%s\"\n", log_file);
 
 #ifdef WIN32
 	/* Are we printing "command:" before its output? */
@@ -169,7 +172,7 @@ exec_prog(const char *log_file, const char *opt_log_file,
 #endif
 		result = system(cmd);
 
-	if (result != 0)
+	if (result != 0 && report_error)
 	{
 		/* we might be in on a progress status line, so go to the next line */
 		report_status(PG_REPORT, "\n*failure*");
@@ -177,12 +180,12 @@ exec_prog(const char *log_file, const char *opt_log_file,
 
 		pg_log(PG_VERBOSE, "There were problems executing \"%s\"\n", cmd);
 		if (opt_log_file)
-			pg_log(throw_error ? PG_FATAL : PG_REPORT,
+			pg_log(exit_on_error ? PG_FATAL : PG_REPORT,
 				   "Consult the last few lines of \"%s\" or \"%s\" for\n"
 				   "the probable cause of the failure.\n",
 				   log_file, opt_log_file);
 		else
-			pg_log(throw_error ? PG_FATAL : PG_REPORT,
+			pg_log(exit_on_error ? PG_FATAL : PG_REPORT,
 				   "Consult the last few lines of \"%s\" for\n"
 				   "the probable cause of the failure.\n",
 				   log_file);
@@ -198,7 +201,7 @@ exec_prog(const char *log_file, const char *opt_log_file,
 	 * log these commands to a third file, but that just adds complexity.
 	 */
 	if ((log = fopen(log_file, "a")) == NULL)
-		pg_fatal("cannot write to log file %s\n", log_file);
+		pg_fatal("could not write to log file \"%s\"\n", log_file);
 	fprintf(log, "\n\n");
 	fclose(log);
 #endif
@@ -307,7 +310,7 @@ check_single_dir(const char *pg_data, const char *subdir)
 		report_status(PG_FATAL, "check for \"%s\" failed: %s\n",
 					  subDirName, strerror(errno));
 	else if (!S_ISDIR(statBuf.st_mode))
-		report_status(PG_FATAL, "%s is not a directory\n",
+		report_status(PG_FATAL, "\"%s\" is not a directory\n",
 					  subDirName);
 }
 
@@ -326,9 +329,8 @@ check_data_dir(ClusterInfo *cluster)
 {
 	const char *pg_data = cluster->pgdata;
 
-	/* get old and new cluster versions */
-	old_cluster.major_version = get_major_server_version(&old_cluster);
-	new_cluster.major_version = get_major_server_version(&new_cluster);
+	/* get the cluster version */
+	cluster->major_version = get_major_server_version(cluster);
 
 	check_single_dir(pg_data, "");
 	check_single_dir(pg_data, "base");
@@ -370,19 +372,18 @@ check_bin_dir(ClusterInfo *cluster)
 		report_status(PG_FATAL, "check for \"%s\" failed: %s\n",
 					  cluster->bindir, strerror(errno));
 	else if (!S_ISDIR(statBuf.st_mode))
-		report_status(PG_FATAL, "%s is not a directory\n",
+		report_status(PG_FATAL, "\"%s\" is not a directory\n",
 					  cluster->bindir);
 
 	validate_exec(cluster->bindir, "postgres");
 	validate_exec(cluster->bindir, "pg_ctl");
 
 	/*
-	 * Fetch the binary versions after checking for the existence of pg_ctl,
-	 * this gives a correct error if the binary used itself for the version
-	 * fetching is broken.
+	 * Fetch the binary version after checking for the existence of pg_ctl.
+	 * This way we report a useful error if the pg_ctl binary used for version
+	 * fetching is missing/broken.
 	 */
-	get_bin_version(&old_cluster);
-	get_bin_version(&new_cluster);
+	get_bin_version(cluster);
 
 	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
 	if (GET_MAJOR_VERSION(cluster->bin_version) < 1000)
@@ -426,7 +427,7 @@ validate_exec(const char *dir, const char *cmdName)
 		pg_fatal("check for \"%s\" failed: %s\n",
 				 path, strerror(errno));
 	else if (!S_ISREG(buf.st_mode))
-		pg_fatal("check for \"%s\" failed: not an executable file\n",
+		pg_fatal("check for \"%s\" failed: not a regular file\n",
 				 path);
 
 	/*

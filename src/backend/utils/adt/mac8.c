@@ -11,7 +11,7 @@
  * The following code is written with the assumption that the OUI field
  * size is 24 bits.
  *
- * Portions Copyright (c) 1998-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1998-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/utils/adt/mac8.c
@@ -407,6 +407,15 @@ hashmacaddr8(PG_FUNCTION_ARGS)
 	return hash_any((unsigned char *) key, sizeof(macaddr8));
 }
 
+Datum
+hashmacaddr8extended(PG_FUNCTION_ARGS)
+{
+	macaddr8   *key = PG_GETARG_MACADDR8_P(0);
+
+	return hash_any_extended((unsigned char *) key, sizeof(macaddr8),
+							 PG_GETARG_INT64(1));
+}
+
 /*
  * Arithmetic functions: bitwise NOT, AND, OR.
  */
@@ -553,8 +562,8 @@ macaddr8tomacaddr(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("macaddr8 data out of range to convert to macaddr"),
 				 errhint("Only addresses that have FF and FE as values in the "
-						 "4th and 5th bytes, from the left, for example: "
-						 "XX-XX-XX-FF-FE-XX-XX-XX, are eligible to be converted "
+						 "4th and 5th bytes from the left, for example "
+						 "xx:xx:xx:ff:fe:xx:xx:xx, are eligible to be converted "
 						 "from macaddr8 to macaddr.")));
 
 	result->a = addr->a;

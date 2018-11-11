@@ -85,7 +85,7 @@
  *	problems can be overcome cheaply.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -521,12 +521,12 @@ RegisterRelcacheInvalidation(Oid dbId, Oid relId)
 	(void) GetCurrentCommandId(true);
 
 	/*
-	 * If the relation being invalidated is one of those cached in the local
-	 * relcache init file, mark that we need to zap that file at commit. Same
-	 * is true when we are invalidating whole relcache.
+	 * If the relation being invalidated is one of those cached in a relcache
+	 * init file, mark that we need to zap that file at commit. For simplicity
+	 * invalidations for a specific database always invalidate the shared file
+	 * as well.  Also zap when we are invalidating whole relcache.
 	 */
-	if (OidIsValid(dbId) &&
-		(RelationIdIsInInitFile(relId) || relId == InvalidOid))
+	if (relId == InvalidOid || RelationIdIsInInitFile(relId))
 		transInvalInfo->RelcacheInitFileInval = true;
 }
 
@@ -590,7 +590,7 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 			{
 				struct RELCACHECALLBACK *ccitem = relcache_callback_list + i;
 
-				(*ccitem->function) (ccitem->arg, msg->rc.relId);
+				ccitem->function(ccitem->arg, msg->rc.relId);
 			}
 		}
 	}
@@ -650,14 +650,14 @@ InvalidateSystemCaches(void)
 	{
 		struct SYSCACHECALLBACK *ccitem = syscache_callback_list + i;
 
-		(*ccitem->function) (ccitem->arg, ccitem->id, 0);
+		ccitem->function(ccitem->arg, ccitem->id, 0);
 	}
 
 	for (i = 0; i < relcache_callback_count; i++)
 	{
 		struct RELCACHECALLBACK *ccitem = relcache_callback_list + i;
 
-		(*ccitem->function) (ccitem->arg, InvalidOid);
+		ccitem->function(ccitem->arg, InvalidOid);
 	}
 }
 
@@ -708,7 +708,17 @@ AcceptInvalidationMessages(void)
 		}
 	}
 #elif defined(CLOBBER_CACHE_RECURSIVELY)
-	InvalidateSystemCaches();
+	{
+		static int	recursion_depth = 0;
+
+		/* Maximum depth is arbitrary depending on your threshold of pain */
+		if (recursion_depth < 3)
+		{
+			recursion_depth++;
+			InvalidateSystemCaches();
+			recursion_depth--;
+		}
+	}
 #endif
 }
 
@@ -881,18 +891,26 @@ ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs,
 
 	if (RelcacheInitFileInval)
 	{
+		elog(trace_recovery(DEBUG4), "removing relcache init files for database %u",
+			 dbid);
+
 		/*
-		 * RelationCacheInitFilePreInvalidate requires DatabasePath to be set,
-		 * but we should not use SetDatabasePath during recovery, since it is
+		 * RelationCacheInitFilePreInvalidate, when the invalidation message
+		 * is for a specific database, requires DatabasePath to be set, but we
+		 * should not use SetDatabasePath during recovery, since it is
 		 * intended to be used only once by normal backends.  Hence, a quick
 		 * hack: set DatabasePath directly then unset after use.
 		 */
-		DatabasePath = GetDatabasePath(dbid, tsid);
-		elog(trace_recovery(DEBUG4), "removing relcache init file in \"%s\"",
-			 DatabasePath);
+		if (OidIsValid(dbid))
+			DatabasePath = GetDatabasePath(dbid, tsid);
+
 		RelationCacheInitFilePreInvalidate();
-		pfree(DatabasePath);
-		DatabasePath = NULL;
+
+		if (OidIsValid(dbid))
+		{
+			pfree(DatabasePath);
+			DatabasePath = NULL;
+		}
 	}
 
 	SendSharedInvalidMessages(msgs, nmsgs);
@@ -1460,7 +1478,7 @@ CallSyscacheCallbacks(int cacheid, uint32 hashvalue)
 		struct SYSCACHECALLBACK *ccitem = syscache_callback_list + i;
 
 		Assert(ccitem->id == cacheid);
-		(*ccitem->function) (ccitem->arg, cacheid, hashvalue);
+		ccitem->function(ccitem->arg, cacheid, hashvalue);
 		i = ccitem->link - 1;
 	}
 }

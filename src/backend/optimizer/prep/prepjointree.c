@@ -12,7 +12,7 @@
  *		reduce_outer_joins
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -586,10 +586,13 @@ inline_set_returning_functions(PlannerInfo *root)
 			funcquery = inline_set_returning_function(root, rte);
 			if (funcquery)
 			{
-				/* Successful expansion, replace the rtable entry */
+				/* Successful expansion, convert the RTE to a subquery */
 				rte->rtekind = RTE_SUBQUERY;
 				rte->subquery = funcquery;
+				rte->security_barrier = false;
+				/* Clear fields that should not be set in a subquery RTE */
 				rte->functions = NIL;
+				rte->funcordinality = false;
 			}
 		}
 	}
@@ -644,9 +647,9 @@ pull_up_subqueries(PlannerInfo *root)
  * This forces use of the PlaceHolderVar mechanism for all non-Var targetlist
  * items, and puts some additional restrictions on what can be pulled up.
  *
- * deletion_ok is TRUE if the caller can cope with us returning NULL for a
+ * deletion_ok is true if the caller can cope with us returning NULL for a
  * deletable leaf node (for example, a VALUES RTE that could be pulled up).
- * If it's FALSE, we'll avoid pullup in such cases.
+ * If it's false, we'll avoid pullup in such cases.
  *
  * A tricky aspect of this code is that if we pull up a subquery we have
  * to replace Vars that reference the subquery's outputs throughout the
@@ -914,7 +917,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	subroot->grouping_map = NULL;
 	subroot->minmax_aggs = NIL;
 	subroot->qual_security_level = 0;
-	subroot->hasInheritedTarget = false;
+	subroot->inhTargetKind = INHKIND_NONE;
 	subroot->hasRecursion = false;
 	subroot->wt_param_id = -1;
 	subroot->non_recursive_path = NULL;
@@ -1003,11 +1006,8 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 
 	/*
 	 * The subquery's targetlist items are now in the appropriate form to
-	 * insert into the top query, but if we are under an outer join then
-	 * non-nullable items and lateral references may have to be turned into
-	 * PlaceHolderVars.  If we are dealing with an appendrel member then
-	 * anything that's not a simple Var has to be turned into a
-	 * PlaceHolderVar.  Set up required context data for pullup_replace_vars.
+	 * insert into the top query, except that we may need to wrap them in
+	 * PlaceHolderVars.  Set up required context data for pullup_replace_vars.
 	 */
 	rvcontext.root = root;
 	rvcontext.targetlist = subquery->targetList;
@@ -1019,12 +1019,47 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 		rvcontext.relids = NULL;
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
-	rvcontext.need_phvs = (lowest_nulling_outer_join != NULL ||
-						   containing_appendrel != NULL);
-	rvcontext.wrap_non_vars = (containing_appendrel != NULL);
+	/* these flags will be set below, if needed */
+	rvcontext.need_phvs = false;
+	rvcontext.wrap_non_vars = false;
 	/* initialize cache array with indexes 0 .. length(tlist) */
 	rvcontext.rv_cache = palloc0((list_length(subquery->targetList) + 1) *
 								 sizeof(Node *));
+
+	/*
+	 * If we are under an outer join then non-nullable items and lateral
+	 * references may have to be turned into PlaceHolderVars.
+	 */
+	if (lowest_nulling_outer_join != NULL)
+		rvcontext.need_phvs = true;
+
+	/*
+	 * If we are dealing with an appendrel member then anything that's not a
+	 * simple Var has to be turned into a PlaceHolderVar.  We force this to
+	 * ensure that what we pull up doesn't get merged into a surrounding
+	 * expression during later processing and then fail to match the
+	 * expression actually available from the appendrel.
+	 */
+	if (containing_appendrel != NULL)
+	{
+		rvcontext.need_phvs = true;
+		rvcontext.wrap_non_vars = true;
+	}
+
+	/*
+	 * If the parent query uses grouping sets, we need a PlaceHolderVar for
+	 * anything that's not a simple Var.  Again, this ensures that expressions
+	 * retain their separate identity so that they will match grouping set
+	 * columns when appropriate.  (It'd be sufficient to wrap values used in
+	 * grouping set columns, and do so only in non-aggregated portions of the
+	 * tlist and havingQual, but that would require a lot of infrastructure
+	 * that pullup_replace_vars hasn't currently got.)
+	 */
+	if (parse->groupingSets)
+	{
+		rvcontext.need_phvs = true;
+		rvcontext.wrap_non_vars = true;
+	}
 
 	/*
 	 * Replace all of the top query's references to the subquery's outputs
@@ -1401,7 +1436,7 @@ make_setop_translation_list(Query *query, Index newvarno,
  * (Note subquery is not necessarily equal to rte->subquery; it could be a
  * processed copy of that.)
  * lowest_outer_join is the lowest outer join above the subquery, or NULL.
- * deletion_ok is TRUE if it'd be okay to delete the subquery entirely.
+ * deletion_ok is true if it'd be okay to delete the subquery entirely.
  */
 static bool
 is_simple_subquery(Query *subquery, RangeTblEntry *rte,
@@ -1457,7 +1492,7 @@ is_simple_subquery(Query *subquery, RangeTblEntry *rte,
 
 	/*
 	 * Don't pull up a subquery with an empty jointree, unless it has no quals
-	 * and deletion_ok is TRUE and we're not underneath an outer join.
+	 * and deletion_ok is true and we're not underneath an outer join.
 	 *
 	 * query_planner() will correctly generate a Result plan for a jointree
 	 * that's totally empty, but we can't cope with an empty FromExpr
@@ -1681,7 +1716,7 @@ pull_up_simple_values(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte)
  *	  to pull up into the parent query.
  *
  * rte is the RTE_VALUES RangeTblEntry to check.
- * deletion_ok is TRUE if it'd be okay to delete the VALUES RTE entirely.
+ * deletion_ok is true if it'd be okay to delete the VALUES RTE entirely.
  */
 static bool
 is_simple_values(PlannerInfo *root, RangeTblEntry *rte, bool deletion_ok)
@@ -1689,7 +1724,7 @@ is_simple_values(PlannerInfo *root, RangeTblEntry *rte, bool deletion_ok)
 	Assert(rte->rtekind == RTE_VALUES);
 
 	/*
-	 * We can only pull up a VALUES RTE if deletion_ok is TRUE.  It's
+	 * We can only pull up a VALUES RTE if deletion_ok is true.  It's
 	 * basically the same case as a sub-select with empty FROM list; see
 	 * comments in is_simple_subquery().
 	 */
@@ -1844,7 +1879,7 @@ is_safe_append_member(Query *subquery)
  *
  * If restricted is false, all level-1 Vars are allowed (but we still must
  * search the jointree, since it might contain outer joins below which there
- * will be restrictions).  If restricted is true, return TRUE when any qual
+ * will be restrictions).  If restricted is true, return true when any qual
  * in the jointree contains level-1 Vars coming from outside the rels listed
  * in safe_upper_varnos.
  */
@@ -2009,6 +2044,18 @@ replace_vars_in_jointree(Node *jtnode,
 		}
 		replace_vars_in_jointree(j->larg, context, lowest_nulling_outer_join);
 		replace_vars_in_jointree(j->rarg, context, lowest_nulling_outer_join);
+
+		/*
+		 * Use PHVs within the join quals of a full join, even when it's the
+		 * lowest nulling outer join.  Otherwise, we cannot identify which
+		 * side of the join a pulled-up var-free expression came from, which
+		 * can lead to failure to make a plan at all because none of the quals
+		 * appear to be mergeable or hashable conditions.  For this purpose we
+		 * don't care about the state of wrap_non_vars, so leave it alone.
+		 */
+		if (j->jointype == JOIN_FULL)
+			context->need_phvs = true;
+
 		j->quals = pullup_replace_vars(j->quals, context);
 
 		/*

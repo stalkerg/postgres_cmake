@@ -6,7 +6,7 @@
  *	  All file system operations in POSTGRES dispatch through these
  *	  routines.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -67,9 +67,24 @@ typedef struct f_smgr
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
-	{mdinit, NULL, mdclose, mdcreate, mdexists, mdunlink, mdextend,
-		mdprefetch, mdread, mdwrite, mdwriteback, mdnblocks, mdtruncate,
-		mdimmedsync, mdpreckpt, mdsync, mdpostckpt
+	{
+		.smgr_init = mdinit,
+		.smgr_shutdown = NULL,
+		.smgr_close = mdclose,
+		.smgr_create = mdcreate,
+		.smgr_exists = mdexists,
+		.smgr_unlink = mdunlink,
+		.smgr_extend = mdextend,
+		.smgr_prefetch = mdprefetch,
+		.smgr_read = mdread,
+		.smgr_write = mdwrite,
+		.smgr_writeback = mdwriteback,
+		.smgr_nblocks = mdnblocks,
+		.smgr_truncate = mdtruncate,
+		.smgr_immedsync = mdimmedsync,
+		.smgr_pre_ckpt = mdpreckpt,
+		.smgr_sync = mdsync,
+		.smgr_post_ckpt = mdpostckpt
 	}
 };
 
@@ -106,7 +121,7 @@ smgrinit(void)
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_init)
-			(*(smgrsw[i].smgr_init)) ();
+			smgrsw[i].smgr_init();
 	}
 
 	/* register the shutdown proc */
@@ -124,7 +139,7 @@ smgrshutdown(int code, Datum arg)
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_shutdown)
-			(*(smgrsw[i].smgr_shutdown)) ();
+			smgrsw[i].smgr_shutdown();
 	}
 }
 
@@ -286,7 +301,7 @@ remove_from_unowned_list(SMgrRelation reln)
 bool
 smgrexists(SMgrRelation reln, ForkNumber forknum)
 {
-	return (*(smgrsw[reln->smgr_which].smgr_exists)) (reln, forknum);
+	return smgrsw[reln->smgr_which].smgr_exists(reln, forknum);
 }
 
 /*
@@ -299,7 +314,7 @@ smgrclose(SMgrRelation reln)
 	ForkNumber	forknum;
 
 	for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-		(*(smgrsw[reln->smgr_which].smgr_close)) (reln, forknum);
+		smgrsw[reln->smgr_which].smgr_close(reln, forknum);
 
 	owner = reln->smgr_owner;
 
@@ -395,7 +410,7 @@ smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 							reln->smgr_rnode.node.dbNode,
 							isRedo);
 
-	(*(smgrsw[reln->smgr_which].smgr_create)) (reln, forknum, isRedo);
+	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
 }
 
 /*
@@ -419,7 +434,7 @@ smgrdounlink(SMgrRelation reln, bool isRedo)
 
 	/* Close the forks at smgr level */
 	for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-		(*(smgrsw[which].smgr_close)) (reln, forknum);
+		smgrsw[which].smgr_close(reln, forknum);
 
 	/*
 	 * Get rid of any remaining buffers for the relation.  bufmgr will just
@@ -451,7 +466,7 @@ smgrdounlink(SMgrRelation reln, bool isRedo)
 	 * ERROR, because we've already decided to commit or abort the current
 	 * xact.
 	 */
-	(*(smgrsw[which].smgr_unlink)) (rnode, InvalidForkNumber, isRedo);
+	smgrsw[which].smgr_unlink(rnode, InvalidForkNumber, isRedo);
 }
 
 /*
@@ -491,7 +506,7 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 
 		/* Close the forks at smgr level */
 		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-			(*(smgrsw[which].smgr_close)) (rels[i], forknum);
+			smgrsw[which].smgr_close(rels[i], forknum);
 	}
 
 	/*
@@ -529,7 +544,7 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 		int			which = rels[i]->smgr_which;
 
 		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-			(*(smgrsw[which].smgr_unlink)) (rnodes[i], forknum, isRedo);
+			smgrsw[which].smgr_unlink(rnodes[i], forknum, isRedo);
 	}
 
 	pfree(rnodes);
@@ -552,7 +567,7 @@ smgrdounlinkfork(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 	int			which = reln->smgr_which;
 
 	/* Close the fork at smgr level */
-	(*(smgrsw[which].smgr_close)) (reln, forknum);
+	smgrsw[which].smgr_close(reln, forknum);
 
 	/*
 	 * Get rid of any remaining buffers for the fork.  bufmgr will just drop
@@ -584,7 +599,7 @@ smgrdounlinkfork(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 	 * ERROR, because we've already decided to commit or abort the current
 	 * xact.
 	 */
-	(*(smgrsw[which].smgr_unlink)) (rnode, forknum, isRedo);
+	smgrsw[which].smgr_unlink(rnode, forknum, isRedo);
 }
 
 /*
@@ -600,8 +615,8 @@ void
 smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		   char *buffer, bool skipFsync)
 {
-	(*(smgrsw[reln->smgr_which].smgr_extend)) (reln, forknum, blocknum,
-											   buffer, skipFsync);
+	smgrsw[reln->smgr_which].smgr_extend(reln, forknum, blocknum,
+										 buffer, skipFsync);
 }
 
 /*
@@ -610,7 +625,7 @@ smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 void
 smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 {
-	(*(smgrsw[reln->smgr_which].smgr_prefetch)) (reln, forknum, blocknum);
+	smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum);
 }
 
 /*
@@ -625,7 +640,7 @@ void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		 char *buffer)
 {
-	(*(smgrsw[reln->smgr_which].smgr_read)) (reln, forknum, blocknum, buffer);
+	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
 }
 
 /*
@@ -647,8 +662,8 @@ void
 smgrwrite(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		  char *buffer, bool skipFsync)
 {
-	(*(smgrsw[reln->smgr_which].smgr_write)) (reln, forknum, blocknum,
-											  buffer, skipFsync);
+	smgrsw[reln->smgr_which].smgr_write(reln, forknum, blocknum,
+										buffer, skipFsync);
 }
 
 
@@ -660,8 +675,8 @@ void
 smgrwriteback(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 			  BlockNumber nblocks)
 {
-	(*(smgrsw[reln->smgr_which].smgr_writeback)) (reln, forknum, blocknum,
-												  nblocks);
+	smgrsw[reln->smgr_which].smgr_writeback(reln, forknum, blocknum,
+											nblocks);
 }
 
 /*
@@ -671,7 +686,7 @@ smgrwriteback(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 BlockNumber
 smgrnblocks(SMgrRelation reln, ForkNumber forknum)
 {
-	return (*(smgrsw[reln->smgr_which].smgr_nblocks)) (reln, forknum);
+	return smgrsw[reln->smgr_which].smgr_nblocks(reln, forknum);
 }
 
 /*
@@ -704,7 +719,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber forknum, BlockNumber nblocks)
 	/*
 	 * Do the truncation.
 	 */
-	(*(smgrsw[reln->smgr_which].smgr_truncate)) (reln, forknum, nblocks);
+	smgrsw[reln->smgr_which].smgr_truncate(reln, forknum, nblocks);
 }
 
 /*
@@ -733,7 +748,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber forknum, BlockNumber nblocks)
 void
 smgrimmedsync(SMgrRelation reln, ForkNumber forknum)
 {
-	(*(smgrsw[reln->smgr_which].smgr_immedsync)) (reln, forknum);
+	smgrsw[reln->smgr_which].smgr_immedsync(reln, forknum);
 }
 
 
@@ -748,7 +763,7 @@ smgrpreckpt(void)
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_pre_ckpt)
-			(*(smgrsw[i].smgr_pre_ckpt)) ();
+			smgrsw[i].smgr_pre_ckpt();
 	}
 }
 
@@ -763,7 +778,7 @@ smgrsync(void)
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_sync)
-			(*(smgrsw[i].smgr_sync)) ();
+			smgrsw[i].smgr_sync();
 	}
 }
 
@@ -778,7 +793,7 @@ smgrpostckpt(void)
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_post_ckpt)
-			(*(smgrsw[i].smgr_post_ckpt)) ();
+			smgrsw[i].smgr_post_ckpt();
 	}
 }
 

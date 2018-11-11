@@ -11,12 +11,12 @@
  * on callers, since this is an opaque structure.  This is the reason to
  * require a create function.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  src/backend/backend/utils/misc/queryenvironment.c
+ *	  src/backend/utils/misc/queryenvironment.c
  *
  *-------------------------------------------------------------------------
  */

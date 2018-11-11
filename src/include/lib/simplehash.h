@@ -32,7 +32,7 @@
  *	  - SH_STORE_HASH - if defined the hash is stored in the elements
  *	  - SH_GET_HASH(tb, a) - return the field to store the hash in
  *
- *	  For examples of usage look at simplehash.c (file local definition) and
+ *	  For examples of usage look at tidbitmap.c (file local definition) and
  *	  execnodes.h/execGrouping.c (exposed declaration, file local
  *	  implementation).
  *
@@ -65,8 +65,8 @@
 /* type declarations */
 #define SH_TYPE SH_MAKE_NAME(hash)
 #define SH_STATUS SH_MAKE_NAME(status)
-#define SH_STATUS_EMPTY SH_MAKE_NAME(EMPTY)
-#define SH_STATUS_IN_USE SH_MAKE_NAME(IN_USE)
+#define SH_STATUS_EMPTY SH_MAKE_NAME(SH_EMPTY)
+#define SH_STATUS_IN_USE SH_MAKE_NAME(SH_IN_USE)
 #define SH_ITERATOR SH_MAKE_NAME(iterator)
 
 /* function declarations */
@@ -174,12 +174,26 @@ SH_SCOPE void SH_STAT(SH_TYPE * tb);
 #ifndef SH_GROW_MAX_MOVE
 #define SH_GROW_MAX_MOVE 150
 #endif
+#ifndef SH_GROW_MIN_FILLFACTOR
+/* but do not grow due to SH_GROW_MAX_* if below */
+#define SH_GROW_MIN_FILLFACTOR 0.1
+#endif
 
 #ifdef SH_STORE_HASH
 #define SH_COMPARE_KEYS(tb, ahash, akey, b) (ahash == SH_GET_HASH(tb, b) && SH_EQUAL(tb, b->SH_KEY, akey))
 #else
 #define SH_COMPARE_KEYS(tb, ahash, akey, b) (SH_EQUAL(tb, b->SH_KEY, akey))
 #endif
+
+/*
+ * Wrap the following definitions in include guards, to avoid multiple
+ * definition errors if this header is included more than once.  The rest of
+ * the file deliberately has no include guards, because it can be included
+ * with different parameters to define functions and types with non-colliding
+ * names.
+ */
+#ifndef SIMPLEHASH_H
+#define SIMPLEHASH_H
 
 /* FIXME: can we move these to a central location? */
 
@@ -201,6 +215,8 @@ sh_pow2(uint64 num)
 {
 	return ((uint64) 1) << sh_log2(num);
 }
+
+#endif
 
 /*
  * Compute sizing parameters for hashtable. Called when creating and growing
@@ -574,9 +590,12 @@ restart:
 				 * hashtables, grow the hashtable if collisions would require
 				 * us to move a lot of entries.  The most likely cause of such
 				 * imbalance is filling a (currently) small table, from a
-				 * currently big one, in hash-table order.
+				 * currently big one, in hash-table order.  Don't grow if the
+				 * hashtable would be too empty, to prevent quick space
+				 * explosion for some weird edge cases.
 				 */
-				if (++emptydist > SH_GROW_MAX_MOVE)
+				if (unlikely(++emptydist > SH_GROW_MAX_MOVE) &&
+					((double) tb->members / tb->size) >= SH_GROW_MIN_FILLFACTOR)
 				{
 					tb->grow_threshold = 0;
 					goto restart;
@@ -621,9 +640,12 @@ restart:
 		 * To avoid negative consequences from overly imbalanced hashtables,
 		 * grow the hashtable if collisions lead to large runs. The most
 		 * likely cause of such imbalance is filling a (currently) small
-		 * table, from a currently big one, in hash-table order.
+		 * table, from a currently big one, in hash-table order.  Don't grow
+		 * if the hashtable would be too empty, to prevent quick space
+		 * explosion for some weird edge cases.
 		 */
-		if (insertdist > SH_GROW_MAX_DIB)
+		if (unlikely(insertdist > SH_GROW_MAX_DIB) &&
+			((double) tb->members / tb->size) >= SH_GROW_MIN_FILLFACTOR)
 		{
 			tb->grow_threshold = 0;
 			goto restart;
@@ -914,6 +936,7 @@ SH_STAT(SH_TYPE * tb)
 #undef SH_GET_HASH
 #undef SH_STORE_HASH
 #undef SH_USE_NONDEFAULT_ALLOCATOR
+#undef SH_EQUAL
 
 /* undefine locally declared macros */
 #undef SH_MAKE_PREFIX
@@ -923,6 +946,7 @@ SH_STAT(SH_TYPE * tb)
 #undef SH_MAX_FILLFACTOR
 #undef SH_GROW_MAX_DIB
 #undef SH_GROW_MAX_MOVE
+#undef SH_GROW_MIN_FILLFACTOR
 #undef SH_MAX_SIZE
 
 /* types */

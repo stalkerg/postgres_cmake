@@ -38,7 +38,7 @@
  * be infrequent enough that more-detailed tracking is not worth the effort.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -106,6 +106,8 @@ static void PlanCacheRelCallback(Datum arg, Oid relid);
 static void PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue);
 static void PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue);
 
+/* GUC parameter */
+int			plan_cache_mode;
 
 /*
  * InitPlanCache: initialize module during InitPostgres.
@@ -180,6 +182,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = copyObject(raw_parse_tree);
 	plansource->query_string = pstrdup(query_string);
+	MemoryContextSetIdentifier(source_context, plansource->query_string);
 	plansource->commandTag = commandTag;
 	plansource->param_types = NULL;
 	plansource->num_params = 0;
@@ -319,7 +322,7 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
  * parserSetup: alternate method for handling query parameters
  * parserSetupArg: data to pass to parserSetup
  * cursor_options: options bitmask to pass to planner
- * fixed_result: TRUE to disallow future changes in query's result tupdesc
+ * fixed_result: true to disallow future changes in query's result tupdesc
  */
 void
 CompleteCachedPlan(CachedPlanSource *plansource,
@@ -951,6 +954,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		plan_context = AllocSetContextCreate(CurrentMemoryContext,
 											 "CachedPlan",
 											 ALLOCSET_START_SMALL_SIZES);
+		MemoryContextCopyAndSetIdentifier(plan_context, plansource->query_string);
 
 		/*
 		 * Copy plan into the new context.
@@ -1030,6 +1034,12 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	/* ... nor for transaction control statements */
 	if (IsTransactionStmtPlan(plansource))
 		return false;
+
+	/* Let settings force the decision */
+	if (plan_cache_mode == PLAN_CACHE_MODE_FORCE_GENERIC_PLAN)
+		return false;
+	if (plan_cache_mode == PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN)
+		return true;
 
 	/* See if caller wants to force the decision */
 	if (plansource->cursor_options & CURSOR_OPT_GENERIC_PLAN)
@@ -1346,6 +1356,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->magic = CACHEDPLANSOURCE_MAGIC;
 	newsource->raw_parse_tree = copyObject(plansource->raw_parse_tree);
 	newsource->query_string = pstrdup(plansource->query_string);
+	MemoryContextSetIdentifier(source_context, newsource->query_string);
 	newsource->commandTag = plansource->commandTag;
 	if (plansource->num_params > 0)
 	{
@@ -1482,7 +1493,6 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 	foreach(lc1, stmt_list)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
-		int			rt_index;
 		ListCell   *lc2;
 
 		if (plannedstmt->commandType == CMD_UTILITY)
@@ -1501,14 +1511,9 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			continue;
 		}
 
-		rt_index = 0;
 		foreach(lc2, plannedstmt->rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc2);
-			LOCKMODE	lockmode;
-			PlanRowMark *rc;
-
-			rt_index++;
 
 			if (rte->rtekind != RTE_RELATION)
 				continue;
@@ -1519,19 +1524,10 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			 * fail if it's been dropped entirely --- we'll just transiently
 			 * acquire a non-conflicting lock.
 			 */
-			if (list_member_int(plannedstmt->resultRelations, rt_index) ||
-				list_member_int(plannedstmt->nonleafResultRelations, rt_index))
-				lockmode = RowExclusiveLock;
-			else if ((rc = get_plan_rowmark(plannedstmt->rowMarks, rt_index)) != NULL &&
-					 RowMarkRequiresRowShareLock(rc->markType))
-				lockmode = RowShareLock;
-			else
-				lockmode = AccessShareLock;
-
 			if (acquire)
-				LockRelationOid(rte->relid, lockmode);
+				LockRelationOid(rte->relid, rte->rellockmode);
 			else
-				UnlockRelationOid(rte->relid, lockmode);
+				UnlockRelationOid(rte->relid, rte->rellockmode);
 		}
 	}
 }
@@ -1573,7 +1569,6 @@ static void
 ScanQueryForLocks(Query *parsetree, bool acquire)
 {
 	ListCell   *lc;
-	int			rt_index;
 
 	/* Shouldn't get called on utility commands */
 	Assert(parsetree->commandType != CMD_UTILITY);
@@ -1581,27 +1576,18 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 	/*
 	 * First, process RTEs of the current query level.
 	 */
-	rt_index = 0;
 	foreach(lc, parsetree->rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
-		LOCKMODE	lockmode;
 
-		rt_index++;
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
 				/* Acquire or release the appropriate type of lock */
-				if (rt_index == parsetree->resultRelation)
-					lockmode = RowExclusiveLock;
-				else if (get_parse_rowmark(parsetree, rt_index) != NULL)
-					lockmode = RowShareLock;
-				else
-					lockmode = AccessShareLock;
 				if (acquire)
-					LockRelationOid(rte->relid, lockmode);
+					LockRelationOid(rte->relid, rte->rellockmode);
 				else
-					UnlockRelationOid(rte->relid, lockmode);
+					UnlockRelationOid(rte->relid, rte->rellockmode);
 				break;
 
 			case RTE_SUBQUERY:

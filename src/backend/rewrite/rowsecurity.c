@@ -29,7 +29,7 @@
  * in the current environment, but that may change if the row_security GUC or
  * the current role changes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  */
 #include "postgres.h"
@@ -38,7 +38,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_inherits_fn.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
@@ -310,6 +310,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		{
 			List	   *conflict_permissive_policies;
 			List	   *conflict_restrictive_policies;
+			List	   *conflict_select_permissive_policies = NIL;
+			List	   *conflict_select_restrictive_policies = NIL;
 
 			/* Get the policies that apply to the auxiliary UPDATE */
 			get_policies_for_relation(rel, CMD_UPDATE, user_id,
@@ -339,9 +341,6 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 			 */
 			if (rte->requiredPerms & ACL_SELECT)
 			{
-				List	   *conflict_select_permissive_policies = NIL;
-				List	   *conflict_select_restrictive_policies = NIL;
-
 				get_policies_for_relation(rel, CMD_SELECT, user_id,
 										  &conflict_select_permissive_policies,
 										  &conflict_select_restrictive_policies);
@@ -362,6 +361,21 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 								   withCheckOptions,
 								   hasSubLinks,
 								   false);
+
+			/*
+			 * Add ALL/SELECT policies as WCO_RLS_UPDATE_CHECK WCOs, to ensure
+			 * that the final updated row is visible when taking the UPDATE
+			 * path of an INSERT .. ON CONFLICT DO UPDATE, if SELECT rights
+			 * are required for this relation.
+			 */
+			if (rte->requiredPerms & ACL_SELECT)
+				add_with_check_options(rel, rt_index,
+									   WCO_RLS_UPDATE_CHECK,
+									   conflict_select_permissive_policies,
+									   conflict_select_restrictive_policies,
+									   withCheckOptions,
+									   hasSubLinks,
+									   true);
 		}
 	}
 
@@ -394,11 +408,7 @@ get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
 	*permissive_policies = NIL;
 	*restrictive_policies = NIL;
 
-	/*
-	 * First find all internal policies for the relation.  CREATE POLICY does
-	 * not currently support defining restrictive policies, so for now all
-	 * internal policies are permissive.
-	 */
+	/* First find all internal policies for the relation. */
 	foreach(item, relation->rd_rsdesc->policies)
 	{
 		bool		cmd_matches = false;
@@ -436,7 +446,7 @@ get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
 		}
 
 		/*
-		 * Add this policy to the list of permissive policies if it applies to
+		 * Add this policy to the relevant list of policies if it applies to
 		 * the specified role.
 		 */
 		if (cmd_matches && check_role_for_policy(policy->roles, user_id))

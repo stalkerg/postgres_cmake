@@ -3,7 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -172,7 +172,6 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 		coldef->is_local = true;
 		coldef->is_not_null = true;
 		coldef->is_from_type = false;
-		coldef->is_from_parent = false;
 		coldef->storage = 0;
 		coldef->raw_default = NULL;
 		coldef->cooked_default = NULL;
@@ -432,8 +431,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	/* Open and lock sequence, and check for ownership along the way. */
 	relid = RangeVarGetRelidExtended(stmt->sequence,
 									 ShareRowExclusiveLock,
-									 stmt->missing_ok,
-									 false,
+									 stmt->missing_ok ? RVR_MISSING_OK : 0,
 									 RangeVarCallbackOwnsRelation,
 									 NULL);
 	if (relid == InvalidOid)
@@ -1055,18 +1053,10 @@ lock_and_open_sequence(SeqTable seq)
 		ResourceOwner currentOwner;
 
 		currentOwner = CurrentResourceOwner;
-		PG_TRY();
-		{
-			CurrentResourceOwner = TopTransactionResourceOwner;
-			LockRelationOid(seq->relid, RowExclusiveLock);
-		}
-		PG_CATCH();
-		{
-			/* Ensure CurrentResourceOwner is restored on error */
-			CurrentResourceOwner = currentOwner;
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		CurrentResourceOwner = TopTransactionResourceOwner;
+
+		LockRelationOid(seq->relid, RowExclusiveLock);
+
 		CurrentResourceOwner = currentOwner;
 
 		/* Flag that we have a lock in the current xact */
@@ -1760,12 +1750,19 @@ sequence_options(Oid relid)
 		elog(ERROR, "cache lookup failed for sequence %u", relid);
 	pgsform = (Form_pg_sequence) GETSTRUCT(pgstuple);
 
-	options = lappend(options, makeDefElem("cache", (Node *) makeInteger(pgsform->seqcache), -1));
-	options = lappend(options, makeDefElem("cycle", (Node *) makeInteger(pgsform->seqcycle), -1));
-	options = lappend(options, makeDefElem("increment", (Node *) makeInteger(pgsform->seqincrement), -1));
-	options = lappend(options, makeDefElem("maxvalue", (Node *) makeInteger(pgsform->seqmax), -1));
-	options = lappend(options, makeDefElem("minvalue", (Node *) makeInteger(pgsform->seqmin), -1));
-	options = lappend(options, makeDefElem("start", (Node *) makeInteger(pgsform->seqstart), -1));
+	/* Use makeFloat() for 64-bit integers, like gram.y does. */
+	options = lappend(options,
+					  makeDefElem("cache", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqcache)), -1));
+	options = lappend(options,
+					  makeDefElem("cycle", (Node *) makeInteger(pgsform->seqcycle), -1));
+	options = lappend(options,
+					  makeDefElem("increment", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqincrement)), -1));
+	options = lappend(options,
+					  makeDefElem("maxvalue", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqmax)), -1));
+	options = lappend(options,
+					  makeDefElem("minvalue", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqmin)), -1));
+	options = lappend(options,
+					  makeDefElem("start", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqstart)), -1));
 
 	ReleaseSysCache(pgstuple);
 
@@ -1941,7 +1938,7 @@ ResetSequenceCaches(void)
 void
 seq_mask(char *page, BlockNumber blkno)
 {
-	mask_page_lsn(page);
+	mask_page_lsn_and_checksum(page);
 
 	mask_unused_space(page);
 }

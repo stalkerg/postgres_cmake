@@ -9,7 +9,7 @@
  * always use NAMEDATALEN as the symbolic constant!   - jolly 8/21/95
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -188,7 +188,7 @@ namege(PG_FUNCTION_ARGS)
 /* (see char.c for comparison/operation routines) */
 
 int
-namecpy(Name n1, Name n2)
+namecpy(Name n1, const NameData *n2)
 {
 	if (!n1 || !n2)
 		return -1;

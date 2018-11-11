@@ -3,7 +3,7 @@
  * statscmds.c
  *	  Commands for creating and altering extended statistics objects
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,6 +20,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_statistic_ext.h"
+#include "commands/comment.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
 #include "statistics/statistics.h"
@@ -29,6 +30,11 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+
+
+static char *ChooseExtendedStatisticName(const char *name1, const char *name2,
+							const char *label, Oid namespaceid);
+static char *ChooseExtendedStatisticNameAddition(List *exprs);
 
 
 /* qsort comparator for the attnums in CreateStatistics */
@@ -75,31 +81,6 @@ CreateStatistics(CreateStatsStmt *stmt)
 
 	Assert(IsA(stmt, CreateStatsStmt));
 
-	/* resolve the pieces of the name (namespace etc.) */
-	namespaceId = QualifiedNameGetCreationNamespace(stmt->defnames, &namestr);
-	namestrcpy(&stxname, namestr);
-
-	/*
-	 * Deal with the possibility that the statistics object already exists.
-	 */
-	if (SearchSysCacheExists2(STATEXTNAMENSP,
-							  NameGetDatum(&stxname),
-							  ObjectIdGetDatum(namespaceId)))
-	{
-		if (stmt->if_not_exists)
-		{
-			ereport(NOTICE,
-					(errcode(ERRCODE_DUPLICATE_OBJECT),
-					 errmsg("statistics object \"%s\" already exists, skipping",
-							namestr)));
-			return InvalidObjectAddress;
-		}
-
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("statistics object \"%s\" already exists", namestr)));
-	}
-
 	/*
 	 * Examine the FROM clause.  Currently, we only allow it to be a single
 	 * simple table, but later we'll probably allow multiple tables and JOIN
@@ -141,12 +122,54 @@ CreateStatistics(CreateStatsStmt *stmt)
 
 		/* You must own the relation to create stats on it */
 		if (!pg_class_ownercheck(RelationGetRelid(rel), stxowner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+			aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
 	}
 
 	Assert(rel);
 	relid = RelationGetRelid(rel);
+
+	/*
+	 * If the node has a name, split it up and determine creation namespace.
+	 * If not (a possibility not considered by the grammar, but one which can
+	 * occur via the "CREATE TABLE ... (LIKE)" command), then we put the
+	 * object in the same namespace as the relation, and cons up a name for
+	 * it.
+	 */
+	if (stmt->defnames)
+		namespaceId = QualifiedNameGetCreationNamespace(stmt->defnames,
+														&namestr);
+	else
+	{
+		namespaceId = RelationGetNamespace(rel);
+		namestr = ChooseExtendedStatisticName(RelationGetRelationName(rel),
+											  ChooseExtendedStatisticNameAddition(stmt->exprs),
+											  "stat",
+											  namespaceId);
+	}
+	namestrcpy(&stxname, namestr);
+
+	/*
+	 * Deal with the possibility that the statistics object already exists.
+	 */
+	if (SearchSysCacheExists2(STATEXTNAMENSP,
+							  CStringGetDatum(namestr),
+							  ObjectIdGetDatum(namespaceId)))
+	{
+		if (stmt->if_not_exists)
+		{
+			ereport(NOTICE,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("statistics object \"%s\" already exists, skipping",
+							namestr)));
+			relation_close(rel, NoLock);
+			return InvalidObjectAddress;
+		}
+
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("statistics object \"%s\" already exists", namestr)));
+	}
 
 	/*
 	 * Currently, we only allow simple column references in the expression
@@ -180,7 +203,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 		if (!HeapTupleIsValid(atttuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" referenced in statistics does not exist",
+					 errmsg("column \"%s\" does not exist",
 							attname)));
 		attForm = (Form_pg_attribute) GETSTRUCT(atttuple);
 
@@ -195,8 +218,8 @@ CreateStatistics(CreateStatsStmt *stmt)
 		if (type->lt_opr == InvalidOid)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("column \"%s\" cannot be used in statistics because its type has no default btree operator class",
-							attname)));
+					 errmsg("column \"%s\" cannot be used in statistics because its type %s has no default btree operator class",
+							attname, format_type_be(attForm->atttypid))));
 
 		/* Make sure no more than STATS_MAX_DIMENSIONS columns are used */
 		if (numcols >= STATS_MAX_DIMENSIONS)
@@ -242,7 +265,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 	stxkeys = buildint2vector(attnums, numcols);
 
 	/*
-	 * Parse the statistics types.
+	 * Parse the statistics kinds.
 	 */
 	build_ndistinct = false;
 	build_dependencies = false;
@@ -263,7 +286,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("unrecognized statistic type \"%s\"",
+					 errmsg("unrecognized statistics kind \"%s\"",
 							type)));
 	}
 	/* If no statistic type was specified, build them all. */
@@ -340,6 +363,11 @@ CreateStatistics(CreateStatsStmt *stmt)
 	 * STATISTICS, which is more work than it seems worth.
 	 */
 
+	/* Add any requested comment */
+	if (stmt->stxcomment != NULL)
+		CreateComments(statoid, StatisticExtRelationId, 0,
+					   stmt->stxcomment);
+
 	/* Return stats object's address */
 	return myself;
 }
@@ -404,4 +432,95 @@ UpdateStatisticsForTypeChange(Oid statsOid, Oid relationOid, int attnum,
 	 *
 	 * Future types of extended stats will likely require us to work harder.
 	 */
+}
+
+/*
+ * Select a nonconflicting name for a new statistics.
+ *
+ * name1, name2, and label are used the same way as for makeObjectName(),
+ * except that the label can't be NULL; digits will be appended to the label
+ * if needed to create a name that is unique within the specified namespace.
+ *
+ * Returns a palloc'd string.
+ *
+ * Note: it is theoretically possible to get a collision anyway, if someone
+ * else chooses the same name concurrently.  This is fairly unlikely to be
+ * a problem in practice, especially if one is holding a share update
+ * exclusive lock on the relation identified by name1.  However, if choosing
+ * multiple names within a single command, you'd better create the new object
+ * and do CommandCounterIncrement before choosing the next one!
+ */
+static char *
+ChooseExtendedStatisticName(const char *name1, const char *name2,
+							const char *label, Oid namespaceid)
+{
+	int			pass = 0;
+	char	   *stxname = NULL;
+	char		modlabel[NAMEDATALEN];
+
+	/* try the unmodified label first */
+	StrNCpy(modlabel, label, sizeof(modlabel));
+
+	for (;;)
+	{
+		Oid			existingstats;
+
+		stxname = makeObjectName(name1, name2, modlabel);
+
+		existingstats = GetSysCacheOid2(STATEXTNAMENSP,
+										PointerGetDatum(stxname),
+										ObjectIdGetDatum(namespaceid));
+		if (!OidIsValid(existingstats))
+			break;
+
+		/* found a conflict, so try a new name component */
+		pfree(stxname);
+		snprintf(modlabel, sizeof(modlabel), "%s%d", label, ++pass);
+	}
+
+	return stxname;
+}
+
+/*
+ * Generate "name2" for a new statistics given the list of column names for it
+ * This will be passed to ChooseExtendedStatisticName along with the parent
+ * table name and a suitable label.
+ *
+ * We know that less than NAMEDATALEN characters will actually be used,
+ * so we can truncate the result once we've generated that many.
+ *
+ * XXX see also ChooseIndexNameAddition.
+ */
+static char *
+ChooseExtendedStatisticNameAddition(List *exprs)
+{
+	char		buf[NAMEDATALEN * 2];
+	int			buflen = 0;
+	ListCell   *lc;
+
+	buf[0] = '\0';
+	foreach(lc, exprs)
+	{
+		ColumnRef  *cref = (ColumnRef *) lfirst(lc);
+		const char *name;
+
+		/* It should be one of these, but just skip if it happens not to be */
+		if (!IsA(cref, ColumnRef))
+			continue;
+
+		name = strVal((Value *) linitial(cref->fields));
+
+		if (buflen > 0)
+			buf[buflen++] = '_';	/* insert _ between names */
+
+		/*
+		 * At this point we have buflen <= NAMEDATALEN.  name should be less
+		 * than NAMEDATALEN already, but use strlcpy for paranoia.
+		 */
+		strlcpy(buf + buflen, name, NAMEDATALEN);
+		buflen += strlen(buf + buflen);
+		if (buflen >= NAMEDATALEN)
+			break;
+	}
+	return pstrdup(buf);
 }

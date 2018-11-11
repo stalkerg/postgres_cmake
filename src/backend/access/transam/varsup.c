@@ -3,7 +3,7 @@
  * varsup.c
  *	  postgres OID & XID variables support routines
  *
- * Copyright (c) 2000-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/access/transam/varsup.c
@@ -124,14 +124,14 @@ GetNewTransactionId(bool isSubXact)
 						 errmsg("database is not accepting commands to avoid wraparound data loss in database \"%s\"",
 								oldest_datname),
 						 errhint("Stop the postmaster and vacuum that database in single-user mode.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("database is not accepting commands to avoid wraparound data loss in database with OID %u",
 								oldest_datoid),
 						 errhint("Stop the postmaster and vacuum that database in single-user mode.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
 		else if (TransactionIdFollowsOrEquals(xid, xidWarnLimit))
 		{
@@ -144,14 +144,14 @@ GetNewTransactionId(bool isSubXact)
 								oldest_datname,
 								xidWrapLimit - xid),
 						 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
 				ereport(WARNING,
 						(errmsg("database with OID %u must be vacuumed within %u transactions",
 								oldest_datoid,
 								xidWrapLimit - xid),
 						 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
 
 		/* Re-acquire lock and start over */
@@ -186,20 +186,23 @@ GetNewTransactionId(bool isSubXact)
 	 * latestCompletedXid is present in the ProcArray, which is essential for
 	 * correct OldestXmin tracking; see src/backend/access/transam/README.
 	 *
-	 * XXX by storing xid into MyPgXact without acquiring ProcArrayLock, we
-	 * are relying on fetch/store of an xid to be atomic, else other backends
-	 * might see a partially-set xid here.  But holding both locks at once
-	 * would be a nasty concurrency hit.  So for now, assume atomicity.
-	 *
 	 * Note that readers of PGXACT xid fields should be careful to fetch the
 	 * value only once, rather than assume they can read a value multiple
-	 * times and get the same answer each time.
+	 * times and get the same answer each time.  Note we are assuming that
+	 * TransactionId and int fetch/store are atomic.
 	 *
 	 * The same comments apply to the subxact xid count and overflow fields.
 	 *
-	 * A solution to the atomic-store problem would be to give each PGXACT its
-	 * own spinlock used only for fetching/storing that PGXACT's xid and
-	 * related fields.
+	 * Use of a write barrier prevents dangerous code rearrangement in this
+	 * function; other backends could otherwise e.g. be examining my subxids
+	 * info concurrently, and we don't want them to see an invalid
+	 * intermediate state, such as an incremented nxids before the array entry
+	 * is filled.
+	 *
+	 * Other processes that read nxids should do so before reading xids
+	 * elements with a pg_read_barrier() in between, so that they can be sure
+	 * not to read an uninitialized array element; see
+	 * src/backend/storage/lmgr/README.barrier.
 	 *
 	 * If there's no room to fit a subtransaction XID into PGPROC, set the
 	 * cache-overflowed flag instead.  This forces readers to look in
@@ -211,31 +214,20 @@ GetNewTransactionId(bool isSubXact)
 	 * window *will* include the parent XID, so they will deliver the correct
 	 * answer later on when someone does have a reason to inquire.)
 	 */
+	if (!isSubXact)
+		MyPgXact->xid = xid;	/* LWLockRelease acts as barrier */
+	else
 	{
-		/*
-		 * Use volatile pointer to prevent code rearrangement; other backends
-		 * could be examining my subxids info concurrently, and we don't want
-		 * them to see an invalid intermediate state, such as incrementing
-		 * nxids before filling the array entry.  Note we are assuming that
-		 * TransactionId and int fetch/store are atomic.
-		 */
-		volatile PGPROC *myproc = MyProc;
-		volatile PGXACT *mypgxact = MyPgXact;
+		int			nxids = MyPgXact->nxids;
 
-		if (!isSubXact)
-			mypgxact->xid = xid;
-		else
+		if (nxids < PGPROC_MAX_CACHED_SUBXIDS)
 		{
-			int			nxids = mypgxact->nxids;
-
-			if (nxids < PGPROC_MAX_CACHED_SUBXIDS)
-			{
-				myproc->subxids.xids[nxids] = xid;
-				mypgxact->nxids = nxids + 1;
-			}
-			else
-				mypgxact->overflowed = true;
+			MyProc->subxids.xids[nxids] = xid;
+			pg_write_barrier();
+			MyPgXact->nxids = nxids + 1;
 		}
+		else
+			MyPgXact->overflowed = true;
 	}
 
 	LWLockRelease(XidGenLock);
@@ -403,14 +395,14 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 							oldest_datname,
 							xidWrapLimit - curXid),
 					 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions.")));
+							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		else
 			ereport(WARNING,
 					(errmsg("database with OID %u must be vacuumed within %u transactions",
 							oldest_datoid,
 							xidWrapLimit - curXid),
 					 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions.")));
+							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 	}
 }
 
@@ -476,11 +468,9 @@ GetNewObjectId(void)
 
 	/*
 	 * Check for wraparound of the OID counter.  We *must* not return 0
-	 * (InvalidOid); and as long as we have to check that, it seems a good
-	 * idea to skip over everything below FirstNormalObjectId too. (This
-	 * basically just avoids lots of collisions with bootstrap-assigned OIDs
-	 * right after a wrap occurs, so as to avoid a possibly large number of
-	 * iterations in GetNewOid.)  Note we are relying on unsigned comparison.
+	 * (InvalidOid), and in normal operation we mustn't return anything below
+	 * FirstNormalObjectId since that range is reserved for initdb (see
+	 * IsCatalogClass()).  Note we are relying on unsigned comparison.
 	 *
 	 * During initdb, we start the OID generator at FirstBootstrapObjectId, so
 	 * we only wrap if before that point when in bootstrap or standalone mode.

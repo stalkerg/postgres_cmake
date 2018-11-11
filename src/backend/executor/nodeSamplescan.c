@@ -3,7 +3,7 @@
  * nodeSamplescan.c
  *	  Support routines for sample scans of relations (table sampling).
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,7 +26,6 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
-static void InitScanRelation(SampleScanState *node, EState *estate, int eflags);
 static TupleTableSlot *SampleNext(SampleScanState *node);
 static void tablesample_init(SampleScanState *scanstate);
 static HeapTuple tablesample_getnext(SampleScanState *scanstate);
@@ -64,10 +63,9 @@ SampleNext(SampleScanState *node)
 	slot = node->ss.ss_ScanTupleSlot;
 
 	if (tuple)
-		ExecStoreTuple(tuple,	/* tuple to store */
-					   slot,	/* slot to store in */
-					   node->ss.ss_currentScanDesc->rs_cbuf,	/* tuple's buffer */
-					   false);	/* don't pfree this pointer */
+		ExecStoreBufferHeapTuple(tuple, /* tuple to store */
+								 slot,	/* slot to store in */
+								 node->ss.ss_currentScanDesc->rs_cbuf); /* tuple's buffer */
 	else
 		ExecClearTuple(slot);
 
@@ -107,35 +105,6 @@ ExecSampleScan(PlanState *pstate)
 }
 
 /* ----------------------------------------------------------------
- *		InitScanRelation
- *
- *		Set up to access the scan relation.
- * ----------------------------------------------------------------
- */
-static void
-InitScanRelation(SampleScanState *node, EState *estate, int eflags)
-{
-	Relation	currentRelation;
-
-	/*
-	 * get the relation object id from the relid'th entry in the range table,
-	 * open that relation and acquire appropriate lock on it.
-	 */
-	currentRelation = ExecOpenScanRelation(estate,
-										   ((SampleScan *) node->ss.ps.plan)->scan.scanrelid,
-										   eflags);
-
-	node->ss.ss_currentRelation = currentRelation;
-
-	/* we won't set up the HeapScanDesc till later */
-	node->ss.ss_currentScanDesc = NULL;
-
-	/* and report the scan tuple slot's rowtype */
-	ExecAssignScanType(&node->ss, RelationGetDescr(currentRelation));
-}
-
-
-/* ----------------------------------------------------------------
  *		ExecInitSampleScan
  * ----------------------------------------------------------------
  */
@@ -165,6 +134,27 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
 	/*
+	 * open the scan relation
+	 */
+	scanstate->ss.ss_currentRelation =
+		ExecOpenScanRelation(estate,
+							 node->scan.scanrelid,
+							 eflags);
+
+	/* we won't set up the HeapScanDesc till later */
+	scanstate->ss.ss_currentScanDesc = NULL;
+
+	/* and create slot with appropriate rowtype */
+	ExecInitScanTupleSlot(estate, &scanstate->ss,
+						  RelationGetDescr(scanstate->ss.ss_currentRelation));
+
+	/*
+	 * Initialize result type and projection.
+	 */
+	ExecInitResultTypeTL(&scanstate->ss.ps);
+	ExecAssignScanProjectionInfo(&scanstate->ss);
+
+	/*
 	 * initialize child expressions
 	 */
 	scanstate->ss.ps.qual =
@@ -173,23 +163,6 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	scanstate->args = ExecInitExprList(tsc->args, (PlanState *) scanstate);
 	scanstate->repeatable =
 		ExecInitExpr(tsc->repeatable, (PlanState *) scanstate);
-
-	/*
-	 * tuple table initialization
-	 */
-	ExecInitResultTupleSlot(estate, &scanstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &scanstate->ss);
-
-	/*
-	 * initialize scan relation
-	 */
-	InitScanRelation(scanstate, estate, eflags);
-
-	/*
-	 * Initialize result tuple type and projection info.
-	 */
-	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
-	ExecAssignScanProjectionInfo(&scanstate->ss);
 
 	/*
 	 * If we don't have a REPEATABLE clause, select a random seed.  We want to
@@ -237,7 +210,8 @@ ExecEndSampleScan(SampleScanState *node)
 	/*
 	 * clean out the tuple table
 	 */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	if (node->ss.ps.ps_ResultTupleSlot)
+		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	/*
@@ -245,11 +219,6 @@ ExecEndSampleScan(SampleScanState *node)
 	 */
 	if (node->ss.ss_currentScanDesc)
 		heap_endscan(node->ss.ss_currentScanDesc);
-
-	/*
-	 * close the heap relation.
-	 */
-	ExecCloseScanRelation(node->ss.ss_currentRelation);
 }
 
 /* ----------------------------------------------------------------

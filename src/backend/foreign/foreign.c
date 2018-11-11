@@ -3,7 +3,7 @@
  * foreign.c
  *		  support for foreign-data wrappers, servers and user mappings.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
@@ -428,7 +428,7 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 /*
  * IsImportableForeignTable - filter table names for IMPORT FOREIGN SCHEMA
  *
- * Returns TRUE if given table name should be imported according to the
+ * Returns true if given table name should be imported according to the
  * statement's import filter options.
  */
 bool
@@ -560,7 +560,7 @@ struct ConnectionOption
  *
  * The list is small - don't bother with bsearch if it stays so.
  */
-static struct ConnectionOption libpq_conninfo_options[] = {
+static const struct ConnectionOption libpq_conninfo_options[] = {
 	{"authtype", ForeignServerRelationId},
 	{"service", ForeignServerRelationId},
 	{"user", UserMappingRelationId},
@@ -587,7 +587,7 @@ static struct ConnectionOption libpq_conninfo_options[] = {
 static bool
 is_conninfo_option(const char *option, Oid context)
 {
-	struct ConnectionOption *opt;
+	const struct ConnectionOption *opt;
 
 	for (opt = libpq_conninfo_options; opt->optname; opt++)
 		if (context == opt->optcontext && strcmp(opt->optname, option) == 0)
@@ -622,7 +622,7 @@ postgresql_fdw_validator(PG_FUNCTION_ARGS)
 
 		if (!is_conninfo_option(def->defname, catalog))
 		{
-			struct ConnectionOption *opt;
+			const struct ConnectionOption *opt;
 			StringInfoData buf;
 
 			/*
@@ -712,7 +712,7 @@ get_foreign_server_oid(const char *servername, bool missing_ok)
  * path list in RelOptInfo is anyway sorted by total cost we are likely to
  * choose the most efficient path, which is all for the best.
  */
-extern Path *
+Path *
 GetExistingLocalJoinPath(RelOptInfo *joinrel)
 {
 	ListCell   *lc;

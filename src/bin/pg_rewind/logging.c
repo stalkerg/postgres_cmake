@@ -3,7 +3,7 @@
  * logging.c
  *	 logging functions
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -24,8 +24,6 @@ uint64		fetch_done;
 static pg_time_t last_progress_report = 0;
 
 #define QUERY_ALLOC			8192
-
-#define MESSAGE_WIDTH		60
 
 static
 pg_attribute_printf(2, 0)

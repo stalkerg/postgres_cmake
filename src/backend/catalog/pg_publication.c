@@ -3,7 +3,7 @@
  * pg_publication.c
  *		publication C API manipulation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -103,6 +103,15 @@ is_publishable_class(Oid relid, Form_pg_class reltuple)
 		!IsCatalogClass(relid, reltuple) &&
 		reltuple->relpersistence == RELPERSISTENCE_PERMANENT &&
 		relid >= FirstNormalObjectId;
+}
+
+/*
+ * Another variant of this, taking a Relation.
+ */
+bool
+is_publishable_relation(Relation rel)
+{
+	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel);
 }
 
 
@@ -367,6 +376,7 @@ GetPublication(Oid pubid)
 	pub->pubactions.pubinsert = pubform->pubinsert;
 	pub->pubactions.pubupdate = pubform->pubupdate;
 	pub->pubactions.pubdelete = pubform->pubdelete;
+	pub->pubactions.pubtruncate = pubform->pubtruncate;
 
 	ReleaseSysCache(tup);
 
@@ -417,9 +427,12 @@ get_publication_oid(const char *pubname, bool missing_ok)
 
 /*
  * get_publication_name - given a publication Oid, look up the name
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return NULL.
  */
 char *
-get_publication_name(Oid pubid)
+get_publication_name(Oid pubid, bool missing_ok)
 {
 	HeapTuple	tup;
 	char	   *pubname;
@@ -428,7 +441,11 @@ get_publication_name(Oid pubid)
 	tup = SearchSysCache1(PUBLICATIONOID, ObjectIdGetDatum(pubid));
 
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for publication %u", pubid);
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for publication %u", pubid);
+		return NULL;
+	}
 
 	pubform = (Form_pg_publication) GETSTRUCT(tup);
 	pubname = pstrdup(NameStr(pubform->pubname));
